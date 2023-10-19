@@ -1,0 +1,748 @@
+#include "RMLite.h"
+
+// Flags indicating how to process data
+bool debug_mode_flag = false;
+
+// Counter for generated blank nodes
+int blank_node_counter = 255;
+
+bool get_index_of_element(const std::vector<std::string>& vec, const std::string& value, int& index) {
+  auto it = std::find(vec.begin(), vec.end(), value);
+  if (it != vec.end()) {
+    index = it - vec.begin();
+    return true;
+  } else {
+    return false;
+  }
+}
+
+/**
+ * @brief Fills in the template provided in RML rule.
+ *
+ * @param template_str String containing template.
+ * @param split_data Vector containing data from the input source.
+ * @param split_header Vector containing header information.
+ * @param term_type Optional parameter specifying the term type.
+ *
+ * @return A pair containing the filled template and the last generated value.
+ *         If a field is empty, the filled template is an empty string.
+ *
+ */
+std::pair<std::string, std::string> fill_in_template(
+    const std::string& template_str,
+    const std::vector<std::string>& split_data,
+    const std::vector<std::string>& split_header,
+    const std::string& term_type = "") {
+  // Stores the queries used to find data in source e.g. table name, XPath, JsonPath, ...
+  std::vector<std::string> query_strings = extract_substrings(template_str);
+  // Stores queries enclosed in { } to replace in template string
+  std::vector<std::string> query_strings_in_braces = enclose_in_braces(query_strings);
+
+  std::string filled_template_str = template_str;
+  std::string generated_value_last = "";  // Used to store the last generated value
+
+  // Iterate over found elements
+  for (size_t i = 0; i < query_strings.size(); i++) {
+    // get index of element
+    int index = 0;
+    if (!get_index_of_element(split_header, query_strings[i], index)) {
+      throw_error("Error: Element not found in csv.");
+    }
+
+    // Get data
+    generated_value_last = split_data[index];
+
+    // Check if field is empty
+    if (generated_value_last.empty()) {
+      return std::make_pair("", "");
+    }
+
+    // If value is of type IRI -> It must be made URL safe
+    if (term_type == IRI_TERM_TYPE) {
+      generated_value_last = url_encode(generated_value_last);
+    }
+
+    // Fill entry
+    filled_template_str = replace_substring(filled_template_str, query_strings_in_braces[i], generated_value_last);
+  }
+
+  return std::make_pair(filled_template_str, generated_value_last);
+}
+
+//////////////////////////////////////
+///// GRAPH GENERATOR FUNCTIONS /////
+/////////////////////////////////////
+
+/**
+ * @brief Generates a graph as definied in the RML rules.
+ *
+ * @param graph_termType The type of the graph term (should ideally be 'IRI').
+ * @param graph_template The template string used to generate the graph, if provided.
+ * @param graph_constant The constant value for the graph, if provided.
+ * @param split_data Data that's been pre-processed and split.
+ * @param split_header Header information corresponding to the split_data.
+ *
+ * @return A string containing the generated graph. It can return a blank string, a processed
+ *         string based on template or constant, or a default value (NO_GRAPH).
+ */
+std::string generate_graph_logic(
+    const std::string& graph_termType,
+    const std::string& graph_template,
+    const std::string& graph_constant,
+    const std::vector<std::string>& split_data,
+    const std::vector<std::string>& split_header) {
+  // Ensure the provided termType is supported (only 'IRI' is supported).
+  if (graph_termType != IRI_TERM_TYPE) {
+    throw_error("Error: Unsupported graph termType - termType of graph can only be 'IRI'.");
+  }
+
+  // If a graph template is provided, process and return the graph based on the template.
+  if (!graph_template.empty()) {
+    logln_debug("Generating graph based on template...");
+
+    std::pair<std::string, std::string> result = fill_in_template(graph_template, split_data, split_header, IRI_TERM_TYPE);
+    std::string current_graph = result.first;
+
+    if (current_graph.empty()) {
+      return "";
+    }
+    return handle_term_type(IRI_TERM_TYPE, current_graph);
+  } else if (!graph_constant.empty()) {
+    // Check if the provided constant refers to the default graph.
+    if (graph_constant == DEFAULT_GRAPH) {
+      return NO_GRAPH;
+    }
+    logln_debug("Generating graph based on constant...");
+    return handle_term_type(IRI_TERM_TYPE, graph_constant);
+  }
+
+  // If no template or constant is provided, return the default value.
+  return NO_GRAPH;
+}
+
+// Calls generate graph if input is SubjectMapInfo
+std::string generate_graph(const SubjectMapInfo& subjectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+  return generate_graph_logic(subjectMapInfo.graph_termType, subjectMapInfo.graph_template, subjectMapInfo.graph_constant, split_data, split_header);
+}
+
+// Calls generate graph if input is PredicateObjectMapInfo
+std::string generate_graph(const PredicateObjectMapInfo& predicateObjectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+  return generate_graph_logic(predicateObjectMapInfo.graph_termType, predicateObjectMapInfo.graph_template, predicateObjectMapInfo.graph_constant, split_data, split_header);
+}
+
+/////////////////////////////////////////
+///// SUBJECT GENERATOR FUNCTIONS //////
+////////////////////////////////////////
+
+/**
+ * @brief Generates a subject as definied in the RML rules.
+ *
+ * @param subjectMapInfo SubjectMapInfo containing RML rule mapping information.
+ * @param format String containing the reference formulation / format of the data source.
+ * @param line_nr Integer specifing the line number in the input data.
+ *
+ * @return std::string String containing the processed subject.
+ *
+ */
+std::string generate_subject(const SubjectMapInfo& subjectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+  std::string current_generated_subject = "";
+
+  // Check if term type is supported on subject -> only blank node and IRI
+  if (subjectMapInfo.termType != IRI_TERM_TYPE && subjectMapInfo.termType != "http://www.w3.org/ns/r2rml#BlankNode") {
+    throw_error("Error: termType 'literal' is not supported in subject position.");
+  }
+
+  // Check if template is available
+  if (subjectMapInfo.template_str != "") {
+    // Fill in template and store it the generate value
+    logln_debug("Generating subject based on template...");
+    std::pair<std::string, std::string> result = fill_in_template(subjectMapInfo.template_str, split_data, split_header, IRI_TERM_TYPE);
+    current_generated_subject = result.first;
+    // If result is empty string -> no value available -> return
+    if (current_generated_subject == "") {
+      return "";
+    }
+
+    // Check if termtype is IRI
+    if (subjectMapInfo.termType == IRI_TERM_TYPE) {
+      // Check if template is a valid uri -> e.g. starts with http
+      if (current_generated_subject.substr(0, 7) != "http://" && current_generated_subject.substr(0, 8) != "https://") {
+        // Generate uri using base
+        current_generated_subject = subjectMapInfo.base_uri + current_generated_subject;
+      }
+    }
+
+  }
+  // Check if reference value is available
+  else if (subjectMapInfo.reference != "") {
+    logln_debug("Generating subject based on reference...");
+    std::string temp_template = "{" + subjectMapInfo.reference + "}";
+    std::pair<std::string, std::string> result = fill_in_template(temp_template, split_data, split_header);
+    current_generated_subject = result.first;
+    // If result is empty string -> no value available -> return
+    if (current_generated_subject == "") {
+      return "";
+    }
+    // Check if template is a valid uri -> e.g. starts with http
+    if (current_generated_subject.substr(0, 4) != "http") {
+      // Generate uri using base
+      current_generated_subject = subjectMapInfo.base_uri + current_generated_subject;
+    }
+  }
+  // Check if constant value is available
+  else if (subjectMapInfo.constant != "") {
+    // Set constant value as subject
+    logln_debug("Generating subject based on constant...");
+    current_generated_subject = subjectMapInfo.constant;
+  }
+
+  // Hanlde term type
+  return handle_term_type(subjectMapInfo.termType, current_generated_subject);
+}
+
+//////////////////////////////////////////
+///// PREDICATE GENERATOR FUNCTIONS //////
+/////////////////////////////////////////
+
+/**
+ * @brief Generates a predicate as definied in the RML rules.
+ *
+ * @param predicateMapInfo PredicateMapInfo containing RML rule mapping information.
+ * @param format String containing the reference formulation / format of the data source.
+ * @param line_nr Integer specifing the line number in the input data.
+ *
+ * @return std::string String containing the processed predicate.
+ *
+ */
+std::string generate_predicate(const PredicateMapInfo& predicateMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+  std::string current_predicate = "";
+  // Check if template is available
+  if (predicateMapInfo.template_str != "") {
+    // Fill in template and store it the generate value
+    logln_debug("Generating predicate based on template...");
+    std::pair<std::string, std::string> result = fill_in_template(predicateMapInfo.template_str, split_data, split_header);
+    current_predicate = result.first;
+    // If result is empty string -> no value available -> return
+    if (current_predicate == "") {
+      return "";
+    }
+  }
+  // Check if constant value is available
+  else if (predicateMapInfo.constant != "") {
+    // Set constant value as subject
+    logln_debug("Generating predicate based on constant...");
+    current_predicate = predicateMapInfo.constant;
+  }
+  // TODO: Handle reference -> And find out if needed?
+
+  // Hanlde term type -> predicate is always IRI
+  return handle_term_type(IRI_TERM_TYPE, current_predicate);
+}
+
+////////////////////////////////////////
+///// OBJECT GENERATOR FUNCTIONS //////
+///////////////////////////////////////
+
+std::string generate_object_with_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, FileReader* reader) {
+  std::string generated_object = "";
+  // Check if template is available
+  if (objectMapInfo.template_str != "") {
+    // Fill in template and store it the generate value
+    logln_debug("Generating object based on template...");
+
+    std::pair<std::string, std::string> result = fill_in_template(objectMapInfo.template_str, split_data, split_header);
+    generated_object = result.first;
+    std::string generate_value = result.second;
+    // Reset file
+    reader->reset();
+
+    // Get Header
+    std::string header_ref;
+    reader->readNext(header_ref);
+
+    // Split header
+    std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
+
+    // Get index of element in header
+    int index = 0;
+    if (!get_index_of_element(split_header_ref, objectMapInfo.parent, index)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    // GENERATE VALUE
+    int index_old = 0;
+    if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    std::string next_element;
+    // Flag to indicate if the element was found
+    bool found_element = false;
+    while (reader->readNext(next_element)) {
+      std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
+      if (split_data_ref[index] == split_data[index_old]) {
+        // If column name is found exit. And add triple
+        found_element = true;
+        break;
+      }
+    }
+
+    // If the element is not found in the
+    if (!found_element) {
+      return "";
+    }
+
+    // If result is empty string -> no value available -> return
+    if (generated_object == "") {
+      return "";
+    }
+  }
+  // Check if constant value is available
+  else if (objectMapInfo.constant != "") {
+    // Set constant value as subject
+    logln_debug("Generating object based on constant...");
+    generated_object = objectMapInfo.constant;
+  }
+  // Check if reference is available
+  else if (objectMapInfo.reference != "") {
+    logln_debug("Generating object based on reference...");
+    std::string temp_template = "{" + objectMapInfo.reference + "}";
+    std::pair<std::string, std::string> result = fill_in_template(temp_template, split_data, split_header);
+    generated_object = result.first;
+    // If result is empty string -> no value available -> return
+    if (generated_object == "") {
+      return "";
+    }
+  }
+
+  generated_object = handle_term_type(objectMapInfo.termType, generated_object);
+
+  // Handle language info
+  if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
+    generated_object = generated_object + "@" + objectMapInfo.language;
+  }
+
+  return generated_object;
+}
+
+/**
+ * @brief Generates an object as definied in the RML rules without joins.
+ *
+ * @param objectMapInfo ObjectMapInfo containing RML rule mapping information.
+ * @param format String containing the reference formulation / format of the data source.
+ * @param line_nr Integer specifing the line number in the input data.
+ *
+ * @return std::string String containing the processed object.
+ *
+ */
+std::string generate_object_wo_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+  std::string generated_object = "";
+  // Check if template is available
+  if (objectMapInfo.template_str != "") {
+    // Fill in template and store it the generate value
+    logln_debug("Generating object based on template...");
+    std::pair<std::string, std::string> result = fill_in_template(objectMapInfo.template_str, split_data, split_header);
+    generated_object = result.first;
+    // If result is empty string -> no value available -> return
+    if (generated_object == "") {
+      return "";
+    }
+  }
+  // Check if constant value is available
+  else if (objectMapInfo.constant != "") {
+    // Set constant value as subject
+    logln_debug("Generating object based on constant...");
+    generated_object = objectMapInfo.constant;
+  }
+  // Check if reference is available
+  else if (objectMapInfo.reference != "") {
+    logln_debug("Generating object based on reference...");
+    std::string temp_template = "{" + objectMapInfo.reference + "}";
+    std::pair<std::string, std::string> result = fill_in_template(temp_template, split_data, split_header);
+    generated_object = result.first;
+    // If result is empty string -> no value available -> return
+    if (generated_object == "") {
+      return "";
+    }
+  }
+
+  generated_object = handle_term_type(objectMapInfo.termType, generated_object);
+
+  // Handle language info
+  if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
+    generated_object = generated_object + "@" + objectMapInfo.language;
+  }
+
+  return generated_object;
+}
+
+// function to call correct generate object function depending if join is required
+std::string generate_object(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+  // Check if a join is required
+  if (objectMapInfo.parentSource != "") {
+    // Load data of parent source
+    FileReader* reader = new CsvReader(objectMapInfo.parentSource);
+
+    return generate_object_with_join(objectMapInfo, split_data, split_header, reader);
+
+  } else {
+    // No join required
+
+    return generate_object_wo_join(objectMapInfo, split_data, split_header);
+  }
+}
+
+////////////////////////////////
+////// MAPPING FUNCTIONS ///////
+////////////////////////////////
+
+void generate_quads(
+    std::unordered_set<NQuad>& generated_quads,
+    const SubjectMapInfo& subjectMapInfo,
+    const std::vector<PredicateObjectMapInfo>& predicateObjectMapInfo_vec,
+    const std::vector<PredicateMapInfo>& predicateMapInfo_vec,
+    const std::vector<ObjectMapInfo>& objectMapInfo_vec,
+    const std::string& line_data,
+    const std::vector<std::string>& split_header) {
+  // Parse data for this iteration
+
+  std::vector<std::string> split_data = split_csv_line(line_data, ',');
+
+  // store subject of current iteration
+  std::string current_generated_subject = "";
+
+  // store graph of current iteration
+  std::string current_graph = "";
+
+  /////////////////////
+  // Generate Graph //
+  ///////////////////
+
+  current_graph = generate_graph(subjectMapInfo, split_data, split_header);
+  // If current_graph is "" -> No value in input data
+  if (current_graph == "") {
+    // Generatin finished
+    return;
+  }
+  // If current_graph is NO_GRAPH -> no graph has been generated -> set to ""
+  else if (current_graph == NO_GRAPH) {
+    current_graph = "";
+  }
+  ///////////////////////
+  // Generate Subject //
+  /////////////////////
+
+  // Generate subject
+  current_generated_subject = generate_subject(subjectMapInfo, split_data, split_header);
+
+  // If current_generated_subject is "" -> Invalid IRI detected or no value in input data
+  if (current_generated_subject == "") {
+    // Generatin finished
+    return;
+  }
+
+  // Add all available classes
+  for (const std::string& subject_class : subjectMapInfo.classes) {
+    // Generate quad for subject_class
+    NQuad temp_quad;
+
+    // Set subject to generated subject
+    temp_quad.subject = current_generated_subject;
+    // Set predicate which is constant
+    temp_quad.predicate = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
+    // Set object which is the class
+    temp_quad.object = "<" + subject_class + ">";  // Class is always IRI
+    // Set graph to generated graph
+    temp_quad.graph = current_graph;
+
+    // Add generated quad to result
+    generated_quads.insert(temp_quad);
+  }
+
+  // Iterate over all predicateObjectMaps
+  for (size_t k = 0; k < predicateMapInfo_vec.size(); k++) {
+    // Generate quad for finalized triple
+    NQuad temp_quad;
+
+    // add subject
+    temp_quad.subject = current_generated_subject;
+
+    // add graph from subject
+    temp_quad.graph = current_graph;
+
+    /////////////////////////
+    // Generate Predicate //
+    ///////////////////////
+    temp_quad.predicate = generate_predicate(predicateMapInfo_vec[k], split_data, split_header);
+    // If predicate is "" -> No value in input data
+    if (temp_quad.predicate == "") {
+      // Generatin finished
+      continue;
+    }
+
+    //////////////////////
+    // Generate Object //
+    /////////////////////
+
+    temp_quad.object = generate_object(objectMapInfo_vec[k], split_data, split_header);
+    // If current_graph is "" -> No value in input data
+    if (temp_quad.object == "") {
+      // Generatin finished
+      continue;
+    }
+
+    // Add generated quad to result
+    generated_quads.insert(temp_quad);
+
+    ///////////////////////////////
+    // Generate additional graph //
+    //////////////////////////////
+
+    // Check if graph is available inside of predicateObjectMap -> If so add another triple
+    if (predicateObjectMapInfo_vec[k].graph_constant != "" || predicateObjectMapInfo_vec[k].graph_template != "") {
+      // add graph if available -> else use subject graph
+      temp_quad.graph = generate_graph(predicateObjectMapInfo_vec[k], split_data, split_header);
+      // If current_graph is NO_GRAPH -> no graph has been generated -> set to ""
+      if (temp_quad.graph == NO_GRAPH) {
+        temp_quad.graph = "";
+      }
+
+      generated_quads.insert(temp_quad);
+    }
+  }
+}
+
+std::unordered_set<NQuad> map_data(std::string& rml_rule, bool debug_mode, const std::string& input_data) {
+  // Set flag for debug_mode
+  debug_mode_flag = debug_mode;
+
+  ///////////////////////////////////
+  //// STEP 1: Read RDF triples ////
+  //////////////////////////////////
+  std::string base_uri;
+  std::vector<NTriple> rml_triple;
+  read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
+
+  /////////////////////////////////
+  //// STEP 2: Parse RML rules ////
+  /////////////////////////////////
+
+  // Get all tripleMaps
+  std::vector<std::string>
+      tripleMap_nodes = find_matching_subject(rml_triple, RDF_TYPE, TRIPLES_MAP);
+
+  // Store all logicalSourceInfos of all tripleMaps
+  std::vector<LogicalSourceInfo> logicalSourceInfo_of_tripleMaps;
+
+  // Store all subjectMapInfos of all tripleMaps
+  std::vector<SubjectMapInfo> subjectMapInfo_of_tripleMaps;
+  // Store all predicateMapInfos of all tripleMaps
+  std::vector<std::vector<PredicateMapInfo>> predicateMapInfo_of_tripleMaps;
+  // Store all objectMapInfos of all tripleMaps
+  std::vector<std::vector<ObjectMapInfo>> objectMapInfo_of_tripleMaps;
+  // Store all predicateObjectMapInfos of all tripleMaps
+  std::vector<std::vector<PredicateObjectMapInfo>> predicateObjectMapInfo_of_tripleMaps;
+
+  // Parse rml rule in definied data structures
+  parse_rml_rules(
+      rml_triple,
+      tripleMap_nodes,
+      base_uri,
+      logicalSourceInfo_of_tripleMaps,
+      subjectMapInfo_of_tripleMaps,
+      predicateMapInfo_of_tripleMaps,
+      objectMapInfo_of_tripleMaps,
+      predicateObjectMapInfo_of_tripleMaps);
+
+  logln_debug("Finished parsing RML rules.");
+
+  ///////////////////////////////////////////////////////
+  //// STEP 3: Generate Mapping based on RML rules ////
+  /////////////////////////////////////////////////////
+
+  // Stores generate quads
+  std::unordered_set<NQuad> generated_quads;
+
+  // Generate mapping for each tripleMap
+  for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
+    // Initialize current tripleMap_node
+    std::string tripleMap_node = tripleMap_nodes[i];
+
+    // Get specified format of source file
+    std::string current_logical_source_format = logicalSourceInfo_of_tripleMaps[i].reference_formulation;
+
+    // Get path of specified source file
+    std::string file_path = logicalSourceInfo_of_tripleMaps[i].source_path;
+
+    // Handle CSV
+    if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
+      // Load data
+      FileReader* reader = new CsvReader(file_path);
+
+      // Get Header and split it
+      std::string header;
+      reader->readNext(header);
+      std::vector<std::string> split_header = split_csv_line(header, ',');
+
+      std::string next_element;
+      while (reader->readNext(next_element)) {
+        generate_quads(generated_quads, subjectMapInfo_of_tripleMaps[i], predicateObjectMapInfo_of_tripleMaps[i], predicateMapInfo_of_tripleMaps[i], objectMapInfo_of_tripleMaps[i], next_element, split_header);
+      }
+    } else {
+      throw_error("Error: Found unsupported encoding.");
+    }
+  }
+
+  return generated_quads;
+}
+
+// Map directly to file -> only available on PC
+#ifndef ARDUINO
+void map_data_to_file(std::string& rml_rule, bool debug_mode, std::ofstream& outFile, bool remove_duplicates) {
+  // Set flag for debug_mode
+  debug_mode_flag = debug_mode;
+
+  // Set dummy value for input data
+  std::string input_data = "";
+
+  // init hash function used to check duplicates
+  std::hash<NQuad> hasher;
+  // Used to store hashes
+  std::unordered_set<size_t> nquad_hashes;
+
+  //////////////////////////////////
+  //// STEP 1: Read RDF triple ////
+  /////////////////////////////////
+
+  // Vector to store all provided rml_triples
+  std::vector<NTriple> rml_triple;
+  std::string base_uri;
+  read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
+
+  /////////////////////////////////
+  //// STEP 2: Parse RML rules ////
+  /////////////////////////////////
+
+  // Get all tripleMaps
+  std::vector<std::string>
+      tripleMap_nodes = find_matching_subject(rml_triple, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "http://www.w3.org/ns/r2rml#TriplesMap");
+
+  // Store all logicalSourceInfos of all tripleMaps
+  std::vector<LogicalSourceInfo> logicalSourceInfo_of_tripleMaps;
+
+  // Store all subjectMapInfos of all tripleMaps
+  std::vector<SubjectMapInfo> subjectMapInfo_of_tripleMaps;
+  // Store all predicateMapInfos of all tripleMaps
+  std::vector<std::vector<PredicateMapInfo>> predicateMapInfo_of_tripleMaps;
+  // Store all objectMapInfos of all tripleMaps
+  std::vector<std::vector<ObjectMapInfo>> objectMapInfo_of_tripleMaps;
+  // Store all predicateObjectMapInfos of all tripleMaps
+  std::vector<std::vector<PredicateObjectMapInfo>> predicateObjectMapInfo_of_tripleMaps;
+
+  // Parse rml rule in definied data structures
+  parse_rml_rules(
+      rml_triple,
+      tripleMap_nodes,
+      base_uri,
+      logicalSourceInfo_of_tripleMaps,
+      subjectMapInfo_of_tripleMaps,
+      predicateMapInfo_of_tripleMaps,
+      objectMapInfo_of_tripleMaps,
+      predicateObjectMapInfo_of_tripleMaps);
+
+  logln_debug("Finished parsing RML rules.");
+
+  ///////////////////////////////////////////////////////
+  //// STEP 3: Generate Mapping based on RML rules ////
+  /////////////////////////////////////////////////////
+  // Stores generate quads
+  std::unordered_set<NQuad> generated_quads;
+
+  // Generate mapping for each tripleMap without join condition
+  for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
+    // Check if a join is required -> skip those tripleMaps
+    if (logicalSourceInfo_of_tripleMaps[i].join_required) {
+      continue;
+    }
+
+    // Initialize current tripleMap_node
+    std::string tripleMap_node = tripleMap_nodes[i];
+
+    // Get specified format
+    std::string current_logical_source_format = logicalSourceInfo_of_tripleMaps[i].reference_formulation;
+
+    // Get specified source
+    std::string file_path = logicalSourceInfo_of_tripleMaps[i].source_path;
+
+    // Get specified iterator
+    std::string logical_iterator = logicalSourceInfo_of_tripleMaps[i].logical_iterator;
+
+    // Handle CSV
+    if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
+      // Load data
+      FileReader* reader = new CsvReader(file_path);
+
+      // Get Header and split it
+      std::string header;
+      reader->readNext(header);
+      std::vector<std::string> split_header = split_csv_line(header, ',');
+
+      std::string next_element;
+      while (reader->readNext(next_element)) {
+        generate_quads(generated_quads, subjectMapInfo_of_tripleMaps[i], predicateObjectMapInfo_of_tripleMaps[i], predicateMapInfo_of_tripleMaps[i], objectMapInfo_of_tripleMaps[i], next_element, split_header);
+      }
+    }
+
+    // Handle CSV
+    if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
+      // Load data
+      FileReader* reader = new CsvReader(file_path);
+
+      // Get Header and split it
+      std::string header;
+      reader->readNext(header);
+      std::vector<std::string> split_header = split_csv_line(header, ',');
+
+      std::string next_element;
+      while (reader->readNext(next_element)) {
+        generate_quads(generated_quads, subjectMapInfo_of_tripleMaps[i], predicateObjectMapInfo_of_tripleMaps[i], predicateMapInfo_of_tripleMaps[i], objectMapInfo_of_tripleMaps[i], next_element, split_header);
+
+        // Write to file
+        for (const NQuad& quad : generated_quads) {
+          bool add_triple = true;
+
+          // Check if value is a duplicate
+          if (remove_duplicates) {
+            size_t hash_of_quad = hasher(quad);
+            // If not found
+            if (nquad_hashes.find(hash_of_quad) == nquad_hashes.end()) {
+              // Add to hashes
+              nquad_hashes.insert(hash_of_quad);
+            } else {
+              // Otherwise dont add triple
+              add_triple = false;
+            }
+          }
+
+          if (add_triple) {
+            outFile << quad.subject.c_str() << " "
+                    << quad.predicate.c_str() << " "
+                    << quad.object.c_str() << " ";
+
+            if (quad.graph != "") {
+              outFile << quad.graph.c_str() << " .\n";
+            } else {
+              outFile << ".\n";
+            }
+          }
+        }
+
+        generated_quads.clear();
+      }
+    } else {
+      throw_error("Error: Found unsupported encoding.");
+    }
+  }
+}
+
+#endif
