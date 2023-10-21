@@ -399,6 +399,38 @@ void expand_multiple_predicates(std::vector<NTriple>& triples) {
     triplesMap  predObjMap  bn91
     bn91 predicateMap bn3
     bn91 objectMap bn4
+
+    ==========
+    OR
+    triplesMap predObjMap  bn1
+    bn1 predicateMap bn2
+    bn1 predicate bn3
+    bn1 objectMap bn4
+    bn1 objectMap bn10
+
+    It is transformed to
+
+    triplesMap  predObjMap  bn90
+    bn90 predicateMap bn2
+    bn90 objectMap bn4
+
+    and
+
+    triplesMap  predObjMap  bn91
+    bn91 predicateMap bn3
+    bn91 objectMap bn4
+
+    and
+
+    triplesMap  predObjMap  bn90
+    bn90 predicateMap bn2
+    bn90 objectMap bn10
+
+    and
+
+    triplesMap  predObjMap  bn91
+    bn91 predicateMap bn3
+    bn91 objectMap bn10
   */
 
   // Get all tripleMaps
@@ -415,15 +447,13 @@ void expand_multiple_predicates(std::vector<NTriple>& triples) {
       std::vector<std::string> predicate_bns = find_matching_object(triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
 
       // If size greater than 1 -> Needs to be expanded
-      if (predicate_bns.size() > 1) {
-        // Get objectMap uri / bnode
-        std::vector<std::string> objectMap_bns = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
-        // Only size 1 is supported
-        if (objectMap_bns.size() != 1) {
-          throw_error("Error: More than one objectMap; Can not expand!");
-        }
-        std::string objectMap_bn = objectMap_bns[0];
+      if (predicate_bns.size() <= 1) {
+        continue;
+      }
+      // Get objectMap uri / bnode
+      std::vector<std::string> objectMap_bns = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
 
+      for (const auto& objectMap_bn : objectMap_bns) {
         // remove old triples
         // triplesMap  predicateObjectMap  bn
         remove_triple(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP, predicateObjectMap_uri);
@@ -466,6 +496,97 @@ void expand_multiple_predicates(std::vector<NTriple>& triples) {
   }
 }
 
+void expand_multiple_objects(std::vector<NTriple>& triples) {
+  /*
+  If an input like this is found:
+    triplesMap  predObjMap  bn1
+    bn1 predicateMap bn2
+    bn1 objectMap bn3
+    bn1 objectMap bn4
+
+    It is transformed to
+
+    triplesMap  predObjMap  bn90
+    bn90 predicateMap bn2
+    bn90 objectMap bn3
+
+    and
+
+    triplesMap  predObjMap  bn91
+    bn91 predicateMap bn2
+    bn91 objectMap bn4
+  */
+
+  // Get all tripleMaps
+  std::vector<std::string> tripleMap_nodes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
+  for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
+    std::string tripleMap_node = tripleMap_nodes[i];
+
+    // Get all predicateObjectMap Uris  of current tripleMap_node
+    std::vector<std::string> predicateObjectMap_uris = find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
+
+    // Iterate over all found predicateObjectMap_uris and extract predicate
+    for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
+      // get all object uris / bnodes
+      std::vector<std::string> objectMap_bns = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
+      //// If size is smaller than 1 -> No expansion is needed ////
+      if (objectMap_bns.size() <= 1) {
+        continue;
+      }
+      //// Otherwise expand ////
+      for (const auto& objectMap_bn : objectMap_bns) {
+        // get all predicate uris / bnodes -> should max be 1 at this point
+        std::vector<std::string> predicate_bns = find_matching_object(triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
+        logln(predicate_bns.size());
+        if (predicate_bns.size() != 1) {
+          throw_error("Error: More than one predicate map found; Not supported at this point!");
+        }
+
+        // Add new triple
+        // Generate blanke node
+        std::string blank_node = "b" + std::to_string(blank_node_counter++);
+
+        // Generate new triple representing predicateObjectMap
+        NTriple temp_triple;
+        temp_triple.subject = tripleMap_node;
+        temp_triple.predicate = RML_PREDICATE_OBJECT_MAP;
+        temp_triple.object = blank_node;
+
+        triples.push_back(temp_triple);
+
+        // Generate new triple representing predicate
+        temp_triple.subject = blank_node;
+        temp_triple.predicate = RML_PREDICATE_MAP;
+        temp_triple.object = predicate_bns[0];
+
+        triples.push_back(temp_triple);
+
+        // Generate new triple representing predicate
+        temp_triple.subject = blank_node;
+        temp_triple.predicate = RML_OBJECT_MAP;
+        temp_triple.object = objectMap_bn;
+
+        triples.push_back(temp_triple);
+      }
+    }
+    // TODO: Find better solution for deleting the old element
+    // remove old triples
+    for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
+      // get all object uris / bnodes
+      std::vector<std::string> objectMap_bns = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
+      //// If size is smaller than 1 -> No expansion is needed ////
+      if (objectMap_bns.size() <= 1) {
+        continue;
+      }
+      // triplesMap  predicateObjectMap  bn
+      remove_triple(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP, predicateObjectMap_uri);
+
+      // Remove all old triple with subject: predicateObjectMap_uri
+      remove_triple(triples, predicateObjectMap_uri);
+    }
+  }
+}
+
 void expand_classes(std::vector<NTriple>& triples) {
   // Query for logical source subject
   std::vector<std::string> triple_maps_subjects = find_matching_subject(triples, RML_LOGICAL_SOURCE, "");
@@ -496,18 +617,22 @@ void expand_classes(std::vector<NTriple>& triples) {
  */
 void expand_constants(std::vector<NTriple>& triples) {
   // Define all possible short handles for constants
-  const std::array<std::string, 4> constant_predicates = {
+  const std::array<std::string, 6> constant_predicates = {
       RML_SUBJECT,
       RML_PREDICATE,
       RML_OBJECT,
-      RML_GRAPH};
+      RML_GRAPH,
+      RML_DATA_TYPE,
+      RML_LANGUAGE};
 
   // Define all possible map types
-  const std::array<std::string, 4> constant_map_types = {
+  const std::array<std::string, 6> constant_map_types = {
       RML_SUBJECT_MAP,
       RML_PREDICATE_MAP,
       RML_OBJECT_MAP,
-      RML_GRAPH_MAP};
+      RML_GRAPH_MAP,
+      RML_DATA_TYPE_MAP,
+      RML_LANGUAGE_MAP};
 
   // Temporary storage for query results
   std::vector<std::string> temp_query_results;
@@ -584,20 +709,21 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
   // Expand multiple predicates
   expand_multiple_predicates(rml_triple);
 
+  // Expand multiple objects
+  expand_multiple_objects(rml_triple);
+
   // Expand nodes which reference as parent triple map a local one
   expand_local_tripleMaps(rml_triple);
 
   expand_join_tripleMaps(rml_triple);
 
   // Print all the triples if in debug mode
-  if (debug_mode_flag) {
-    for (const NTriple& trip : rml_triple) {
-      log_debug(trip.subject.c_str());
-      log_debug("   ");
-      log_debug(trip.predicate.c_str());
-      log_debug("   ");
-      log_debug(trip.object.c_str());
-      logln_debug(" .");
-    }
+  for (const NTriple& trip : rml_triple) {
+    log_debug(trip.subject.c_str());
+    log_debug("   ");
+    log_debug(trip.predicate.c_str());
+    log_debug("   ");
+    log_debug(trip.object.c_str());
+    logln_debug(" .");
   }
 }

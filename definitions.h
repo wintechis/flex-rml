@@ -36,6 +36,7 @@ struct ObjectMapInfo {
   std::string parentRef;     // Reference formualtion of parent source
   std::string parent;        // Store parent key
   std::string child;         // Store child key
+  std::string dataType;      // Stores specified dataType
 };
 
 // Struct to hold the objectMap information
@@ -80,9 +81,6 @@ struct Flags {
   bool streamToFile = false;             // use streaming?
   bool checkDuplicates = false;          // check for duplicates?
 };
-
-// Global variable to indicate debug mode
-extern bool debug_mode_flag;
 
 // Starting Number when generating blank nodes
 extern int blank_node_counter;

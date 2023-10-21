@@ -13,48 +13,57 @@
 #include <iostream>
 #endif
 
-// Custom log line in debug mode function
+// Enable debug output
+// 0 == off
+// 1 == on
+#define DEBUG_MODE 0
+
 void logln_debug(const char *str) {
-  if (debug_mode_flag) {
+#if DEBUG_MODE == 1
 #ifdef ARDUINO
-    Serial.println(str);
+  Serial.println(str);
 #else
-    std::cout << str << std::endl;
+  std::cout << str << std::endl;
 #endif
-  }
+#else
+  (void)str;
+#endif
 }
 
-// Custom log in debug mode function
 void log_debug(const char *str) {
-  if (debug_mode_flag) {
+#if DEBUG_MODE == 1
 #ifdef ARDUINO
-    Serial.print(str);
+  Serial.print(str);
 #else
-    std::cout << str;
+  std::cout << str;
 #endif
-  }
+#else
+  (void)str;
+#endif
 }
 
-// Overloaded log_debug function for int input
 void log_debug(int value) {
-  if (debug_mode_flag) {
+#if DEBUG_MODE == 1
 #ifdef ARDUINO
-    Serial.print(value);
+  Serial.print(value);
 #else
-    std::cout << value;
+  std::cout << value;
 #endif
-  }
+#else
+  (void)value;
+#endif
 }
 
-// Overloaded logln_debug function for int input
 void logln_debug(int value) {
-  if (debug_mode_flag) {
+#if DEBUG_MODE == 1
 #ifdef ARDUINO
-    Serial.println(value);
+  Serial.println(value);
 #else
-    std::cout << value << std::endl;
+  std::cout << value << std::endl;
 #endif
-  }
+#else
+  (void)value;
+#endif
 }
 
 /////////////////////////////

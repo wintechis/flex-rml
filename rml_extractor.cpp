@@ -247,6 +247,7 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   objectMapInfo.parentSource = "";
   objectMapInfo.parent = "";
   objectMapInfo.child = "";
+  objectMapInfo.dataType = "";
 
   // Get Uri of objectMap
   std::string node_uri;
@@ -302,22 +303,36 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
     objectMapInfo.child = temp_result[0];
   }
 
-  // Get objectMap language
-  temp_result = find_matching_object(rml_triples, node_uri, RML_LANGUAGE);
+  // Get objectMap data type
+  temp_result = find_matching_object(rml_triples, node_uri, RML_DATA_TYPE_MAP);
   if (temp_result.size() == 1) {
-    std::string lang_tag = temp_result[0];
-    // split en-US -> en
-    std::size_t pos = temp_result[0].find_first_of('-');
-    if (pos != std::string::npos) {
-      lang_tag = temp_result[0].substr(0, pos);
+    // Query for constant -> temp_result changes here!
+    temp_result = find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
+    if (temp_result.size() == 1) {
+      objectMapInfo.dataType = temp_result[0];
     }
+  }
 
-    // Check if value is supported
-    if (valid_language_subtags.find(lang_tag) == valid_language_subtags.end()) {
-      throw_error("Error: Language tag is not supported!");
+  // Get objectMap language
+  temp_result = find_matching_object(rml_triples, node_uri, RML_LANGUAGE_MAP);
+  if (temp_result.size() == 1) {
+    // Query for constant -> temp_result changes here!
+    temp_result = find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
+    if (temp_result.size() == 1) {
+      std::string lang_tag = temp_result[0];
+      // split en-US -> en
+      std::size_t pos = temp_result[0].find_first_of('-');
+      if (pos != std::string::npos) {
+        lang_tag = temp_result[0].substr(0, pos);
+      }
+
+      // Check if value is supported
+      if (valid_language_subtags.find(lang_tag) == valid_language_subtags.end()) {
+        throw_error("Error: Language tag is not supported!");
+      }
+
+      objectMapInfo.language = lang_tag;
     }
-
-    objectMapInfo.language = lang_tag;
   }
 
   // Set default value for object termType

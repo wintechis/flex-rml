@@ -81,47 +81,56 @@ std::vector<std::string> enclose_in_braces(const std::vector<std::string>& input
   return enclosedStrings;
 }
 
-
-
-std::string cleanToken(const std::string& token) {
-  std::string cleaned;
-  cleaned.reserve(token.size());
-
-  for (char c : token) {
-    if (!iscntrl(static_cast<unsigned char>(c))) {
-      cleaned += c;
-    }
+std::string cleanToken(std::string& token) {
+  std::string::iterator it = std::remove_if(token.begin(), token.end(), [](char c) {
+    return iscntrl(static_cast<unsigned char>(c));
+  });
+  if (it != token.end()) {
+    token.erase(it, token.end());
   }
-
-  return token == cleaned ? token : cleaned;  // Avoid copying if no cleaning was needed
+  return token;
 }
 
 std::vector<std::string> split_csv_line(const std::string& str, char separator) {
+  // heuristic reserve
   std::vector<std::string> result;
+  result.reserve(str.size() / 10);  // you can adjust the divisor as per your average token size
+
   std::string token;
   token.reserve(str.size() / 10);
   bool insideQuotes = false;
 
   for (char c : str) {
     if (c == '"') {
-      if (insideQuotes && (token.back() == '"')) {  // Handle escaped quotes
-        token.pop_back();                           // Remove the preceding quote, so this one is treated as an escaped quote
+      if (insideQuotes && (token.back() == '"')) {
+        token.pop_back();
       } else {
         insideQuotes = !insideQuotes;
       }
     } else if (c == separator && !insideQuotes) {
-      result.push_back(cleanToken(token));
+      if (std::any_of(token.begin(), token.end(), [](char c) {
+            return iscntrl(static_cast<unsigned char>(c));
+          })) {
+        cleanToken(token);
+      }
+      result.push_back(std::move(token));
       token.clear();
+      token.reserve(str.size() / 10);
     } else {
       token += c;
     }
   }
 
-  // If we're still inside quotes here, the CSV line is malformed
   if (insideQuotes) {
     throw_error("Malformed CSV: unmatched quote");
   }
 
-  result.push_back(cleanToken(token));
+  if (std::any_of(token.begin(), token.end(), [](char c) {
+        return iscntrl(static_cast<unsigned char>(c));
+      })) {
+    cleanToken(token);
+  }
+  result.push_back(std::move(token));
+
   return result;
 }

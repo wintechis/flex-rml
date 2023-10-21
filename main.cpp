@@ -7,6 +7,14 @@
 
 #include "RMLite.h"
 
+/*
+static uint32_t s_AllocCount = 0;
+
+void* operator new(size_t size) {
+  s_AllocCount++;
+  return malloc(size);
+} */
+
 bool readRmlFile(const std::string& filePath, std::string& rml_rule) {
   // Open the rml file in input mode
   std::ifstream file(filePath);
@@ -107,14 +115,14 @@ int main(int argc, char* argv[]) {
     }
 
     // Performe data mapping
-    map_data_to_file(rml_rule, false, outFile, flags.checkDuplicates);
+    map_data_to_file(rml_rule, outFile, flags.checkDuplicates);
 
     // Close the file
     outFile.close();
   }
   ////// In Memory Mode: Store mapped data in memory //////
   else {
-    std::unordered_set<NQuad> generated_quads = map_data(rml_rule, false, "");
+    std::unordered_set<NQuad> generated_quads = map_data(rml_rule, "");
 
     // Open a file in write mode
     std::ofstream outFile(flags.outputFile);
@@ -146,9 +154,11 @@ int main(int argc, char* argv[]) {
   auto end = std::chrono::high_resolution_clock::now();
 
   // Calculate the duration
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-  std::cout << "Mapping took " << duration << " milliseconds to execute." << std::endl;
+  std::cout << "Mapping took " << duration << " microseconds to execute." << std::endl;
+
+  // std::cout << "Number of Allocations: " << s_AllocCount << std::endl;
 
   return 0;
 }

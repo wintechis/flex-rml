@@ -38,6 +38,7 @@ SerdStatus RDFParser::static_handle_triple(void* handle, flag_data_type flags, c
  * @return {std::string} - The extracted base URI, or an empty string if not found.
  */
 std::string RDFParser::extract_base_URI(const std::string& str) {
+   
   std::istringstream stream(str);  // Convert the string to a stream for line-by-line processing
   std::string line;
 
@@ -67,6 +68,7 @@ std::string RDFParser::extract_base_URI(const std::string& str) {
 
 // Error handling function for Serd
 SerdStatus RDFParser::handle_error(void* handle, const SerdError* error) {
+   
   (void)handle;
 
   log("Error: ");
@@ -77,12 +79,14 @@ SerdStatus RDFParser::handle_error(void* handle, const SerdError* error) {
 
 // Function to add prefix to envionment
 SerdStatus RDFParser::capture_prefix(const SerdNode* name, const SerdNode* uri) {
+   
   // Set the prefix in the environment
   return serd_env_set_prefix(env, name, uri);
 }
 
 // Function to expand a serd curie to an uri
 SerdNode RDFParser::expand_node(const SerdNode* node) {
+   
   SerdNode expanded = serd_env_expand_node(env, node);
   if (expanded.buf) {
     return expanded;
@@ -99,6 +103,7 @@ SerdStatus RDFParser::handle_triple(
     const SerdNode* object,
     const SerdNode* datatype,
     const SerdNode* lang) {
+       
   // Unused parameters
   (void)handle;
   (void)flags;
@@ -125,6 +130,7 @@ SerdStatus RDFParser::handle_triple(
 }
 
 void RDFParser::handle_rdf_parsing(const std::string& rdf_data) {
+   
   std::vector<NTriple> rml_triples;
 
   // Parse RML Rule

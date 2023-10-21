@@ -1,8 +1,5 @@
 #include "RMLite.h"
 
-// Flags indicating how to process data
-bool debug_mode_flag = false;
-
 // Counter for generated blank nodes
 int blank_node_counter = 255;
 
@@ -317,9 +314,14 @@ std::string generate_object_with_join(const ObjectMapInfo& objectMapInfo, const 
 
   generated_object = handle_term_type(objectMapInfo.termType, generated_object);
 
-  // Handle language info
-  if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
-    generated_object = generated_object + "@" + objectMapInfo.language;
+  //// NOTE: Datatype is more important than language!!! ////
+  if (objectMapInfo.dataType == "") {
+    // Handle language info
+    if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
+      generated_object = generated_object + "@" + objectMapInfo.language;
+    }
+  } else {
+    generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
   }
 
   return generated_object;
@@ -368,9 +370,14 @@ std::string generate_object_wo_join(const ObjectMapInfo& objectMapInfo, const st
 
   generated_object = handle_term_type(objectMapInfo.termType, generated_object);
 
-  // Handle language info
-  if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
-    generated_object = generated_object + "@" + objectMapInfo.language;
+  //// NOTE: Datatype is more important than language!!! ////
+  if (objectMapInfo.dataType == "") {
+    // Handle language info
+    if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
+      generated_object = generated_object + "@" + objectMapInfo.language;
+    }
+  } else {
+    generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
   }
 
   return generated_object;
@@ -512,10 +519,7 @@ void generate_quads(
   }
 }
 
-std::unordered_set<NQuad> map_data(std::string& rml_rule, bool debug_mode, const std::string& input_data) {
-  // Set flag for debug_mode
-  debug_mode_flag = debug_mode;
-
+std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& input_data) {
   ///////////////////////////////////
   //// STEP 1: Read RDF triples ////
   //////////////////////////////////
@@ -598,10 +602,7 @@ std::unordered_set<NQuad> map_data(std::string& rml_rule, bool debug_mode, const
 
 // Map directly to file -> only available on PC
 #ifndef ARDUINO
-void map_data_to_file(std::string& rml_rule, bool debug_mode, std::ofstream& outFile, bool remove_duplicates) {
-  // Set flag for debug_mode
-  debug_mode_flag = debug_mode;
-
+void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates) {
   // Set dummy value for input data
   std::string input_data = "";
 

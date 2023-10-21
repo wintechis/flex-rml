@@ -53,9 +53,9 @@ struct hash<NQuad> {
 }  // namespace std
 
 // Functions
-std::unordered_set<NQuad> map_data(std::string& rml_rule, bool debug_mode, const std::string& input_data = "");
+std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& input_data = "");
 #ifndef ARDUINO
-void map_data_to_file(std::string& rml_rule, bool debug_mode, std::ofstream& outFile, bool remove_duplicates);
+void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates);
 #endif
 
 #endif

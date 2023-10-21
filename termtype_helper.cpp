@@ -7,6 +7,7 @@
  * @return std::string The URL-encoded version of the input string.
  */
 std::string url_encode(const std::string& node) {
+   
   std::string result = "";
   for (char c : node) {
     switch (c) {
@@ -107,6 +108,7 @@ std::string url_encode(const std::string& node) {
  * @return std::string - The processed node.
  */
 std::string handle_term_type_IRI(const std::string& node) {
+   
     static const std::string error_chars = " !\"'(),[]";
 
     // Check if iri is valid; if not, skip it
@@ -130,6 +132,7 @@ std::string handle_term_type_IRI(const std::string& node) {
  * @return std::string - The processed node.
  */
 std::string handle_term_type_BlankNode(const std::string& node) {
+   
   return "_:" + node;
 }
 
@@ -141,6 +144,7 @@ std::string handle_term_type_BlankNode(const std::string& node) {
  * @return std::string - The processed node.
  */
 std::string handle_term_type_Literal(const std::string& node) {
+   
   // remove all '\' in string
   std::string cleanedNode;
   for (char c : node) {
@@ -162,6 +166,7 @@ std::string handle_term_type_Literal(const std::string& node) {
  * @return std::string - The processed node.
  */
 std::string handle_term_type(const std::string& term_type, const std::string& node) {
+   
   if (term_type == IRI_TERM_TYPE) {
     return handle_term_type_IRI(node);
   } else if (term_type == "http://www.w3.org/ns/r2rml#BlankNode") {

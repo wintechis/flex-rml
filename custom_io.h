@@ -3,6 +3,7 @@
 
 #include "definitions.h"
 
+
 void log(const char *str);
 void log(int value);
 void logln(const char *str);

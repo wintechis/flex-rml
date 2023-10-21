@@ -1,10 +1,12 @@
 #ifndef STRING_HELPER_H
 #define STRING_HELPER_H
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
 #include "custom_io.h"
+
 // New ones
 std::vector<std::string> split_csv_line(const std::string& str, char separator);
 
