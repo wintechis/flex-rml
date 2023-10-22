@@ -537,7 +537,6 @@ void expand_multiple_objects(std::vector<NTriple>& triples) {
       for (const auto& objectMap_bn : objectMap_bns) {
         // get all predicate uris / bnodes -> should max be 1 at this point
         std::vector<std::string> predicate_bns = find_matching_object(triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
-        logln(predicate_bns.size());
         if (predicate_bns.size() != 1) {
           throw_error("Error: More than one predicate map found; Not supported at this point!");
         }

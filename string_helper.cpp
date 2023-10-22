@@ -81,24 +81,14 @@ std::vector<std::string> enclose_in_braces(const std::vector<std::string>& input
   return enclosedStrings;
 }
 
-std::string cleanToken(std::string& token) {
-  std::string::iterator it = std::remove_if(token.begin(), token.end(), [](char c) {
-    return iscntrl(static_cast<unsigned char>(c));
-  });
-  if (it != token.end()) {
-    token.erase(it, token.end());
-  }
-  return token;
-}
-
 std::vector<std::string> split_csv_line(const std::string& str, char separator) {
-  // heuristic reserve
   std::vector<std::string> result;
-  result.reserve(str.size() / 10);  // you can adjust the divisor as per your average token size
+  result.reserve(str.size());
 
   std::string token;
-  token.reserve(str.size() / 10);
+  token.reserve(str.size());
   bool insideQuotes = false;
+  bool hasControlChar = false;
 
   for (char c : str) {
     if (c == '"') {
@@ -108,16 +98,21 @@ std::vector<std::string> split_csv_line(const std::string& str, char separator) 
         insideQuotes = !insideQuotes;
       }
     } else if (c == separator && !insideQuotes) {
-      if (std::any_of(token.begin(), token.end(), [](char c) {
-            return iscntrl(static_cast<unsigned char>(c));
-          })) {
-        cleanToken(token);
+      if (hasControlChar) {
+        // This logic replaces cleanToken
+        token.erase(std::remove_if(token.begin(), token.end(), [](char c) {
+                      return iscntrl(static_cast<unsigned char>(c));
+                    }),
+                    token.end());
+        hasControlChar = false;
       }
       result.push_back(std::move(token));
       token.clear();
-      token.reserve(str.size() / 10);
     } else {
-      token += c;
+      if (iscntrl(static_cast<unsigned char>(c))) {
+        hasControlChar = true;
+      }
+      token.push_back(c);
     }
   }
 
@@ -125,10 +120,12 @@ std::vector<std::string> split_csv_line(const std::string& str, char separator) 
     throw_error("Malformed CSV: unmatched quote");
   }
 
-  if (std::any_of(token.begin(), token.end(), [](char c) {
-        return iscntrl(static_cast<unsigned char>(c));
-      })) {
-    cleanToken(token);
+  if (hasControlChar) {
+    // This logic replaces cleanToken
+    token.erase(std::remove_if(token.begin(), token.end(), [](char c) {
+                  return iscntrl(static_cast<unsigned char>(c));
+                }),
+                token.end());
   }
   result.push_back(std::move(token));
 

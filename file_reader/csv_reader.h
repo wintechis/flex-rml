@@ -5,7 +5,6 @@
 
 #include "custom_io.h"
 #include "file_reader.h"
-  
 
 class CsvReader : public FileReader {
  private:
@@ -15,6 +14,9 @@ class CsvReader : public FileReader {
   explicit CsvReader(const std::string& filename);
   bool readNext(std::string& outData) override;
   void reset() override;
+  void seekg(std::streampos pos) override;
+  void close() override;
+  ~CsvReader();
 };
 
 #endif
