@@ -59,4 +59,6 @@ If you are in the example folder and run:
 ```bash
 ./FlexRML -m ./mapping.ttl -o output_file.nq
 ```
-The resulting RDF graph can be found in output_file.nq.
+The resulting RDF graph can be found in output_file.nq. 
+The graph looks like this:
+![Resulting_Graph](https://github.com/FreuMi/FlexRML/blob/main/example/output_graph.png)
