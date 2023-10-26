@@ -12,8 +12,17 @@ RML (RDF Mapping Language) is central to data transformation and knowledge graph
 - Cloud Environments
 
 ## Installation
+**Prerequisites**
+
+Before compilation, a build environment must be set up on the system.
+
+This can be done on Debian based systems via :
+```bash
+apt install build-essential
+```
 
 **Compiling from Source:**
+
 1. Clone or download the repository.
 2. Navigate to the project directory.
 3. Execute the make file with the command: `make`
@@ -31,5 +40,5 @@ FlexRML operates as a command-line program, offering a variety of configuration 
 
 For example:
 ```bash
-./FlexRML -m ./path/to/mappingfile.rml -o outputfile.rdf
+./FlexRML -m ./path/to/mapping_file.ttl -o output_file.nq
 ```
