@@ -42,3 +42,21 @@ For example:
 ```bash
 ./FlexRML -m ./path/to/mapping_file.ttl -o output_file.nq
 ```
+
+
+## Example
+In the example folder, there is a mapping.ttl file that contains RML rules for mapping the data to RDF, and a sensor_values.csv file.
+
+The sensor_values.csv contains:
+
+| id  | name    | value | unit |
+| --- | ------- | ----- | ---- |
+| 10  | Sensor1 | 24    | C    |
+| 20  | Sensor2 | 72.2  | F    |
+| 30  | Sensor3 | 34    | C    |
+
+If you are in the example folder and run:
+```bash
+./FlexRML -m ./mapping.ttl -o output_file.nq
+```
+The resulting RDF graph can be found in output_file.nq.
