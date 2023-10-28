@@ -109,6 +109,7 @@ struct hash<NQuad> {
 // Functions
 std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& input_data = "");
 #ifndef ARDUINO
+void map_data_to_file_threading(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates, uint8_t num_threads);
 void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates);
 #endif
 

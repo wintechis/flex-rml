@@ -80,6 +80,8 @@ struct Flags {
   std::string outputFile = "output.nq";  // defualt output path
   bool streamToFile = false;             // use streaming?
   bool checkDuplicates = false;          // check for duplicates?
+  bool threading = false;                // use threading?
+  uint8_t thread_count = 0;              // number of threads to use
 };
 
 // Starting Number when generating blank nodes

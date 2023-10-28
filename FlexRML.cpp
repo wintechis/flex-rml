@@ -1,5 +1,12 @@
 #include "FlexRML.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <queue>
+#include <thread>
+
 // Counter for generated blank nodes
 int blank_node_counter = 255;
 
@@ -736,6 +743,10 @@ std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& inp
 
 // Map directly to file -> only available on PC
 #ifndef ARDUINO
+///////////////////////////////////////////
+//// MAP DATA TO FILE - SINGLE THREAD ////
+/////////////////////////////////////////
+
 void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates) {
   // Set dummy value for input data
   std::string input_data = "";
@@ -887,6 +898,274 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
       throw_error("Error: Found unsupported encoding.");
     }
   }
+}
+
+/////////////////////////////////////////////
+//// MAP DATA TO FILE - MULTIPLE THREAD ////
+///////////////////////////////////////////
+
+// Define a thread-safe queue for passing data between threads.
+template <typename T>
+class ThreadSafeQueue {
+ private:
+  // The underlying non-thread-safe queue
+  std::queue<T> queue;
+
+  // Mutex used to synchronize access to the queue
+  std::mutex mtx;
+
+  // Condition variable used for synchronization between threads
+  std::condition_variable cv;
+
+  // Flag to indicate that no more items will be pushed to the queue
+  bool done = false;
+
+ public:
+  // Push an item to the queue and notify a waiting thread
+  void push(const T& item) {
+    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+    queue.push(item);                        // Add the item to the queue
+    cv.notify_one();                         // Notify one waiting thread
+  }
+
+  // Pop an item from the queue. If the queue is empty, it waits until an item is available or done flag is set
+  bool pop(T& item) {
+    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+    while (queue.empty() && !done) {
+      cv.wait(lock);  // Wait until an item is pushed or done flag is set
+    }
+    if (queue.empty() && done) return false;  // If queue is empty and done flag is set, return false
+    item = queue.front();                     // Get the item from the front of the queue
+    queue.pop();                              // Remove the item from the queue
+    return true;                              // Indicate success
+  }
+
+  // Set the done flag and notify all waiting threads
+  void mark_done() {
+    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+    done = true;                             // Set the done flag
+    cv.notify_all();                         // Notify all waiting threads
+  }
+
+  // Check if the queue is empty
+  bool isEmpty() {
+    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+    return queue.empty();
+  }
+
+  // Check the status of the done flag
+  bool isDone() {
+    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+    return done;
+  }
+};
+
+void process_triple_map(
+    const SubjectMapInfo& subjectMapInfo_of_tripleMap,
+    const std::vector<PredicateObjectMapInfo>& predicateObjectMapInfo_of_tripleMap,
+    const std::vector<ObjectMapInfo>& objectMapInfo_of_tripleMap,
+    const std::vector<PredicateMapInfo>& predicateMapInfo_of_tripleMap,
+    const LogicalSourceInfo& logicalSourceInfo_of_tripleMap,
+    ThreadSafeQueue<NQuad>& quadQueue) {
+  // Store index of parent file
+  std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> parent_file_index;
+  // Stores generate quads
+  std::unordered_set<NQuad> generated_quads;
+  // Get specified source
+  std::string file_path = logicalSourceInfo_of_tripleMap.source_path;
+
+  // Get specified format
+  std::string current_logical_source_format = logicalSourceInfo_of_tripleMap.reference_formulation;
+
+  // Handle CSV
+  if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
+    for (const auto& objectMap : objectMapInfo_of_tripleMap) {
+      if (objectMap.parentSource == "") {
+        continue;
+      }
+      // Load data of parent source
+      CsvReader reader(objectMap.parentSource);
+
+      // Get Header
+      std::string header_ref;
+      reader.readNext(header_ref);
+
+      // Split header
+      std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
+
+      // Get index of element in header
+      u_int index = 0;
+      if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
+        throw_error("Element not found -> Join not working!");
+      }
+
+      parent_file_index[objectMap.parentSource] = createIndex(objectMap.parentSource, index);
+
+      reader.close();
+    }
+
+    // Load data
+    CsvReader reader(file_path);
+
+    // Get Header and split it
+    std::string header;
+    reader.readNext(header);
+    std::vector<std::string> split_header = split_csv_line(header, ',');
+
+    std::string next_element;
+    while (reader.readNext(next_element)) {
+      generate_quads(
+          generated_quads,
+          subjectMapInfo_of_tripleMap,
+          predicateObjectMapInfo_of_tripleMap,
+          predicateMapInfo_of_tripleMap,
+          objectMapInfo_of_tripleMap,
+          next_element,
+          split_header,
+          parent_file_index);
+
+      // Write to file
+      for (const NQuad& quad : generated_quads) {
+        quadQueue.push(quad);
+      }
+
+      generated_quads.clear();
+    }
+    reader.close();
+  } else {
+    throw_error("Error: Found unsupported encoding.");
+  }
+}
+
+void writerThread(std::ofstream& outFile, ThreadSafeQueue<NQuad>& quadQueue, bool remove_duplicates) {
+  // Used to store hashes
+  std::unordered_set<size_t> nquad_hashes;
+  // init hash function used to check duplicates
+  std::hash<NQuad> hasher;
+  NQuad quad;
+
+  while (true) {
+    bool success = quadQueue.pop(quad);
+    if (success) {
+      bool add_triple = true;
+
+      // Check if value is a duplicate
+      // TODO: Move outside of loop
+      if (remove_duplicates) {
+        size_t hash_of_quad = hasher(quad);
+        // If not found
+        if (nquad_hashes.find(hash_of_quad) == nquad_hashes.end()) {
+          // Add to hashes
+          nquad_hashes.insert(hash_of_quad);
+        } else {
+          // Otherwise dont add triple
+          add_triple = false;
+        }
+      }
+
+      if (add_triple) {
+        // Push to queue
+
+        outFile << quad.subject << " " << quad.predicate << " " << quad.object << " ";
+        if (quad.graph != "") {
+          outFile << quad.graph << " .\n";
+        } else {
+          outFile << ".\n";
+        }
+      }
+    } else {
+      break;  // Exit the loop when no more data and the queue is marked done.
+    }
+  }
+}
+
+void map_data_to_file_threading(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates, uint8_t num_threads) {
+  // Set dummy value for input data
+  std::string input_data = "";
+
+  //////////////////////////////////
+  //// STEP 1: Read RDF triple ////
+  /////////////////////////////////
+
+  // Vector to store all provided rml_triples
+  std::vector<NTriple> rml_triple;
+  std::string base_uri;
+  read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
+
+  /////////////////////////////////
+  //// STEP 2: Parse RML rules ////
+  /////////////////////////////////
+
+  // Get all tripleMaps
+  std::vector<std::string> tripleMap_nodes = find_matching_subject(rml_triple, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "http://www.w3.org/ns/r2rml#TriplesMap");
+
+  // Store all logicalSourceInfos of all tripleMaps
+  std::vector<LogicalSourceInfo> logicalSourceInfo_of_tripleMaps;
+
+  // Store all subjectMapInfos of all tripleMaps
+  std::vector<SubjectMapInfo> subjectMapInfo_of_tripleMaps;
+  // Store all predicateMapInfos of all tripleMaps
+  std::vector<std::vector<PredicateMapInfo>> predicateMapInfo_of_tripleMaps;
+  // Store all objectMapInfos of all tripleMaps
+  std::vector<std::vector<ObjectMapInfo>> objectMapInfo_of_tripleMaps;
+  // Store all predicateObjectMapInfos of all tripleMaps
+  std::vector<std::vector<PredicateObjectMapInfo>> predicateObjectMapInfo_of_tripleMaps;
+
+  // Parse rml rule in definied data structures
+  parse_rml_rules(
+      rml_triple,
+      tripleMap_nodes,
+      base_uri,
+      logicalSourceInfo_of_tripleMaps,
+      subjectMapInfo_of_tripleMaps,
+      predicateMapInfo_of_tripleMaps,
+      objectMapInfo_of_tripleMaps,
+      predicateObjectMapInfo_of_tripleMaps);
+
+  // Shrink to fit all vectors
+  logicalSourceInfo_of_tripleMaps.shrink_to_fit();
+  subjectMapInfo_of_tripleMaps.shrink_to_fit();
+  predicateMapInfo_of_tripleMaps.shrink_to_fit();
+  objectMapInfo_of_tripleMaps.shrink_to_fit();
+  predicateObjectMapInfo_of_tripleMaps.shrink_to_fit();
+
+  logln_debug("Finished parsing RML rules.");
+
+  ///////////////////////////////////////////////////////
+  //// STEP 3: Generate Mapping based on RML rules ////
+  /////////////////////////////////////////////////////
+
+  // Determine the number of threads to use
+  const size_t numThreads = (num_threads == 0) ? std::thread::hardware_concurrency() : static_cast<size_t>(num_threads);
+  log_debug("Using ");
+  log_debug(numThreads);
+  logln_debug(" threads.");
+  std::vector<std::thread> threads;
+
+  ThreadSafeQueue<NQuad> quadQueue;
+
+  // Start the writer thread before the worker threads
+  std::thread writer(writerThread, std::ref(outFile), std::ref(quadQueue), remove_duplicates);
+  for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
+    threads.push_back(std::thread(
+        process_triple_map,
+        std::ref(subjectMapInfo_of_tripleMaps[i]),
+        std::ref(predicateObjectMapInfo_of_tripleMaps[i]),
+        std::ref(objectMapInfo_of_tripleMaps[i]),
+        std::ref(predicateMapInfo_of_tripleMaps[i]),
+        std::ref(logicalSourceInfo_of_tripleMaps[i]),
+        std::ref(quadQueue)));
+
+    if (threads.size() == numThreads || i == tripleMap_nodes.size() - 1) {
+      for (std::thread& t : threads) {
+        t.join();
+      }
+      quadQueue.mark_done();
+      threads.clear();
+    }
+  }
+
+  writer.join();
 }
 
 #endif

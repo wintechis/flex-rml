@@ -69,6 +69,25 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
       flags.checkDuplicates = true;
     }
 
+    else if (flag == "-t") {
+      flags.threading = true;
+    }
+
+    else if (flag == "-tc") {
+      if (i + 1 < argc) {
+        std::string value = argv[++i];
+        try {
+          flags.thread_count = std::stoi(value);
+        } catch (const std::invalid_argument& e) {
+          throw_error("Invalid thread count! - Only integers are allowed.");
+        } catch (const std::out_of_range& e) {
+          throw_error("Invalid thread count! - The number is out of range for an integer.");
+        }
+      } else {
+        std::cerr << flag << " requires an argument.\n";
+      }
+    }
+
     else {
       std::cerr << "Unknown flag: " << flag << "\n";
     }
@@ -77,7 +96,7 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
   // Error handling flags
   if (flags.mappingFile.empty()) {
     std::cerr << "Missing mandatory -m flag with mapping file path.\n";
-    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -s \"USE STREAMING\" -d \"REMOVE DUPLICATES\"]\n";
+    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS TO USE\"]\n";
     return false;
   }
   return true;
@@ -104,51 +123,25 @@ int main(int argc, char* argv[]) {
   /////////////////////////////////
 
   ////// Streaming Mode: Stream data to file //////
-  if (flags.streamToFile) {
-    // Open a file in write mode
-    std::ofstream outFile(flags.outputFile);
+  // Open a file in write mode
+  std::ofstream outFile(flags.outputFile);
 
-    // Check if the file is opened successfully
-    if (!outFile.is_open()) {
-      std::cerr << "Failed to open the output file!" << std::endl;
-      return 1;
-    }
+  // Check if the file is opened successfully
+  if (!outFile.is_open()) {
+    std::cerr << "Failed to open the output file!" << std::endl;
+    return 1;
+  }
 
+  if (flags.threading) {
+    // Performe data mapping using threads
+    map_data_to_file_threading(rml_rule, outFile, flags.checkDuplicates, flags.thread_count);
+  } else {
     // Performe data mapping
     map_data_to_file(rml_rule, outFile, flags.checkDuplicates);
-
-    // Close the file
-    outFile.close();
   }
-  ////// In Memory Mode: Store mapped data in memory //////
-  else {
-    std::unordered_set<NQuad> generated_quads = map_data(rml_rule, "");
 
-    // Open a file in write mode
-    std::ofstream outFile(flags.outputFile);
-
-    // Check if the file is opened successfully
-    if (!outFile.is_open()) {
-      std::cerr << "Failed to open the output file!" << std::endl;
-      return 1;
-    }
-
-    // Write to the file
-    for (const NQuad& quad : generated_quads) {
-      outFile << quad.subject.c_str() << " "
-              << quad.predicate.c_str() << " "
-              << quad.object.c_str() << " ";
-
-      if (quad.graph != "") {
-        outFile << quad.graph.c_str() << " .\n";
-      } else {
-        outFile << ".\n";
-      }
-    }
-
-    // Close the file
-    outFile.close();
-  }
+  // Close the file
+  outFile.close();
 
   // Stop timing
   auto end = std::chrono::high_resolution_clock::now();
