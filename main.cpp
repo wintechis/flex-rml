@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-#include "RMLite.h"
+#include "FlexRML.h"
 
 /*
 static uint32_t s_AllocCount = 0;

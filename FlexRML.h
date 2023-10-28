@@ -1,5 +1,5 @@
-#ifndef RMLITE_H
-#define RMLITE_H
+#ifndef FLEXRML_H
+#define FLEXRML_H
 
 #include <sstream>
 #include <unordered_map>
