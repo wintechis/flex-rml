@@ -339,7 +339,7 @@ std::string generate_object_with_hash_join(const ObjectMapInfo& objectMapInfo, c
   return generated_object;
 }
 
-std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, FileReader* reader) {
+std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
@@ -350,11 +350,11 @@ std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMap
     generated_object = result.first;
     std::string generate_value = result.second;
     // Reset file
-    reader->reset();
+    reader.reset();
 
     // Get Header
     std::string header_ref;
-    reader->readNext(header_ref);
+    reader.readNext(header_ref);
 
     // Split header
     std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
@@ -374,7 +374,7 @@ std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMap
     std::string next_element;
     // Flag to indicate if the element was found
     bool found_element = false;
-    while (reader->readNext(next_element)) {
+    while (reader.readNext(next_element)) {
       std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
       if (split_data_ref[index] == split_data[index_old]) {
         // If column name is found exit. And add triple
@@ -658,6 +658,13 @@ std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& inp
       objectMapInfo_of_tripleMaps,
       predicateObjectMapInfo_of_tripleMaps);
 
+  // Shrink to fit all vectors
+  logicalSourceInfo_of_tripleMaps.shrink_to_fit();
+  subjectMapInfo_of_tripleMaps.shrink_to_fit();
+  predicateMapInfo_of_tripleMaps.shrink_to_fit();
+  objectMapInfo_of_tripleMaps.shrink_to_fit();
+  predicateObjectMapInfo_of_tripleMaps.shrink_to_fit();
+
   logln_debug("Finished parsing RML rules.");
 
   ///////////////////////////////////////////////////////
@@ -752,7 +759,7 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
   /////////////////////////////////
 
   // Get all tripleMaps
-  std::vector<std::string> tripleMap_nodes = find_matching_subject(rml_triple, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "http://www.w3.org/ns/r2rml#TriplesMap");
+  std::vector<std::string> tripleMap_nodes = find_matching_subject(rml_triple, RDF_TYPE, TRIPLES_MAP);
 
   // Store all logicalSourceInfos of all tripleMaps
   std::vector<LogicalSourceInfo> logicalSourceInfo_of_tripleMaps;
@@ -855,16 +862,12 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
           // TODO: Move outside of loop
           if (remove_duplicates) {
             size_t hash_of_quad = hasher(quad);
-            // If not found
-            if (nquad_hashes.find(hash_of_quad) == nquad_hashes.end()) {
-              // Add to hashes
-              nquad_hashes.insert(hash_of_quad);
-            } else {
-              // Otherwise dont add triple
+            auto result = nquad_hashes.insert(hash_of_quad);
+            if (!result.second) {
+              // hash_of_quad was already in the set
               add_triple = false;
             }
           }
-
           if (add_triple) {
             outFile << quad.subject << " "
                     << quad.predicate << " "
