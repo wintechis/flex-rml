@@ -1,12 +1,5 @@
 #include "FlexRML.h"
 
-#include <atomic>
-#include <condition_variable>
-#include <functional>
-#include <mutex>
-#include <queue>
-#include <thread>
-
 // Counter for generated blank nodes
 int blank_node_counter = 255;
 
@@ -754,7 +747,7 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
   // init hash function used to check duplicates
   std::hash<NQuad> hasher;
   // Used to store hashes
-  std::unordered_set<size_t> nquad_hashes;
+  std::unordered_set<uint64_t> nquad_hashes;
 
   //////////////////////////////////
   //// STEP 1: Read RDF triple ////
@@ -872,7 +865,7 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
           // Check if value is a duplicate
           // TODO: Move outside of loop
           if (remove_duplicates) {
-            size_t hash_of_quad = hasher(quad);
+            uint64_t hash_of_quad = hasher(quad);
             auto result = nquad_hashes.insert(hash_of_quad);
             if (!result.second) {
               // hash_of_quad was already in the set
@@ -1039,11 +1032,10 @@ void process_triple_map(
 
 void writerThread(std::ofstream& outFile, ThreadSafeQueue<NQuad>& quadQueue, bool remove_duplicates) {
   // Used to store hashes
-  std::unordered_set<size_t> nquad_hashes;
+  std::unordered_set<uint64_t> nquad_hashes;
   // init hash function used to check duplicates
   std::hash<NQuad> hasher;
   NQuad quad;
-
   while (true) {
     bool success = quadQueue.pop(quad);
     if (success) {
@@ -1052,7 +1044,7 @@ void writerThread(std::ofstream& outFile, ThreadSafeQueue<NQuad>& quadQueue, boo
       // Check if value is a duplicate
       // TODO: Move outside of loop
       if (remove_duplicates) {
-        size_t hash_of_quad = hasher(quad);
+        uint64_t hash_of_quad = hasher(quad);
         // If not found
         if (nquad_hashes.find(hash_of_quad) == nquad_hashes.end()) {
           // Add to hashes
@@ -1077,6 +1069,9 @@ void writerThread(std::ofstream& outFile, ThreadSafeQueue<NQuad>& quadQueue, boo
       break;  // Exit the loop when no more data and the queue is marked done.
     }
   }
+
+  log("Number of generated triples: ");
+  logln(std::to_string(nquad_hashes.size()).c_str());
 }
 
 void map_data_to_file_threading(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates, uint8_t num_threads) {
