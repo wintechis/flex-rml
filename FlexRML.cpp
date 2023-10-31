@@ -1,7 +1,7 @@
 #include "FlexRML.h"
 
 // Counter for generated blank nodes
-int blank_node_counter = 255;
+int blank_node_counter = 18956;
 
 bool get_index_of_element(const std::vector<std::string>& vec, const std::string& value, uint& index) {
   auto it = std::find(vec.begin(), vec.end(), value);
@@ -11,33 +11,6 @@ bool get_index_of_element(const std::vector<std::string>& vec, const std::string
   } else {
     return false;
   }
-}
-
-/**
- * @brief Creates an index map where each key is a value from the specified column in a CSV file and the corresponding value is the stream position of that line in the file.
- *
- * @param filePath The path to the CSV file.
- * @param columnIndex The 0-based index of the column from which the keys for the map will be extracted.
- *
- * @return Returns an unordered map with the values from the specified column as keys and the corresponding stream positions as values.
- */
-std::unordered_map<std::string, std::streampos> createIndex(const std::string& filePath, u_int columnIndex) {
-  std::unordered_map<std::string, std::streampos> indexMap;
-  std::ifstream csvFile(filePath, std::ios::in | std::ios::binary);
-
-  std::string line;
-  std::streampos position = csvFile.tellg();
-
-  while (std::getline(csvFile, line)) {
-    std::vector<std::string> split_data = split_csv_line(line, ',');
-    if (split_data.size() > columnIndex) {
-      indexMap[split_data[columnIndex]] = position;
-    }
-    position = csvFile.tellg();
-  }
-
-  csvFile.close();
-  return indexMap;
 }
 
 /**
@@ -91,6 +64,261 @@ std::pair<std::string, std::string> fill_in_template(
   }
 
   return std::make_pair(filled_template_str, generated_value_last);
+}
+
+/////////////////////////////////
+/////// INDEX GENERATION ///////
+/////////////////////////////////
+
+/**
+ * @brief Creates an index map where each key is a value from the specified column in a CSV file and the corresponding value is the stream position of that line in the file.
+ *
+ * @param filePath The path to the CSV file.
+ * @param columnIndex The 0-based index of the column from which the keys for the map will be extracted.
+ *
+ * @return Returns an unordered map with the values from the specified column as keys and the corresponding stream positions as values.
+ */
+std::unordered_map<std::string, std::streampos> createIndex(const std::string& filePath, u_int columnIndex) {
+  std::unordered_map<std::string, std::streampos> indexMap;
+  std::ifstream csvFile(filePath, std::ios::in | std::ios::binary);
+
+  std::string line;
+  std::streampos position = csvFile.tellg();
+
+  while (std::getline(csvFile, line)) {
+    std::vector<std::string> split_data = split_csv_line(line, ',');
+    if (split_data.size() > columnIndex) {
+      indexMap[split_data[columnIndex]] = position;
+    }
+    position = csvFile.tellg();
+  }
+
+  csvFile.close();
+  return indexMap;
+}
+
+std::unordered_map<std::string, std::streampos> createIndexFromCSVString(const std::string& csvString, unsigned int columnIndex) {
+  std::unordered_map<std::string, std::streampos> indexMap;
+  std::istringstream csvStream(csvString);
+
+  std::string line;
+  std::streampos position = csvStream.tellg();
+
+  while (std::getline(csvStream, line)) {
+    std::vector<std::string> split_data = split_csv_line(line, ',');
+    if (split_data.size() > columnIndex) {
+      indexMap[split_data[columnIndex]] = position;
+    }
+    position = csvStream.tellg();
+  }
+
+  return indexMap;
+}
+
+///////////////////////////////////////////
+/////// TRIPLES MAP SIZE ESTIMATION ///////
+///////////////////////////////////////////
+
+std::string generate_object_with_hash_join_ex(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader, const std::unordered_map<std::string, std::streampos>& parent_file_index) {
+  std::string generated_object = "";
+  // Check if template is available
+  if (objectMapInfo.template_str != "") {
+    // Fill in template and store it the generate value
+    logln_debug("Generating object based on template...");
+
+    std::pair<std::string, std::string> result = fill_in_template(objectMapInfo.template_str, split_data, split_header);
+    generated_object = result.first;
+    std::string generate_value = result.second;
+
+    // GENERATE VALUE
+    uint index_old = 0;
+    if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    std::string childValue = split_data[index_old];
+    if (parent_file_index.find(childValue) != parent_file_index.end()) {
+      std::streampos rowPosition;
+      try {
+        rowPosition = parent_file_index.at(childValue);
+      } catch (const std::out_of_range&) {
+        return "";  // Element not found
+      }
+      reader.seekg(rowPosition);
+
+      std::string next_element;
+      reader.readNext(next_element);
+      std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
+    } else {
+      return "";  // Element not found
+    }
+  }
+
+  return generated_object;
+}
+
+std::string generate_subsample(std::string& file_path, float p) {
+  std::string result;
+
+  // Create a random number generator
+  std::random_device rd;
+  std::mt19937 mt(rd());
+
+  // Create a distribution from 0 to 1
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  CsvReader reader(file_path);
+  std::string next_element;
+
+  // Get header
+  reader.readNext(next_element);
+  result += next_element + "\n";
+
+  // Read all lines and decide if they should be added to the result
+  while (reader.readNext(next_element)) {
+    // Generate a random float
+    float randomFloat = dist(mt);
+    if (randomFloat <= p) {
+      result += next_element + "\n";
+    }
+  }
+  reader.close();
+
+  return result;
+}
+
+int estimate_join_size(std::string& source, std::string& source_parent, ObjectMapInfo& objectMapInfo) {
+  float p1 = 0.05;
+  float p2 = 0.05;
+
+  // Step 1 : Create Bernoulli samples S1 and S2 from tables T1 and T2
+  std::string sampled_table1 = generate_subsample(source, p1);
+  std::string sampled_table2 = generate_subsample(source_parent, p2);
+
+  // Step 2 : Compute the join size J' of the two samples
+
+  // Load child data
+  int join_element_counter = 0;
+  CsvReader reader(sampled_table1, false);
+
+  // Get header
+  std::string header;
+  reader.readNext(header);
+
+  std::vector<std::string> split_header = split_csv_line(header, ',');
+
+  std::string next_element;
+
+  if (objectMapInfo.parentSource == "") {
+    return 0;
+  }
+  // Load data of parent source
+  CsvReader reader_parent(sampled_table2, false);
+
+  // Get Header
+  std::string header_ref;
+  reader_parent.readNext(header_ref);
+
+  // Split header
+  std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
+
+  // Get index of element in header
+  u_int index = 0;
+  if (!get_index_of_element(split_header_ref, objectMapInfo.parent, index)) {
+    throw_error("Element not found -> Join not working!");
+  }
+
+  auto string_index = createIndexFromCSVString(sampled_table2, index);
+
+  while (reader.readNext(next_element)) {
+    reader_parent.reset();
+    std::vector<std::string> split_data = split_csv_line(next_element, ',');
+    auto res = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header, reader_parent, string_index);
+    if (res != "") {
+      join_element_counter += 1;
+    }
+  }
+  reader_parent.close();
+  reader.close();
+
+  float scaling_factor = 1 / (p1 * p2);
+
+  float j_hat = join_element_counter * scaling_factor;
+
+  int j_hat_int = j_hat;
+  return j_hat_int;
+}
+
+int estimate_generated_triple(std::vector<NTriple>& triples) {
+  // count predicate object maps for each triple
+  // Get all tripleMaps
+  std::vector<std::string> tripleMap_nodes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
+
+  int result = 0;
+
+  for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
+    std::string tripleMap_node = tripleMap_nodes[i];
+
+    // Get logical source
+    std::string logicalSourceNode = find_matching_object(triples, tripleMap_node, RML_LOGICAL_SOURCE)[0];
+    // Get source path
+    std::string source = find_matching_object(triples, logicalSourceNode, RML_SOURCE)[0];
+    // Get reference formulation
+    std::string referenceFormulation = find_matching_object(triples, logicalSourceNode, RML_REFERENCE_FORMULATION)[0];
+
+    int objects_wo_join = 0;
+
+    // Start at -1 to ignore header
+    int element_count = -1;
+    // Count number of elements in source
+    if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
+      CsvReader reader(source);
+      std::string next_element;
+
+      while (reader.readNext(next_element)) {
+        element_count++;
+      }
+      reader.close();
+    }
+    // Get all predicateObjectMap Uris  of current tripleMap_node
+    std::vector<std::string> predicateObjectMap_uris = find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
+    // Iterate over all found predicateObjectMap_uris and extract predicate
+    for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
+      // Get objectMap node
+      std::string objectMap_node = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP)[0];
+
+      // Get ex:parentSource
+      std::vector<std::string> parentSource = find_matching_object(triples, objectMap_node, PARENT_SOURCE);
+
+      if (parentSource.size() == 0) {
+        // No join required
+        objects_wo_join++;
+
+      } else {
+        // Join required
+
+        // Get matching template
+        std::string template_str = find_matching_object(triples, objectMap_node, RML_TEMPLATE)[0];
+
+        // Get parent
+        std::string parent = find_matching_object(triples, objectMap_node, RML_PARENT)[0];
+
+        // Get child
+        std::string child = find_matching_object(triples, objectMap_node, RML_CHILD)[0];
+
+        ObjectMapInfo objectMapInfo;
+        objectMapInfo.template_str = template_str;
+        objectMapInfo.parent = parent;
+        objectMapInfo.child = child;
+
+        result += estimate_join_size(source, parentSource[0], objectMapInfo);
+      }
+    }
+
+    // Estimate number of triples
+    result += element_count * objects_wo_join;
+  }
+  return result;
 }
 
 //////////////////////////////////////
@@ -267,78 +495,6 @@ std::string generate_predicate(const PredicateMapInfo& predicateMapInfo, const s
 ///// OBJECT GENERATOR FUNCTIONS //////
 ///////////////////////////////////////
 
-std::string generate_object_with_hash_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader, const std::unordered_map<std::string, std::streampos>& parent_file_index) {
-  std::string generated_object = "";
-  // Check if template is available
-  if (objectMapInfo.template_str != "") {
-    // Fill in template and store it the generate value
-    logln_debug("Generating object based on template...");
-
-    std::pair<std::string, std::string> result = fill_in_template(objectMapInfo.template_str, split_data, split_header);
-    generated_object = result.first;
-    std::string generate_value = result.second;
-
-    // GENERATE VALUE
-    uint index_old = 0;
-    if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
-      throw_error("Element not found -> Join not working!");
-    }
-
-    std::string childValue = split_data[index_old];
-    if (parent_file_index.find(childValue) != parent_file_index.end()) {
-      std::streampos rowPosition;
-      try {
-        rowPosition = parent_file_index.at(childValue);
-      } catch (const std::out_of_range&) {
-        return "";  // Element not found
-      }
-      reader.seekg(rowPosition);
-
-      std::string next_element;
-      reader.readNext(next_element);
-      std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
-    } else {
-      return "";  // Element not found
-    }
-
-    // If result is empty string -> no value available -> return
-    if (generated_object == "") {
-      return "";
-    }
-  }
-  // Check if constant value is available
-  else if (objectMapInfo.constant != "") {
-    // Set constant value as subject
-    logln_debug("Generating object based on constant...");
-    generated_object = objectMapInfo.constant;
-  }
-  // Check if reference is available
-  else if (objectMapInfo.reference != "") {
-    logln_debug("Generating object based on reference...");
-    std::string temp_template = "{" + objectMapInfo.reference + "}";
-    std::pair<std::string, std::string> result = fill_in_template(temp_template, split_data, split_header);
-    generated_object = result.first;
-    // If result is empty string -> no value available -> return
-    if (generated_object == "") {
-      return "";
-    }
-  }
-
-  generated_object = handle_term_type(objectMapInfo.termType, generated_object);
-
-  //// NOTE: Datatype is more important than language!!! ////
-  if (objectMapInfo.dataType == "") {
-    // Handle language info
-    if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
-      generated_object = generated_object + "@" + objectMapInfo.language;
-    }
-  } else {
-    generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
-  }
-
-  return generated_object;
-}
-
 std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader) {
   std::string generated_object = "";
   // Check if template is available
@@ -416,6 +572,78 @@ std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMap
   // Handle language info
   if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
     generated_object = generated_object + "@" + objectMapInfo.language;
+  }
+
+  return generated_object;
+}
+
+std::string generate_object_with_hash_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader, const std::unordered_map<std::string, std::streampos>& parent_file_index) {
+  std::string generated_object = "";
+  // Check if template is available
+  if (objectMapInfo.template_str != "") {
+    // Fill in template and store it the generate value
+    logln_debug("Generating object based on template...");
+
+    std::pair<std::string, std::string> result = fill_in_template(objectMapInfo.template_str, split_data, split_header);
+    generated_object = result.first;
+    std::string generate_value = result.second;
+
+    // GENERATE VALUE
+    uint index_old = 0;
+    if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    std::string childValue = split_data[index_old];
+    if (parent_file_index.find(childValue) != parent_file_index.end()) {
+      std::streampos rowPosition;
+      try {
+        rowPosition = parent_file_index.at(childValue);
+      } catch (const std::out_of_range&) {
+        return "";  // Element not found
+      }
+      reader.seekg(rowPosition);
+
+      std::string next_element;
+      reader.readNext(next_element);
+      std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
+    } else {
+      return "";  // Element not found
+    }
+
+    // If result is empty string -> no value available -> return
+    if (generated_object == "") {
+      return "";
+    }
+  }
+  // Check if constant value is available
+  else if (objectMapInfo.constant != "") {
+    // Set constant value as subject
+    logln_debug("Generating object based on constant...");
+    generated_object = objectMapInfo.constant;
+  }
+  // Check if reference is available
+  else if (objectMapInfo.reference != "") {
+    logln_debug("Generating object based on reference...");
+    std::string temp_template = "{" + objectMapInfo.reference + "}";
+    std::pair<std::string, std::string> result = fill_in_template(temp_template, split_data, split_header);
+    generated_object = result.first;
+    // If result is empty string -> no value available -> return
+    if (generated_object == "") {
+      return "";
+    }
+  }
+
+  generated_object = handle_term_type(objectMapInfo.termType, generated_object);
+
+  //// NOTE: Datatype is more important than language!!! ////
+  if (objectMapInfo.dataType == "") {
+    // Handle language info
+    if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
+      generated_object = generated_object + "@" + objectMapInfo.language;
+    }
+  } else {
+    generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
   }
 
   return generated_object;
@@ -757,6 +985,16 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
   std::vector<NTriple> rml_triple;
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
+
+  auto start = std::chrono::high_resolution_clock::now();
+  int res = estimate_generated_triple(rml_triple);
+  auto end = std::chrono::high_resolution_clock::now();
+  int duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+  log("DURATION ");
+  log(duration);
+  logln(" ms");
+  log("ESTIMATED NUMBER: ");
+  logln(res);
 
   /////////////////////////////////
   //// STEP 2: Parse RML rules ////

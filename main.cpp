@@ -137,6 +137,7 @@ int main(int argc, char* argv[]) {
     map_data_to_file_threading(rml_rule, outFile, flags.checkDuplicates, flags.thread_count);
   } else {
     // Performe data mapping
+    std::cout << "Without Threading..." << std::endl;
     map_data_to_file(rml_rule, outFile, flags.checkDuplicates);
   }
 
