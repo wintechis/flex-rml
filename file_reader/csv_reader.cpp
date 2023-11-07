@@ -1,43 +1,59 @@
 #include "csv_reader.h"
 
-#include <sstream>
-
-CsvReader::CsvReader(const std::string& filename) : file(filename.c_str()) {
-  if (!file.is_open()) {
-    log("Error: Failed to open file ");
-    throw_error(filename.c_str());
+CsvReader::CsvReader(const std::string& source, bool isFile)
+    : isFile(isFile) {
+  if (isFile) {
+    fileStream.open(source);
+    if (!fileStream.is_open()) {
+      log("Error: Failed to open file ");
+      throw_error(source.c_str());
+    }
+  } else {
+    stringStream.str(source);
   }
 }
 
 bool CsvReader::readNext(std::string& outData) {
-  // Keep reading lines from the file until the end of the file is reached
-  while (std::getline(file, outData)) {
-    // If the current line is not empty, return true
-    if (!outData.empty()) {
-      return true;
+  if (isFile) {
+    while (std::getline(fileStream, outData)) {
+      if (!outData.empty()) {
+        return true;
+      }
+    }
+  } else {
+    while (std::getline(stringStream, outData)) {
+      if (!outData.empty()) {
+        return true;
+      }
     }
   }
-
   return false;
 }
 
 void CsvReader::reset() {
-  file.clear();                  // Clear the EOF flag.
-  file.seekg(0, std::ios::beg);  // Move to the beginning.
+  if (isFile) {
+    fileStream.clear();
+    fileStream.seekg(0, std::ios::beg);
+  } else {
+    stringStream.clear();
+    stringStream.seekg(0, std::ios::beg);
+  }
 }
 
 void CsvReader::seekg(std::streampos pos) {
-  file.seekg(pos);
+  if (isFile) {
+    fileStream.seekg(pos);
+  } else {
+    stringStream.seekg(pos);
+  }
 }
 
-// Destructor for CsvReader
 CsvReader::~CsvReader() {
-  close();  // Close the file when the CsvReader object is destroyed
+  close();
 }
 
-// Close function implementation
 void CsvReader::close() {
-  if (file.is_open()) {
-    file.close();
+  if (isFile && fileStream.is_open()) {
+    fileStream.close();
   }
 }

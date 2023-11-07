@@ -1,9 +1,73 @@
 #include "FlexRML.h"
 
+#include "city.h"
+
 // Counter for generated blank nodes
 int blank_node_counter = 18956;
 
-bool get_index_of_element(const std::vector<std::string>& vec, const std::string& value, uint& index) {
+//////////////////////////////////////
+///// HASH FUNCTIONS /////////////////
+//////////////////////////////////////
+
+inline void hash_combine_128(uint128 &seed, uint128 value) {
+  seed.first ^= value.first + (seed.second << 12) + (seed.second >> 4);
+  seed.second ^= value.second + (seed.first << 12) + (seed.first >> 4);
+}
+
+inline void hash_combine_64(uint64_t &seed, uint64_t value) {
+  seed ^= value + 0x9ddfea08eb382d69ULL + (seed << 12) + (seed >> 4);
+}
+
+inline void hash_combine_32(uint32_t &seed, uint32_t value) {
+  seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+uint128 performCity128Hash(const NQuad &quad) {
+  uint128 h1 = CityHash128(quad.subject.c_str(), quad.subject.size());
+  uint128 h2 = CityHash128(quad.predicate.c_str(), quad.predicate.size());
+  uint128 h3 = CityHash128(quad.object.c_str(), quad.object.size());
+  uint128 h4 = CityHash128(quad.graph.c_str(), quad.graph.size());
+
+  // Combine hashes using the hash_combine method
+  uint128 result = h1;
+  hash_combine_128(result, h2);
+  hash_combine_128(result, h3);
+  hash_combine_128(result, h4);
+
+  return result;
+}
+
+uint64_t performCity64Hash(const NQuad &quad) {
+  uint64_t h1 = CityHash64(quad.subject.c_str(), quad.subject.size());
+  uint64_t h2 = CityHash64(quad.predicate.c_str(), quad.predicate.size());
+  uint64_t h3 = CityHash64(quad.object.c_str(), quad.object.size());
+  uint64_t h4 = CityHash64(quad.graph.c_str(), quad.graph.size());
+
+  // Combine hashes using the hash_combine method
+  uint64_t result = h1;
+  hash_combine_64(result, h2);
+  hash_combine_64(result, h3);
+  hash_combine_64(result, h4);
+
+  return result;
+}
+
+uint32_t performCity32Hash(const NQuad &quad) {
+  uint32_t h1 = CityHash32(quad.subject.c_str(), quad.subject.size());
+  uint32_t h2 = CityHash32(quad.predicate.c_str(), quad.predicate.size());
+  uint32_t h3 = CityHash32(quad.object.c_str(), quad.object.size());
+  uint32_t h4 = CityHash32(quad.graph.c_str(), quad.graph.size());
+
+  // Combine hashes using the hash_combine method
+  uint32_t result = h1;
+  hash_combine_32(result, h2);
+  hash_combine_32(result, h3);
+  hash_combine_32(result, h4);
+
+  return result;
+}
+
+bool get_index_of_element(const std::vector<std::string> &vec, const std::string &value, uint &index) {
   auto it = std::find(vec.begin(), vec.end(), value);
   if (it != vec.end()) {
     index = it - vec.begin();
@@ -26,17 +90,17 @@ bool get_index_of_element(const std::vector<std::string>& vec, const std::string
  *
  */
 std::pair<std::string, std::string> fill_in_template(
-    const std::string& template_str,
-    const std::vector<std::string>& split_data,
-    const std::vector<std::string>& split_header,
-    const std::string& term_type = "") {
+    const std::string &template_str,
+    const std::vector<std::string> &split_data,
+    const std::vector<std::string> &split_header,
+    const std::string &term_type = "") {
   // Stores the queries used to find data in source e.g. table name, XPath, JsonPath, ...
   std::vector<std::string> query_strings = extract_substrings(template_str);
   // Stores queries enclosed in { } to replace in template string
   std::vector<std::string> query_strings_in_braces = enclose_in_braces(query_strings);
 
   std::string filled_template_str = template_str;
-  std::string generated_value_last = "";  // Used to store the last generated value
+  std::string generated_value_last = ""; // Used to store the last generated value
 
   // Iterate over found elements
   for (size_t i = 0; i < query_strings.size(); i++) {
@@ -78,7 +142,7 @@ std::pair<std::string, std::string> fill_in_template(
  *
  * @return Returns an unordered map with the values from the specified column as keys and the corresponding stream positions as values.
  */
-std::unordered_map<std::string, std::streampos> createIndex(const std::string& filePath, u_int columnIndex) {
+std::unordered_map<std::string, std::streampos> createIndex(const std::string &filePath, u_int columnIndex) {
   std::unordered_map<std::string, std::streampos> indexMap;
   std::ifstream csvFile(filePath, std::ios::in | std::ios::binary);
 
@@ -97,7 +161,7 @@ std::unordered_map<std::string, std::streampos> createIndex(const std::string& f
   return indexMap;
 }
 
-std::unordered_map<std::string, std::streampos> createIndexFromCSVString(const std::string& csvString, unsigned int columnIndex) {
+std::unordered_map<std::string, std::streampos> createIndexFromCSVString(const std::string &csvString, unsigned int columnIndex) {
   std::unordered_map<std::string, std::streampos> indexMap;
   std::istringstream csvStream(csvString);
 
@@ -119,7 +183,7 @@ std::unordered_map<std::string, std::streampos> createIndexFromCSVString(const s
 /////// TRIPLES MAP SIZE ESTIMATION ///////
 ///////////////////////////////////////////
 
-std::string generate_object_with_hash_join_ex(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader, const std::unordered_map<std::string, std::streampos>& parent_file_index) {
+std::string generate_object_with_hash_join_ex(const ObjectMapInfo &objectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header, CsvReader &reader, const std::unordered_map<std::string, std::streampos> &parent_file_index) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
@@ -141,8 +205,8 @@ std::string generate_object_with_hash_join_ex(const ObjectMapInfo& objectMapInfo
       std::streampos rowPosition;
       try {
         rowPosition = parent_file_index.at(childValue);
-      } catch (const std::out_of_range&) {
-        return "";  // Element not found
+      } catch (const std::out_of_range &) {
+        return ""; // Element not found
       }
       reader.seekg(rowPosition);
 
@@ -150,14 +214,14 @@ std::string generate_object_with_hash_join_ex(const ObjectMapInfo& objectMapInfo
       reader.readNext(next_element);
       std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
     } else {
-      return "";  // Element not found
+      return ""; // Element not found
     }
   }
 
   return generated_object;
 }
 
-std::string generate_subsample(std::string& file_path, float p) {
+std::string generate_subsample(std::string &file_path, float p) {
   std::string result;
 
   // Create a random number generator
@@ -187,69 +251,80 @@ std::string generate_subsample(std::string& file_path, float p) {
   return result;
 }
 
-int estimate_join_size(std::string& source, std::string& source_parent, ObjectMapInfo& objectMapInfo) {
-  float p1 = 0.05;
-  float p2 = 0.05;
+int estimate_join_size(std::string &source_file_path, std::string &parent_source_file_path, ObjectMapInfo &objectMapInfo) {
+  // Sampling probabilities
+  float p1 = 0.1;
+  float p2 = 0.1;
+
+  // Store unique generated objects.
+  std::unordered_set<std::string> seen_objects;
+
+  // Join size counter
+  int duplicate_count = 0;
 
   // Step 1 : Create Bernoulli samples S1 and S2 from tables T1 and T2
-  std::string sampled_table1 = generate_subsample(source, p1);
-  std::string sampled_table2 = generate_subsample(source_parent, p2);
+  std::string sampled_table_child = generate_subsample(source_file_path, p1);
+  std::string sampled_table_parent = generate_subsample(parent_source_file_path, p2);
 
   // Step 2 : Compute the join size J' of the two samples
 
   // Load child data
-  int join_element_counter = 0;
-  CsvReader reader(sampled_table1, false);
+  CsvReader reader_child(sampled_table_child, false);
 
-  // Get header
-  std::string header;
-  reader.readNext(header);
+  // Get header of child
+  std::string header_child;
+  reader_child.readNext(header_child);
+  std::vector<std::string> split_header_child = split_csv_line(header_child, ',');
 
-  std::vector<std::string> split_header = split_csv_line(header, ',');
-
-  std::string next_element;
-
-  if (objectMapInfo.parentSource == "") {
-    return 0;
-  }
   // Load data of parent source
-  CsvReader reader_parent(sampled_table2, false);
+  CsvReader reader_parent(sampled_table_parent, false);
 
   // Get Header
-  std::string header_ref;
-  reader_parent.readNext(header_ref);
+  std::string header_parent;
+  reader_parent.readNext(header_parent);
 
   // Split header
-  std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
+  std::vector<std::string> split_header_parent = split_csv_line(header_parent, ',');
 
   // Get index of element in header
   u_int index = 0;
-  if (!get_index_of_element(split_header_ref, objectMapInfo.parent, index)) {
+  if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
     throw_error("Element not found -> Join not working!");
   }
 
-  auto string_index = createIndexFromCSVString(sampled_table2, index);
+  // Create index for hash join
+  auto string_index = createIndexFromCSVString(sampled_table_parent, index);
 
-  while (reader.readNext(next_element)) {
+  std::string next_element;
+  while (reader_child.readNext(next_element)) {
     reader_parent.reset();
     std::vector<std::string> split_data = split_csv_line(next_element, ',');
-    auto res = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header, reader_parent, string_index);
+    auto res = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header_child, reader_parent, string_index);
     if (res != "") {
-      join_element_counter += 1;
+      // Check if we've seen this element before
+      if (seen_objects.find(res) != seen_objects.end()) {
+        // If we have, increment the duplicate counter
+        ++duplicate_count;
+      } else {
+        // If we haven't, add it to the set of seen elements
+        seen_objects.insert(res);
+      }
     }
   }
   reader_parent.close();
-  reader.close();
+  reader_child.close();
 
+  // Calculate scaling factor
   float scaling_factor = 1 / (p1 * p2);
 
-  float j_hat = join_element_counter * scaling_factor;
+  // Scale unique items
+  float j_hat = seen_objects.size() * scaling_factor;
 
   int j_hat_int = j_hat;
   return j_hat_int;
 }
 
-int estimate_generated_triple(std::vector<NTriple>& triples) {
+int estimate_generated_triple(std::vector<NTriple> &triples) {
   // count predicate object maps for each triple
   // Get all tripleMaps
   std::vector<std::string> tripleMap_nodes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
@@ -266,8 +341,6 @@ int estimate_generated_triple(std::vector<NTriple>& triples) {
     // Get reference formulation
     std::string referenceFormulation = find_matching_object(triples, logicalSourceNode, RML_REFERENCE_FORMULATION)[0];
 
-    int objects_wo_join = 0;
-
     // Start at -1 to ignore header
     int element_count = -1;
     // Count number of elements in source
@@ -280,10 +353,15 @@ int estimate_generated_triple(std::vector<NTriple>& triples) {
       }
       reader.close();
     }
+
+    // Generate sample to estimate duplicate rate:
+    float p = 0.2;
+    std::string sample = generate_subsample(source, p);
+
     // Get all predicateObjectMap Uris  of current tripleMap_node
     std::vector<std::string> predicateObjectMap_uris = find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
     // Iterate over all found predicateObjectMap_uris and extract predicate
-    for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
+    for (const std::string &predicateObjectMap_uri : predicateObjectMap_uris) {
       // Get objectMap node
       std::string objectMap_node = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP)[0];
 
@@ -292,11 +370,78 @@ int estimate_generated_triple(std::vector<NTriple>& triples) {
 
       if (parentSource.size() == 0) {
         // No join required
-        objects_wo_join++;
 
+        // Get names of elements beeing mapped
+        std::vector<std::string> elementNames;
+        // Get Template
+        std::vector<std::string> template_str_arr = find_matching_object(triples, objectMap_node, RML_TEMPLATE);
+        if (template_str_arr.size() == 1) {
+          std::vector<std::string> query_strings = extract_substrings(template_str_arr[0]);
+
+          for (auto &element : query_strings) {
+            elementNames.push_back(element);
+          }
+        } else if (find_matching_object(triples, objectMap_node, RML_REFERENCE).size() == 1) {
+          // Get reference
+          std::string reference = find_matching_object(triples, objectMap_node, RML_REFERENCE)[0];
+          elementNames.push_back(reference);
+        } else if (find_matching_object(triples, objectMap_node, RML_CONSTANT).size() == 1) {
+          continue;
+        }
+
+        /// Get number of duplicates in sample ///
+        std::unordered_set<std::string> seen_elements; // Store all seen elements
+
+        int duplicate_count = 0; // Store the number of found duplicates
+        if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
+
+          // Load data of parent source
+          CsvReader reader(sample, false);
+
+          // Get Header
+          std::string header;
+          reader.readNext(header);
+
+          // Split header
+          std::vector<std::string> split_header = split_csv_line(header, ',');
+
+          // Get index of elements in header
+          std::vector<u_int> indexes;
+          for (auto &element : elementNames) {
+            uint index;
+            if (!get_index_of_element(split_header, element, index)) {
+              throw_error("Element not found -> Estimation not working!");
+            }
+            indexes.push_back(index);
+          }
+
+          // Read lines and check for duplicates
+          std::string next_element;
+          while (reader.readNext(next_element)) {
+            std::vector<std::string> split_data = split_csv_line(next_element, ',');
+            std::string data;
+            for (auto &index : indexes) {
+              data += split_data[index];
+            }
+            // Check if we've seen this element before
+            if (seen_elements.find(data) != seen_elements.end()) {
+              // If we have, increment the duplicate counter
+              ++duplicate_count;
+            } else {
+              // If we haven't, add it to the set of seen elements
+              seen_elements.insert(data);
+            }
+          }
+        }
+
+        // U_hat is U' (No of unique lines in sample)
+        // U_hat = U' / p
+        float U_hat = seen_elements.size() * (1 / p);
+
+        // Estimate number of triples
+        result += U_hat;
       } else {
         // Join required
-
         // Get matching template
         std::string template_str = find_matching_object(triples, objectMap_node, RML_TEMPLATE)[0];
 
@@ -310,15 +455,53 @@ int estimate_generated_triple(std::vector<NTriple>& triples) {
         objectMapInfo.template_str = template_str;
         objectMapInfo.parent = parent;
         objectMapInfo.child = child;
-
         result += estimate_join_size(source, parentSource[0], objectMapInfo);
       }
     }
-
-    // Estimate number of triples
-    result += element_count * objects_wo_join;
   }
   return result;
+}
+
+uint8 detect_hash_method(std::vector<NTriple> &rml_triple) {
+  uint8 hash_method;
+  auto start = std::chrono::high_resolution_clock::now();
+  int res = estimate_generated_triple(rml_triple);
+  auto end = std::chrono::high_resolution_clock::now();
+  int duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+  log("Estimation took: ");
+  log(duration);
+  logln(" milliseconds");
+  log("Estimated number of unique elements: ");
+  logln(res);
+
+  // Decide on Hash method
+  // 0 -> 32bit, 1 -> 64bit, 2 -> 128bit
+  // Threshold is estimated using birthday problem with a probability of 0.1% to get a collision
+
+  if (res <= 927) {
+    // 32bit
+    hash_method = 0;
+  } else if (res <= 60741529) {
+    // 64bit
+    hash_method = 1;
+  } else {
+    // 128bit
+    hash_method = 2;
+  }
+
+  hash_method = 0;
+
+  log("Using a ");
+  if (hash_method == 0) {
+    log(32);
+  } else if (hash_method == 1) {
+    log(64);
+  } else if (hash_method == 2) {
+    log(128);
+  }
+  logln(" bit hash function.");
+
+  return hash_method;
 }
 
 //////////////////////////////////////
@@ -338,11 +521,11 @@ int estimate_generated_triple(std::vector<NTriple>& triples) {
  *         string based on template or constant, or a default value (NO_GRAPH).
  */
 std::string generate_graph_logic(
-    const std::string& graph_termType,
-    const std::string& graph_template,
-    const std::string& graph_constant,
-    const std::vector<std::string>& split_data,
-    const std::vector<std::string>& split_header) {
+    const std::string &graph_termType,
+    const std::string &graph_template,
+    const std::string &graph_constant,
+    const std::vector<std::string> &split_data,
+    const std::vector<std::string> &split_header) {
   // Ensure the provided termType is supported (only 'IRI' is supported).
   if (graph_termType != IRI_TERM_TYPE) {
     throw_error("Error: Unsupported graph termType - termType of graph can only be 'IRI'.");
@@ -373,12 +556,12 @@ std::string generate_graph_logic(
 }
 
 // Calls generate graph if input is SubjectMapInfo
-std::string generate_graph(const SubjectMapInfo& subjectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+std::string generate_graph(const SubjectMapInfo &subjectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header) {
   return generate_graph_logic(subjectMapInfo.graph_termType, subjectMapInfo.graph_template, subjectMapInfo.graph_constant, split_data, split_header);
 }
 
 // Calls generate graph if input is PredicateObjectMapInfo
-std::string generate_graph(const PredicateObjectMapInfo& predicateObjectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+std::string generate_graph(const PredicateObjectMapInfo &predicateObjectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header) {
   return generate_graph_logic(predicateObjectMapInfo.graph_termType, predicateObjectMapInfo.graph_template, predicateObjectMapInfo.graph_constant, split_data, split_header);
 }
 
@@ -396,7 +579,7 @@ std::string generate_graph(const PredicateObjectMapInfo& predicateObjectMapInfo,
  * @return std::string String containing the processed subject.
  *
  */
-std::string generate_subject(const SubjectMapInfo& subjectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+std::string generate_subject(const SubjectMapInfo &subjectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header) {
   std::string current_generated_subject = "";
 
   // Check if term type is supported on subject -> only blank node and IRI
@@ -423,7 +606,6 @@ std::string generate_subject(const SubjectMapInfo& subjectMapInfo, const std::ve
         current_generated_subject = subjectMapInfo.base_uri + current_generated_subject;
       }
     }
-
   }
   // Check if reference value is available
   else if (subjectMapInfo.reference != "") {
@@ -466,7 +648,7 @@ std::string generate_subject(const SubjectMapInfo& subjectMapInfo, const std::ve
  * @return std::string String containing the processed predicate.
  *
  */
-std::string generate_predicate(const PredicateMapInfo& predicateMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+std::string generate_predicate(const PredicateMapInfo &predicateMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header) {
   std::string current_predicate = "";
   // Check if template is available
   if (predicateMapInfo.template_str != "") {
@@ -495,7 +677,7 @@ std::string generate_predicate(const PredicateMapInfo& predicateMapInfo, const s
 ///// OBJECT GENERATOR FUNCTIONS //////
 ///////////////////////////////////////
 
-std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader) {
+std::string generate_object_with_nested_loop_join(const ObjectMapInfo &objectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header, CsvReader &reader) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
@@ -577,7 +759,7 @@ std::string generate_object_with_nested_loop_join(const ObjectMapInfo& objectMap
   return generated_object;
 }
 
-std::string generate_object_with_hash_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, CsvReader& reader, const std::unordered_map<std::string, std::streampos>& parent_file_index) {
+std::string generate_object_with_hash_join(const ObjectMapInfo &objectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header, CsvReader &reader, const std::unordered_map<std::string, std::streampos> &parent_file_index) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
@@ -599,8 +781,8 @@ std::string generate_object_with_hash_join(const ObjectMapInfo& objectMapInfo, c
       std::streampos rowPosition;
       try {
         rowPosition = parent_file_index.at(childValue);
-      } catch (const std::out_of_range&) {
-        return "";  // Element not found
+      } catch (const std::out_of_range &) {
+        return ""; // Element not found
       }
       reader.seekg(rowPosition);
 
@@ -608,7 +790,7 @@ std::string generate_object_with_hash_join(const ObjectMapInfo& objectMapInfo, c
       reader.readNext(next_element);
       std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
     } else {
-      return "";  // Element not found
+      return ""; // Element not found
     }
 
     // If result is empty string -> no value available -> return
@@ -659,7 +841,7 @@ std::string generate_object_with_hash_join(const ObjectMapInfo& objectMapInfo, c
  * @return std::string String containing the processed object.
  *
  */
-std::string generate_object_wo_join(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header) {
+std::string generate_object_wo_join(const ObjectMapInfo &objectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
@@ -706,7 +888,7 @@ std::string generate_object_wo_join(const ObjectMapInfo& objectMapInfo, const st
 }
 
 // function to call correct generate object function depending if join is required
-std::string generate_object(const ObjectMapInfo& objectMapInfo, const std::vector<std::string>& split_data, const std::vector<std::string>& split_header, std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>>& parent_file_index) {
+std::string generate_object(const ObjectMapInfo &objectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header, std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> &parent_file_index) {
   // Check if a join is required
   if (objectMapInfo.parentSource != "") {
     // Load data of parent source
@@ -718,7 +900,6 @@ std::string generate_object(const ObjectMapInfo& objectMapInfo, const std::vecto
     reader.close();
     // return generate_object_with_hash_join(objectMapInfo, split_data, split_header, reader, parent_file_index.at(objectMapInfo.parentSource));
     return res;
-
   } else {
     // No join required
 
@@ -731,14 +912,14 @@ std::string generate_object(const ObjectMapInfo& objectMapInfo, const std::vecto
 ////////////////////////////////
 
 void generate_quads(
-    std::unordered_set<NQuad>& generated_quads,
-    const SubjectMapInfo& subjectMapInfo,
-    const std::vector<PredicateObjectMapInfo>& predicateObjectMapInfo_vec,
-    const std::vector<PredicateMapInfo>& predicateMapInfo_vec,
-    const std::vector<ObjectMapInfo>& objectMapInfo_vec,
-    const std::string& line_data,
-    const std::vector<std::string>& split_header,
-    std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>>& parent_file_index) {
+    std::unordered_set<NQuad> &generated_quads,
+    const SubjectMapInfo &subjectMapInfo,
+    const std::vector<PredicateObjectMapInfo> &predicateObjectMapInfo_vec,
+    const std::vector<PredicateMapInfo> &predicateMapInfo_vec,
+    const std::vector<ObjectMapInfo> &objectMapInfo_vec,
+    const std::string &line_data,
+    const std::vector<std::string> &split_header,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> &parent_file_index) {
   // Parse data for this iteration
 
   std::vector<std::string> split_data = split_csv_line(line_data, ',');
@@ -777,7 +958,7 @@ void generate_quads(
   }
 
   // Add all available classes
-  for (const std::string& subject_class : subjectMapInfo.classes) {
+  for (const std::string &subject_class : subjectMapInfo.classes) {
     // Generate quad for subject_class
     NQuad temp_quad;
 
@@ -786,7 +967,7 @@ void generate_quads(
     // Set predicate which is constant
     temp_quad.predicate = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
     // Set object which is the class
-    temp_quad.object = "<" + subject_class + ">";  // Class is always IRI
+    temp_quad.object = "<" + subject_class + ">"; // Class is always IRI
     // Set graph to generated graph
     temp_quad.graph = current_graph;
 
@@ -847,7 +1028,8 @@ void generate_quads(
   }
 }
 
-std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& input_data) {
+// Function to map data in memory
+std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &input_data) {
   ///////////////////////////////////
   //// STEP 1: Read RDF triples ////
   //////////////////////////////////
@@ -919,7 +1101,7 @@ std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& inp
 
       // Load data of parent source if needed
       std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> parent_file_index;
-      for (const auto& objectMap : objectMapInfo_of_tripleMaps[i]) {
+      for (const auto &objectMap : objectMapInfo_of_tripleMaps[i]) {
         if (objectMap.parentSource == "") {
           continue;
         }
@@ -968,14 +1150,15 @@ std::unordered_set<NQuad> map_data(std::string& rml_rule, const std::string& inp
 //// MAP DATA TO FILE - SINGLE THREAD ////
 /////////////////////////////////////////
 
-void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates) {
+struct uint128Hash {
+  std::size_t operator()(const uint64_t &value) const {
+    return std::hash<uint64_t>()(value);
+  }
+};
+
+void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates) {
   // Set dummy value for input data
   std::string input_data = "";
-
-  // init hash function used to check duplicates
-  std::hash<NQuad> hasher;
-  // Used to store hashes
-  std::unordered_set<uint64_t> nquad_hashes;
 
   //////////////////////////////////
   //// STEP 1: Read RDF triple ////
@@ -986,15 +1169,17 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
 
-  auto start = std::chrono::high_resolution_clock::now();
-  int res = estimate_generated_triple(rml_triple);
-  auto end = std::chrono::high_resolution_clock::now();
-  int duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-  log("DURATION ");
-  log(duration);
-  logln(" ms");
-  log("ESTIMATED NUMBER: ");
-  logln(res);
+  uint8_t hash_method = detect_hash_method(rml_triple);
+
+  // Create data structures to store hashes
+  // Used to store 128 bit hashes
+  std::unordered_map<uint64_t, uint128, uint128Hash> nquad_hashes_128;
+
+  // Used to store 64 bit hashes
+  std::unordered_set<uint64_t> nquad_hashes_64;
+
+  // Used to store 32 bit hashes
+  std::unordered_set<uint32_t> nquad_hashes_32;
 
   /////////////////////////////////
   //// STEP 2: Parse RML rules ////
@@ -1059,7 +1244,7 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
     if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
       std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> parent_file_index;
 
-      for (const auto& objectMap : objectMapInfo_of_tripleMaps[i]) {
+      for (const auto &objectMap : objectMapInfo_of_tripleMaps[i]) {
         if (objectMap.parentSource == "") {
           continue;
         }
@@ -1097,19 +1282,48 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
         generate_quads(generated_quads, subjectMapInfo_of_tripleMaps[i], predicateObjectMapInfo_of_tripleMaps[i], predicateMapInfo_of_tripleMaps[i], objectMapInfo_of_tripleMaps[i], next_element, split_header, parent_file_index);
 
         // Write to file
-        for (const NQuad& quad : generated_quads) {
+        for (const NQuad &quad : generated_quads) {
           bool add_triple = true;
 
           // Check if value is a duplicate
-          // TODO: Move outside of loop
-          if (remove_duplicates) {
-            uint64_t hash_of_quad = hasher(quad);
-            auto result = nquad_hashes.insert(hash_of_quad);
-            if (!result.second) {
-              // hash_of_quad was already in the set
+          if (remove_duplicates && hash_method == 2) {
+            uint128 hash_of_quad = performCity128Hash(quad);
+
+            // Attempt to find the first part of the 128-bit hash in the map
+            auto it = nquad_hashes_128.find(hash_of_quad.first);
+
+            // Check if the first part of the hash was found in the map
+            if (it != nquad_hashes_128.end() && it->second == hash_of_quad) {
+              // If found, check if the second part of the hash also matches
+              // If both parts match, we have found a complete match
+              add_triple = false;
+            } else {
+              // If the first part of the hash is not found, or the second part does not match
+              // This means the hash is not found in the map
+              nquad_hashes_128[hash_of_quad.first] = hash_of_quad;
+            }
+          } else if (remove_duplicates && hash_method == 1) {
+            uint64_t hash_of_quad = performCity64Hash(quad);
+            // If not found
+            if (nquad_hashes_64.find(hash_of_quad) == nquad_hashes_64.end()) {
+              // Add to hashes
+              nquad_hashes_64.insert(hash_of_quad);
+            } else {
+              // Otherwise dont add triple
+              add_triple = false;
+            }
+          } else if (remove_duplicates && hash_method == 0) {
+            uint32_t hash_of_quad = performCity32Hash(quad);
+            // If not found
+            if (nquad_hashes_32.find(hash_of_quad) == nquad_hashes_32.end()) {
+              // Add to hashes
+              nquad_hashes_32.insert(hash_of_quad);
+            } else {
+              // Otherwise dont add triple
               add_triple = false;
             }
           }
+
           if (add_triple) {
             outFile << quad.subject << " "
                     << quad.predicate << " "
@@ -1129,6 +1343,15 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
       throw_error("Error: Found unsupported encoding.");
     }
   }
+
+  log("Number of generated triples: ");
+  if (hash_method == 0) {
+    logln(std::to_string(nquad_hashes_32.size()).c_str());
+  } else if (hash_method == 1) {
+    logln(std::to_string(nquad_hashes_64.size()).c_str());
+  } else if (hash_method == 2) {
+    logln(std::to_string(nquad_hashes_128.size()).c_str());
+  }
 }
 
 /////////////////////////////////////////////
@@ -1138,7 +1361,7 @@ void map_data_to_file(std::string& rml_rule, std::ofstream& outFile, bool remove
 // Define a thread-safe queue for passing data between threads.
 template <typename T>
 class ThreadSafeQueue {
- private:
+private:
   // The underlying non-thread-safe queue
   std::queue<T> queue;
 
@@ -1151,53 +1374,54 @@ class ThreadSafeQueue {
   // Flag to indicate that no more items will be pushed to the queue
   bool done = false;
 
- public:
+public:
   // Push an item to the queue and notify a waiting thread
-  void push(const T& item) {
-    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
-    queue.push(item);                        // Add the item to the queue
-    cv.notify_one();                         // Notify one waiting thread
+  void push(const T &item) {
+    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
+    queue.push(item);                       // Add the item to the queue
+    cv.notify_one();                        // Notify one waiting thread
   }
 
   // Pop an item from the queue. If the queue is empty, it waits until an item is available or done flag is set
-  bool pop(T& item) {
-    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+  bool pop(T &item) {
+    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
     while (queue.empty() && !done) {
-      cv.wait(lock);  // Wait until an item is pushed or done flag is set
+      cv.wait(lock); // Wait until an item is pushed or done flag is set
     }
-    if (queue.empty() && done) return false;  // If queue is empty and done flag is set, return false
-    item = queue.front();                     // Get the item from the front of the queue
-    queue.pop();                              // Remove the item from the queue
-    return true;                              // Indicate success
+    if (queue.empty() && done)
+      return false;       // If queue is empty and done flag is set, return false
+    item = queue.front(); // Get the item from the front of the queue
+    queue.pop();          // Remove the item from the queue
+    return true;          // Indicate success
   }
 
   // Set the done flag and notify all waiting threads
   void mark_done() {
-    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
-    done = true;                             // Set the done flag
-    cv.notify_all();                         // Notify all waiting threads
+    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
+    done = true;                            // Set the done flag
+    cv.notify_all();                        // Notify all waiting threads
   }
 
   // Check if the queue is empty
   bool isEmpty() {
-    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
     return queue.empty();
   }
 
   // Check the status of the done flag
   bool isDone() {
-    std::unique_lock<std::mutex> lock(mtx);  // Lock the mutex
+    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
     return done;
   }
 };
 
 void process_triple_map(
-    const SubjectMapInfo& subjectMapInfo_of_tripleMap,
-    const std::vector<PredicateObjectMapInfo>& predicateObjectMapInfo_of_tripleMap,
-    const std::vector<ObjectMapInfo>& objectMapInfo_of_tripleMap,
-    const std::vector<PredicateMapInfo>& predicateMapInfo_of_tripleMap,
-    const LogicalSourceInfo& logicalSourceInfo_of_tripleMap,
-    ThreadSafeQueue<NQuad>& quadQueue) {
+    const SubjectMapInfo &subjectMapInfo_of_tripleMap,
+    const std::vector<PredicateObjectMapInfo> &predicateObjectMapInfo_of_tripleMap,
+    const std::vector<ObjectMapInfo> &objectMapInfo_of_tripleMap,
+    const std::vector<PredicateMapInfo> &predicateMapInfo_of_tripleMap,
+    const LogicalSourceInfo &logicalSourceInfo_of_tripleMap,
+    ThreadSafeQueue<NQuad> &quadQueue) {
   // Store index of parent file
   std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> parent_file_index;
   // Stores generate quads
@@ -1210,7 +1434,7 @@ void process_triple_map(
 
   // Handle CSV
   if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
-    for (const auto& objectMap : objectMapInfo_of_tripleMap) {
+    for (const auto &objectMap : objectMapInfo_of_tripleMap) {
       if (objectMap.parentSource == "") {
         continue;
       }
@@ -1256,7 +1480,7 @@ void process_triple_map(
           parent_file_index);
 
       // Write to file
-      for (const NQuad& quad : generated_quads) {
+      for (const NQuad &quad : generated_quads) {
         quadQueue.push(quad);
       }
 
@@ -1268,25 +1492,57 @@ void process_triple_map(
   }
 }
 
-void writerThread(std::ofstream& outFile, ThreadSafeQueue<NQuad>& quadQueue, bool remove_duplicates) {
-  // Used to store hashes
-  std::unordered_set<uint64_t> nquad_hashes;
-  // init hash function used to check duplicates
-  std::hash<NQuad> hasher;
+void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, bool remove_duplicates, const uint8_t &hash_method) {
   NQuad quad;
+
+  // Create data structures to store hashes
+  // Used to store 128 bit hashes
+  std::unordered_map<uint64_t, uint128, uint128Hash> nquad_hashes_128;
+
+  // Used to store 64 bit hashes
+  std::unordered_set<uint64_t> nquad_hashes_64;
+
+  // Used to store 32 bit hashes
+  std::unordered_set<uint32_t> nquad_hashes_32;
+
   while (true) {
     bool success = quadQueue.pop(quad);
     if (success) {
       bool add_triple = true;
 
       // Check if value is a duplicate
-      // TODO: Move outside of loop
-      if (remove_duplicates) {
-        uint64_t hash_of_quad = hasher(quad);
+      if (remove_duplicates && hash_method == 2) {
+        uint128 hash_of_quad = performCity128Hash(quad);
+
+        // Attempt to find the first part of the 128-bit hash in the map
+        auto it = nquad_hashes_128.find(hash_of_quad.first);
+
+        // Check if the first part of the hash was found in the map
+        if (it != nquad_hashes_128.end() && it->second == hash_of_quad) {
+          // If found, check if the second part of the hash also matches
+          // If both parts match, we have found a complete match
+          add_triple = false;
+        } else {
+          // If the first part of the hash is not found, or the second part does not match
+          // This means the hash is not found in the map
+          nquad_hashes_128[hash_of_quad.first] = hash_of_quad;
+        }
+      } else if (remove_duplicates && hash_method == 1) {
+        uint64_t hash_of_quad = performCity64Hash(quad);
         // If not found
-        if (nquad_hashes.find(hash_of_quad) == nquad_hashes.end()) {
+        if (nquad_hashes_64.find(hash_of_quad) == nquad_hashes_64.end()) {
           // Add to hashes
-          nquad_hashes.insert(hash_of_quad);
+          nquad_hashes_64.insert(hash_of_quad);
+        } else {
+          // Otherwise dont add triple
+          add_triple = false;
+        }
+      } else if (remove_duplicates && hash_method == 0) {
+        uint32_t hash_of_quad = performCity32Hash(quad);
+        // If not found
+        if (nquad_hashes_32.find(hash_of_quad) == nquad_hashes_32.end()) {
+          // Add to hashes
+          nquad_hashes_32.insert(hash_of_quad);
         } else {
           // Otherwise dont add triple
           add_triple = false;
@@ -1304,15 +1560,21 @@ void writerThread(std::ofstream& outFile, ThreadSafeQueue<NQuad>& quadQueue, boo
         }
       }
     } else {
-      break;  // Exit the loop when no more data and the queue is marked done.
+      break; // Exit the loop when no more data and the queue is marked done.
     }
   }
 
   log("Number of generated triples: ");
-  logln(std::to_string(nquad_hashes.size()).c_str());
+  if (hash_method == 0) {
+    logln(std::to_string(nquad_hashes_32.size()).c_str());
+  } else if (hash_method == 1) {
+    logln(std::to_string(nquad_hashes_64.size()).c_str());
+  } else if (hash_method == 2) {
+    logln(std::to_string(nquad_hashes_128.size()).c_str());
+  }
 }
 
-void map_data_to_file_threading(std::string& rml_rule, std::ofstream& outFile, bool remove_duplicates, uint8_t num_threads) {
+void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, uint8_t num_threads) {
   // Set dummy value for input data
   std::string input_data = "";
 
@@ -1324,6 +1586,8 @@ void map_data_to_file_threading(std::string& rml_rule, std::ofstream& outFile, b
   std::vector<NTriple> rml_triple;
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
+
+  uint8_t hash_method = detect_hash_method(rml_triple);
 
   /////////////////////////////////
   //// STEP 2: Parse RML rules ////
@@ -1378,7 +1642,7 @@ void map_data_to_file_threading(std::string& rml_rule, std::ofstream& outFile, b
   ThreadSafeQueue<NQuad> quadQueue;
 
   // Start the writer thread before the worker threads
-  std::thread writer(writerThread, std::ref(outFile), std::ref(quadQueue), remove_duplicates);
+  std::thread writer(writerThread, std::ref(outFile), std::ref(quadQueue), remove_duplicates, std::ref(hash_method));
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     threads.push_back(std::thread(
         process_triple_map,
@@ -1390,7 +1654,7 @@ void map_data_to_file_threading(std::string& rml_rule, std::ofstream& outFile, b
         std::ref(quadQueue)));
 
     if (threads.size() == numThreads || i == tripleMap_nodes.size() - 1) {
-      for (std::thread& t : threads) {
+      for (std::thread &t : threads) {
         t.join();
       }
       quadQueue.mark_done();
