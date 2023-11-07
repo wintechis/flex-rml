@@ -253,8 +253,8 @@ std::string generate_subsample(std::string &file_path, float p) {
 
 int estimate_join_size(std::string &source_file_path, std::string &parent_source_file_path, ObjectMapInfo &objectMapInfo) {
   // Sampling probabilities
-  float p1 = 0.1;
-  float p2 = 0.1;
+  float p1 = 0.05;
+  float p2 = 0.05;
 
   // Store unique generated objects.
   std::unordered_set<std::string> seen_objects;
@@ -355,7 +355,7 @@ int estimate_generated_triple(std::vector<NTriple> &triples) {
     }
 
     // Generate sample to estimate duplicate rate:
-    float p = 0.2;
+    float p = 0.05;
     std::string sample = generate_subsample(source, p);
 
     // Get all predicateObjectMap Uris  of current tripleMap_node
@@ -488,8 +488,6 @@ uint8 detect_hash_method(std::vector<NTriple> &rml_triple) {
     // 128bit
     hash_method = 2;
   }
-
-  hash_method = 0;
 
   log("Using a ");
   if (hash_method == 0) {
@@ -1170,6 +1168,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
 
   uint8_t hash_method = detect_hash_method(rml_triple);
+  // uint8_t hash_method = 2;
 
   // Create data structures to store hashes
   // Used to store 128 bit hashes
@@ -1505,6 +1504,9 @@ void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, boo
   // Used to store 32 bit hashes
   std::unordered_set<uint32_t> nquad_hashes_32;
 
+  log("Using Method: ");
+  logln(hash_method);
+
   while (true) {
     bool success = quadQueue.pop(quad);
     if (success) {
@@ -1588,6 +1590,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
 
   uint8_t hash_method = detect_hash_method(rml_triple);
+  // uint8_t hash_method = 2;
 
   /////////////////////////////////
   //// STEP 2: Parse RML rules ////
@@ -1657,10 +1660,11 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
       for (std::thread &t : threads) {
         t.join();
       }
-      quadQueue.mark_done();
       threads.clear();
     }
   }
+
+  quadQueue.mark_done();
 
   writer.join();
 }
