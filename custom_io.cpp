@@ -16,7 +16,7 @@
 // Enable debug output
 // 0 == off
 // 1 == on
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 
 void logln_debug(const char *str) {
 #if DEBUG_MODE == 1

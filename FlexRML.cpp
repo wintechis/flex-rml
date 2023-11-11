@@ -226,7 +226,7 @@ std::string generate_object_with_hash_join_ex(const ObjectMapInfo &objectMapInfo
   return generated_object;
 }
 
-std::string generate_subsample(std::string &file_path, float p) {
+std::string generate_subsample(const std::string &file_path, float p) {
   std::string result;
 
   // Create a random number generator
@@ -256,16 +256,14 @@ std::string generate_subsample(std::string &file_path, float p) {
   return result;
 }
 
-int estimate_join_size(std::string &source_file_path, std::string &parent_source_file_path, ObjectMapInfo &objectMapInfo) {
+int estimate_join_size(const std::string &source_file_path, const std::string &parent_source_file_path, const ObjectMapInfo &objectMapInfo, const std::vector<std::string> subjectNames, const std::vector<std::string> predicateNames, std::unordered_set<std::string> &seen_objects_triple_map) {
+  //// Generate Objects ////
   // Sampling probabilities
-  float p1 = 0.99;
-  float p2 = 0.99;
+  float p1 = 0.05;
+  float p2 = 0.05;
 
-  // Store unique generated objects.
+  // Store unique generated elements.
   std::unordered_set<std::string> seen_objects;
-
-  // Join size counter
-  int duplicate_count = 0;
 
   // Step 1 : Create Bernoulli samples S1 and S2 from tables T1 and T2
   std::string sampled_table_child = generate_subsample(source_file_path, p1);
@@ -300,20 +298,74 @@ int estimate_join_size(std::string &source_file_path, std::string &parent_source
   // Create index for hash join
   auto string_index = createIndexFromCSVString(sampled_table_parent, index);
 
+  //// Generate Subject ////
+  // Get index of elements in header for subject
+  std::vector<u_int> indexes_subject;
+  for (auto &element : subjectNames) {
+    if (element[0] == '{') {
+      break;
+    }
+    uint index;
+    if (!get_index_of_element(split_header_child, element, index)) {
+      throw_error("Element not found -> Estimation not working!");
+    }
+    indexes_subject.push_back(index);
+  }
+
+  // Get index of elements in header for predicate
+  std::vector<u_int> indexes_predicates;
+  for (auto &element : predicateNames) {
+    // Means that constant is used
+    if (element[0] == '{') {
+      break;
+    }
+    uint index;
+    if (!get_index_of_element(split_header_child, element, index)) {
+      throw_error("Element not found -> Estimation not working!");
+    }
+    indexes_predicates.push_back(index);
+  }
+
   std::string next_element;
   while (reader_child.readNext(next_element)) {
-    reader_parent.reset();
+
     std::vector<std::string> split_data = split_csv_line(next_element, ',');
-    auto res = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header_child, reader_parent, string_index);
-    if (res != "") {
-      // Check if we've seen this element before
-      if (seen_objects.find(res) != seen_objects.end()) {
-        // If we have, increment the duplicate counter
-        ++duplicate_count;
-      } else {
-        // If we haven't, add it to the set of seen elements
-        seen_objects.insert(res);
+
+    // Generated Data
+    std::string data = "";
+    // Add subject
+    if (indexes_subject.size() == 0) {
+      data += subjectNames[0];
+    } else {
+      for (auto &index : indexes_subject) {
+        data += split_data[index];
+        data += ",";
       }
+    }
+
+    // Add predicate
+    if (indexes_predicates.size() == 0) {
+      data += predicateNames[0];
+    } else {
+      for (auto &index : indexes_predicates) {
+        data += split_data[index];
+        data += ",";
+      }
+    }
+    // Generate object
+    std::string join_result = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header_child, reader_parent, string_index);
+
+    if (join_result == "") {
+      continue;
+    }
+
+    data += join_result;
+
+    // Add only if not yet seen on tripleMap level
+    auto triple_map_result = seen_objects_triple_map.insert(data);
+    if (triple_map_result.second) {
+      // Item was newly inserted
+      seen_objects.insert(data);
     }
   }
   reader_parent.close();
@@ -342,6 +394,11 @@ int estimate_generated_triple(
   // Counter for estimated result size
   int result = 0;
 
+  // Store generated elements with join
+  std::unordered_set<std::string> seen_elements_triple_map;
+  // Store generated elements without join
+  std::unordered_set<std::string> seen_objects_triple_map_wo_join;
+
   // Iterate over all tripleMaps
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     std::string tripleMap_node = tripleMap_nodes[i];
@@ -351,72 +408,102 @@ int estimate_generated_triple(
     // Get reference formulation
     std::string referenceFormulation = logicalSourceInfo_of_tripleMaps[i].reference_formulation;
 
-    // Start at -1 to ignore header
-    int element_count = -1;
     // Count number of elements in source
+    int element_count = 0;
+
     if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
       CsvReader reader(source);
       std::string next_element;
 
+      std::unordered_set<std::string> uniqueLines;
       while (reader.readNext(next_element)) {
-        element_count++;
+        uniqueLines.insert(next_element);
       }
       reader.close();
+
+      // Update element count; -1 beacause of header in csv
+      element_count = uniqueLines.size() - 1;
     }
 
     // Generate sample to estimate duplicate rate:
-    float p = 0.99;
+    float p = 0.05;
     std::string sample = generate_subsample(source, p);
 
     ////// Handle classes //////
     // Nr of triples generated by classes is elements times classes
-    result += subjectMapInfo_of_tripleMaps[i].classes.size() * element_count;
 
+    // If data is constant -> nr of classes * 1, since subject stays the same
+    if (subjectMapInfo_of_tripleMaps[i].constant != "") {
+      result += subjectMapInfo_of_tripleMaps[i].classes.size() * 1;
+    } else {
+      result += subjectMapInfo_of_tripleMaps[i].classes.size() * element_count;
+    }
     ////// Handle Subject Information //////
     // Get queries or iterators of subject
-    std::vector<std::string> subjectValue;
+    std::vector<std::string> subjectNames;
+    // Store template string
+    std::string template_string_ext_subject = "";
     // Get template
     if (subjectMapInfo_of_tripleMaps[i].template_str != "") {
-      subjectValue = extract_substrings(subjectMapInfo_of_tripleMaps[i].template_str);
+      subjectNames = extract_substrings(subjectMapInfo_of_tripleMaps[i].template_str);
+      template_string_ext_subject = subjectMapInfo_of_tripleMaps[i].template_str;
     }
     // Get reference
     else if (subjectMapInfo_of_tripleMaps[i].reference != "") {
-      subjectValue.push_back(subjectMapInfo_of_tripleMaps[i].reference);
+      subjectNames.push_back(subjectMapInfo_of_tripleMaps[i].reference);
     }
     // Get constant
     else if (subjectMapInfo_of_tripleMaps[i].constant != "") {
-      std::string constant_data = "{" + subjectMapInfo_of_tripleMaps[i].constant;
-      subjectValue.push_back(constant_data);
+      std::string constant_data = "{" + subjectMapInfo_of_tripleMaps[i].constant + ",";
+      subjectNames.push_back(constant_data);
     }
 
     // Iterate over all found predicateObjectMap_uris and extract predicate
     for (size_t j = 0; j < predicateMapInfo_of_tripleMaps[i].size(); j++) {
+
+      //// Handle Predicate Data ////
+      PredicateMapInfo predicateMapInfo = predicateMapInfo_of_tripleMaps[i][j];
+
+      std::vector<std::string> predicateNames;
+      std::string template_string_ext_predicate = "";
+
+      if (predicateMapInfo.template_str != "") {
+        predicateNames = extract_substrings(predicateMapInfo.template_str);
+        template_string_ext_predicate = predicateMapInfo.template_str;
+      } else if (predicateMapInfo.reference != "") {
+        // Get reference
+        predicateNames.push_back(predicateMapInfo.reference);
+      } else if (predicateMapInfo.constant != "") {
+        // Handle constants
+        predicateNames.push_back("{" + predicateMapInfo.constant + ",");
+      }
+
+      //// Handle Object Data ////
       ObjectMapInfo objectMapInfo = objectMapInfo_of_tripleMaps[i][j];
 
       if (objectMapInfo.parentSource.size() == 0) {
         // No join required
 
         // Get names of elements beeing mapped
-        std::vector<std::string> elementNames;
+        std::vector<std::string> objectNames;
+        std::string template_string_ext_object = "";
         // Get Template
         if (objectMapInfo.template_str != "") {
+          template_string_ext_object = objectMapInfo.template_str;
           std::vector<std::string> query_strings = extract_substrings(objectMapInfo.template_str);
-
           for (auto &element : query_strings) {
-            elementNames.push_back(element);
+            objectNames.push_back(element);
           }
         } else if (objectMapInfo.reference != "") {
           // Get reference
-          elementNames.push_back(objectMapInfo.reference);
+          objectNames.push_back(objectMapInfo.reference);
         } else if (objectMapInfo.constant != "") {
-          // TODO: handle constants
-          continue;
+          objectNames.push_back("{" + objectMapInfo.constant + ",");
         }
 
         /// Get number of duplicates in sample ///
         std::unordered_set<std::string> seen_elements; // Store all seen elements
 
-        int duplicate_count = 0; // Store the number of found duplicates
         if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
 
           // Load data of parent source
@@ -431,7 +518,7 @@ int estimate_generated_triple(
 
           // Get index of elements in header
           std::vector<u_int> indexes_subject;
-          for (auto &element : subjectValue) {
+          for (auto &element : subjectNames) {
             if (element[0] == '{') {
               break;
             }
@@ -442,8 +529,25 @@ int estimate_generated_triple(
             indexes_subject.push_back(index);
           }
 
+          // handle predicates
+          std::vector<u_int> indexes_predicates;
+          for (auto &element : predicateNames) {
+            // Means that constant is used
+            if (element[0] == '{') {
+              break;
+            }
+            uint index;
+            if (!get_index_of_element(split_header, element, index)) {
+              throw_error("Element not found -> Estimation not working!");
+            }
+            indexes_predicates.push_back(index);
+          }
+
           std::vector<u_int> indexes_objects;
-          for (auto &element : elementNames) {
+          for (auto &element : objectNames) {
+            if (element[0] == '{') {
+              break;
+            }
             uint index;
             if (!get_index_of_element(split_header, element, index)) {
               throw_error("Element not found -> Estimation not working!");
@@ -454,32 +558,71 @@ int estimate_generated_triple(
           // Read lines and check for duplicates
           std::string next_element;
           while (reader.readNext(next_element)) {
+            bool skip_entry = false;
             std::vector<std::string> split_data = split_csv_line(next_element, ',');
 
             std::string data = "";
             // Add subject
+            // Add template string
+            data += template_string_ext_subject + ",";
+            data += template_string_ext_predicate + ",";
+            data += template_string_ext_object + ",";
+
             if (indexes_subject.size() == 0) {
-              data += subjectValue[0];
+              data += subjectNames[0];
             } else {
               for (auto &index : indexes_subject) {
+                std::string subject_data = split_data[index];
+                if (subject_data == "") {
+                  skip_entry = true;
+                  break;
+                }
+
+                data += subject_data;
+                data += ",";
+              }
+            }
+
+            // Add predicate
+            if (indexes_predicates.size() == 0) {
+              data += predicateNames[0];
+            } else {
+              for (auto &index : indexes_predicates) {
+                std::string object_data = split_data[index];
+                if (object_data == "") {
+                  skip_entry = true;
+                  break;
+                }
                 data += split_data[index];
                 data += ",";
               }
             }
 
-            for (auto &index : indexes_objects) {
-              data += split_data[index];
-              data += ",";
+            // Add objects
+            if (indexes_objects.size() == 0) {
+              data += objectNames[0];
+            } else {
+              for (auto &index : indexes_objects) {
+                std::string object_data = split_data[index];
+                if (object_data == "") {
+                  skip_entry = true;
+                  break;
+                }
+
+                data += object_data;
+                data += ",";
+              }
             }
 
-            logln(data.c_str());
+            // If entry is not complete skip it.
+            if (skip_entry) {
+              continue;
+            }
 
-            // Check if we've seen this element before
-            if (seen_elements.find(data) != seen_elements.end()) {
-              // If we have, increment the duplicate counter
-              ++duplicate_count;
-            } else {
-              // If we haven't, add it to the set of seen elements
+            // Add only if not yet seen on tripleMap level
+            auto triple_map_result = seen_objects_triple_map_wo_join.insert(data);
+            if (triple_map_result.second) {
+              // Item was newly inserted
               seen_elements.insert(data);
             }
           }
@@ -493,8 +636,7 @@ int estimate_generated_triple(
         result += U_hat;
       } else {
         // Join required
-
-        result += estimate_join_size(source, objectMapInfo.parentSource, objectMapInfo);
+        result += estimate_join_size(source, objectMapInfo.parentSource, objectMapInfo, subjectNames, predicateNames, seen_elements_triple_map);
       }
     }
   }
