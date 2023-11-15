@@ -256,14 +256,14 @@ std::string generate_subsample(const std::string &file_path, float p) {
   return result;
 }
 
-int estimate_join_size(const std::string &source_file_path, const std::string &parent_source_file_path, const ObjectMapInfo &objectMapInfo, const std::vector<std::string> subjectNames, const std::vector<std::string> predicateNames, std::unordered_set<std::string> &seen_objects_triple_map) {
+int estimate_join_size(const std::string &source_file_path, const std::string &parent_source_file_path, const ObjectMapInfo &objectMapInfo, const std::vector<std::string> subjectNames, const std::vector<std::string> predicateNames, std::unordered_set<uint64_t> &seen_objects_triple_map) {
   //// Generate Objects ////
   // Sampling probabilities
   float p1 = 0.05;
   float p2 = 0.05;
 
   // Store unique generated elements.
-  std::unordered_set<std::string> seen_objects;
+  std::unordered_set<u_int64_t> seen_objects;
 
   // Step 1 : Create Bernoulli samples S1 and S2 from tables T1 and T2
   std::string sampled_table_child = generate_subsample(source_file_path, p1);
@@ -361,11 +361,14 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
 
     data += join_result;
 
-    // Add only if not yet seen on tripleMap level
-    auto triple_map_result = seen_objects_triple_map.insert(data);
+    // Hash data
+    uint64_t hashed_data = CityHash64(data.c_str(), data.size());
+
+    // Add only if not yet seen
+    auto triple_map_result = seen_objects_triple_map.insert(hashed_data);
     if (triple_map_result.second) {
       // Item was newly inserted
-      seen_objects.insert(data);
+      seen_objects.insert(hashed_data);
     }
   }
   reader_parent.close();
@@ -382,22 +385,19 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
 }
 
 int estimate_generated_triple(
-    const std::vector<NTriple> &triples,
     const std::vector<std::string> &tripleMap_nodes,
-    const std::string &base_uri,
     std::vector<LogicalSourceInfo> &logicalSourceInfo_of_tripleMaps,
     std::vector<SubjectMapInfo> &subjectMapInfo_of_tripleMaps,
     std::vector<std::vector<PredicateMapInfo>> &predicateMapInfo_of_tripleMaps,
-    std::vector<std::vector<ObjectMapInfo>> &objectMapInfo_of_tripleMaps,
-    std::vector<std::vector<PredicateObjectMapInfo>> &predicateObjectMapInfo_of_tripleMaps) {
+    std::vector<std::vector<ObjectMapInfo>> &objectMapInfo_of_tripleMaps) {
 
   // Counter for estimated result size
   int result = 0;
 
   // Store generated elements with join
-  std::unordered_set<std::string> seen_elements_triple_map;
+  std::unordered_set<u_int64_t> seen_elements_triple_map;
   // Store generated elements without join
-  std::unordered_set<std::string> seen_objects_triple_map_wo_join;
+  std::unordered_set<u_int64_t> seen_objects_triple_map_wo_join;
 
   // Iterate over all tripleMaps
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
@@ -415,9 +415,11 @@ int estimate_generated_triple(
       CsvReader reader(source);
       std::string next_element;
 
-      std::unordered_set<std::string> uniqueLines;
+      std::unordered_set<uint64_t> uniqueLines;
       while (reader.readNext(next_element)) {
-        uniqueLines.insert(next_element);
+        // Hash data
+        uint64_t hashed_data = CityHash64(next_element.c_str(), next_element.size());
+        uniqueLines.insert(hashed_data);
       }
       reader.close();
 
@@ -502,7 +504,7 @@ int estimate_generated_triple(
         }
 
         /// Get number of duplicates in sample ///
-        std::unordered_set<std::string> seen_elements; // Store all seen elements
+        std::unordered_set<uint64_t> seen_elements; // Store all seen elements
 
         if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
 
@@ -618,12 +620,13 @@ int estimate_generated_triple(
             if (skip_entry) {
               continue;
             }
-
+            // Hash data
+            uint64_t hashed_data = CityHash64(data.c_str(), data.size());
             // Add only if not yet seen on tripleMap level
-            auto triple_map_result = seen_objects_triple_map_wo_join.insert(data);
+            auto triple_map_result = seen_objects_triple_map_wo_join.insert(hashed_data);
             if (triple_map_result.second) {
               // Item was newly inserted
-              seen_elements.insert(data);
+              seen_elements.insert(hashed_data);
             }
           }
         }
@@ -644,25 +647,19 @@ int estimate_generated_triple(
 }
 
 uint8 detect_hash_method(
-    const std::vector<NTriple> &rml_triple,
     const std::vector<std::string> &tripleMap_nodes,
-    const std::string &base_uri,
     std::vector<LogicalSourceInfo> &logicalSourceInfo_of_tripleMaps,
     std::vector<SubjectMapInfo> &subjectMapInfo_of_tripleMaps,
     std::vector<std::vector<PredicateMapInfo>> &predicateMapInfo_of_tripleMaps,
-    std::vector<std::vector<ObjectMapInfo>> &objectMapInfo_of_tripleMaps,
-    std::vector<std::vector<PredicateObjectMapInfo>> &predicateObjectMapInfo_of_tripleMaps) {
+    std::vector<std::vector<ObjectMapInfo>> &objectMapInfo_of_tripleMaps) {
   uint8 hash_method;
   auto start = std::chrono::high_resolution_clock::now();
   int res = estimate_generated_triple(
-      rml_triple,
       tripleMap_nodes,
-      base_uri,
       logicalSourceInfo_of_tripleMaps,
       subjectMapInfo_of_tripleMaps,
       predicateMapInfo_of_tripleMaps,
-      objectMapInfo_of_tripleMaps,
-      predicateObjectMapInfo_of_tripleMaps);
+      objectMapInfo_of_tripleMaps);
   auto end = std::chrono::high_resolution_clock::now();
   int duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
   log("Estimation took: ");
@@ -673,12 +670,12 @@ uint8 detect_hash_method(
 
   // Decide on Hash method
   // 0 -> 32bit, 1 -> 64bit, 2 -> 128bit
-  // Threshold is estimated using birthday problem with a probability of 0.1% to get a collision
+  // Threshold is estimated using birthday problem with a probability of 0.05% to get a collision
 
-  if (res <= 927) {
+  if (res <= 2073) {
     // 32bit
     hash_method = 0;
-  } else if (res <= 60741529) {
+  } else if (res <= 135835773) {
     // 64bit
     hash_method = 1;
   } else {
@@ -1407,15 +1404,13 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
   logln_debug("Finished parsing RML rules.");
 
   // Estimate join size
+  // uint8 hash_method = 2;
   uint8 hash_method = detect_hash_method(
-      rml_triple,
       tripleMap_nodes,
-      base_uri,
       logicalSourceInfo_of_tripleMaps,
       subjectMapInfo_of_tripleMaps,
       predicateMapInfo_of_tripleMaps,
-      objectMapInfo_of_tripleMaps,
-      predicateObjectMapInfo_of_tripleMaps);
+      objectMapInfo_of_tripleMaps);
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1555,59 +1550,55 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
 //// MAP DATA TO FILE - MULTIPLE THREAD ////
 ///////////////////////////////////////////
 
-// Define a thread-safe queue for passing data between threads.
 template <typename T>
 class ThreadSafeQueue {
 private:
-  // The underlying non-thread-safe queue
   std::queue<T> queue;
-
-  // Mutex used to synchronize access to the queue
   std::mutex mtx;
-
-  // Condition variable used for synchronization between threads
-  std::condition_variable cv;
-
-  // Flag to indicate that no more items will be pushed to the queue
+  std::condition_variable not_full_cv;
+  std::condition_variable not_empty_cv;
   bool done = false;
+  size_t max_size;
 
 public:
-  // Push an item to the queue and notify a waiting thread
+  explicit ThreadSafeQueue(size_t max_size) : max_size(max_size) {}
+
   void push(const T &item) {
-    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
-    queue.push(item);                       // Add the item to the queue
-    cv.notify_one();                        // Notify one waiting thread
+    std::unique_lock<std::mutex> lock(mtx);
+    not_full_cv.wait(lock, [this]() { return queue.size() < max_size || done; });
+    if (done)
+      return;
+    queue.push(item);
+    not_empty_cv.notify_one();
   }
 
-  // Pop an item from the queue. If the queue is empty, it waits until an item is available or done flag is set
   bool pop(T &item) {
-    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
+    std::unique_lock<std::mutex> lock(mtx);
     while (queue.empty() && !done) {
-      cv.wait(lock); // Wait until an item is pushed or done flag is set
+      not_empty_cv.wait(lock);
     }
     if (queue.empty() && done)
-      return false;       // If queue is empty and done flag is set, return false
-    item = queue.front(); // Get the item from the front of the queue
-    queue.pop();          // Remove the item from the queue
-    return true;          // Indicate success
+      return false;
+    item = queue.front();
+    queue.pop();
+    not_full_cv.notify_one();
+    return true;
   }
 
-  // Set the done flag and notify all waiting threads
   void mark_done() {
-    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
-    done = true;                            // Set the done flag
-    cv.notify_all();                        // Notify all waiting threads
+    std::unique_lock<std::mutex> lock(mtx);
+    done = true;
+    not_full_cv.notify_all();
+    not_empty_cv.notify_all();
   }
 
-  // Check if the queue is empty
   bool isEmpty() {
-    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
+    std::unique_lock<std::mutex> lock(mtx);
     return queue.empty();
   }
 
-  // Check the status of the done flag
   bool isDone() {
-    std::unique_lock<std::mutex> lock(mtx); // Lock the mutex
+    std::unique_lock<std::mutex> lock(mtx);
     return done;
   }
 };
@@ -1787,9 +1778,6 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
 
-  // uint8_t hash_method = detect_hash_method(rml_triple);
-  uint8_t hash_method = 2;
-
   /////////////////////////////////
   //// STEP 2: Parse RML rules ////
   /////////////////////////////////
@@ -1820,14 +1808,16 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
       objectMapInfo_of_tripleMaps,
       predicateObjectMapInfo_of_tripleMaps);
 
-  // Shrink to fit all vectors
-  logicalSourceInfo_of_tripleMaps.shrink_to_fit();
-  subjectMapInfo_of_tripleMaps.shrink_to_fit();
-  predicateMapInfo_of_tripleMaps.shrink_to_fit();
-  objectMapInfo_of_tripleMaps.shrink_to_fit();
-  predicateObjectMapInfo_of_tripleMaps.shrink_to_fit();
-
   logln_debug("Finished parsing RML rules.");
+
+  // Estimate join size
+  // uint8 hash_method = 1;
+  uint8 hash_method = detect_hash_method(
+      tripleMap_nodes,
+      logicalSourceInfo_of_tripleMaps,
+      subjectMapInfo_of_tripleMaps,
+      predicateMapInfo_of_tripleMaps,
+      objectMapInfo_of_tripleMaps);
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1840,7 +1830,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
   logln_debug(" threads.");
   std::vector<std::thread> threads;
 
-  ThreadSafeQueue<NQuad> quadQueue;
+  ThreadSafeQueue<NQuad> quadQueue(1000);
 
   // Start the writer thread before the worker threads
   std::thread writer(writerThread, std::ref(outFile), std::ref(quadQueue), remove_duplicates, std::ref(hash_method));
