@@ -2,6 +2,9 @@
 
 #include "city.h"
 
+#define SAMPLING_PROB 0.05
+#define BATCH_SIZE 100
+
 // Counter for generated blank nodes
 int blank_node_counter = 18956;
 
@@ -105,7 +108,7 @@ std::pair<std::string, std::string> fill_in_template(
   std::vector<std::string> query_strings_in_braces = enclose_in_braces(query_strings);
 
   std::string filled_template_str = template_str;
-  std::string generated_value_last = ""; // Used to store the last generated value
+  std::string generated_value_last = "";  // Used to store the last generated value
 
   // Iterate over found elements
   for (size_t i = 0; i < query_strings.size(); i++) {
@@ -211,7 +214,7 @@ std::string generate_object_with_hash_join_ex(const ObjectMapInfo &objectMapInfo
       try {
         rowPosition = parent_file_index.at(childValue);
       } catch (const std::out_of_range &) {
-        return ""; // Element not found
+        return "";  // Element not found
       }
       reader.seekg(rowPosition);
 
@@ -219,7 +222,7 @@ std::string generate_object_with_hash_join_ex(const ObjectMapInfo &objectMapInfo
       reader.readNext(next_element);
       std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
     } else {
-      return ""; // Element not found
+      return "";  // Element not found
     }
   }
 
@@ -258,21 +261,28 @@ std::string generate_subsample(const std::string &file_path, float p) {
 
 int estimate_join_size(const std::string &source_file_path, const std::string &parent_source_file_path, const ObjectMapInfo &objectMapInfo, const std::vector<std::string> subjectNames, const std::vector<std::string> predicateNames, std::unordered_set<uint64_t> &seen_objects_triple_map) {
   //// Generate Objects ////
+  // Create a random number generator
+  std::random_device rd;
+  std::mt19937 mt(rd());
+
+  // Create a distribution from 0 to 1
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
   // Sampling probabilities
-  float p1 = 0.05;
-  float p2 = 0.05;
+  float p1 = SAMPLING_PROB;
+  float p2 = 1;
 
   // Store unique generated elements.
   std::unordered_set<u_int64_t> seen_objects;
 
   // Step 1 : Create Bernoulli samples S1 and S2 from tables T1 and T2
-  std::string sampled_table_child = generate_subsample(source_file_path, p1);
-  std::string sampled_table_parent = generate_subsample(parent_source_file_path, p2);
+  // std::string sampled_table_child = generate_subsample(source_file_path, p1);
+  // std::string sampled_table_parent = generate_subsample(parent_source_file_path, p2);
 
   // Step 2 : Compute the join size J' of the two samples
 
   // Load child data
-  CsvReader reader_child(sampled_table_child, false);
+  CsvReader reader_child(source_file_path);
 
   // Get header of child
   std::string header_child;
@@ -280,7 +290,7 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
   std::vector<std::string> split_header_child = split_csv_line(header_child, ',');
 
   // Load data of parent source
-  CsvReader reader_parent(sampled_table_parent, false);
+  CsvReader reader_parent(parent_source_file_path);
 
   // Get Header
   std::string header_parent;
@@ -296,7 +306,7 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
   }
 
   // Create index for hash join
-  auto string_index = createIndexFromCSVString(sampled_table_parent, index);
+  auto parent_file_index = createIndex(parent_source_file_path, index);
 
   //// Generate Subject ////
   // Get index of elements in header for subject
@@ -328,7 +338,11 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
 
   std::string next_element;
   while (reader_child.readNext(next_element)) {
-
+    // Generate a random float
+    float randomFloat = dist(mt);
+    if (randomFloat > p1) {
+      continue;
+    }
     std::vector<std::string> split_data = split_csv_line(next_element, ',');
 
     // Generated Data
@@ -353,7 +367,7 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
       }
     }
     // Generate object
-    std::string join_result = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header_child, reader_parent, string_index);
+    std::string join_result = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header_child, reader_parent, parent_file_index);
 
     if (join_result == "") {
       continue;
@@ -384,13 +398,213 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
   return j_hat_int;
 }
 
+int estimate_unique_elements_in_file(float p, std::string &source, std::string &referenceFormulation) {
+  // Create a random number generator
+  std::random_device rd;
+  std::mt19937 mt(rd());
+
+  // Create a distribution from 0 to 1
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
+    CsvReader reader(source);
+    std::string next_element;
+
+    std::unordered_set<uint64_t> uniqueLines;
+
+    while (reader.readNext(next_element)) {
+      // Generate a random float
+      float randomFloat = dist(mt);
+      if (randomFloat > p) {
+        continue;
+      }
+      // Hash data
+      uint64_t hashed_data = CityHash64(next_element.c_str(), next_element.size());
+      uniqueLines.insert(hashed_data);
+    }
+    reader.close();
+
+    // Update element count; -1 beacause of header in csv
+    float U_hat = uniqueLines.size() / p;
+    return int(U_hat) - 1;
+  }
+
+  else {
+    return 0;
+  }
+}
+
+std::pair<std::vector<std::string>, std::string> extractSubjectNamesAndTemplate(const SubjectMapInfo &subjectMapInfo) {
+  std::vector<std::string> names;
+  std::string templateString;
+
+  if (!subjectMapInfo.template_str.empty()) {
+    names = extract_substrings(subjectMapInfo.template_str);
+    templateString = subjectMapInfo.template_str;
+  } else if (!subjectMapInfo.reference.empty()) {
+    names.push_back(subjectMapInfo.reference);
+  } else if (!subjectMapInfo.constant.empty()) {
+    std::string constantData = "{" + subjectMapInfo.constant + ",";
+    names.push_back(constantData);
+  }
+  return {names, templateString};
+}
+
+void estimateCSVData(
+    const std::string &source,
+    const std::vector<std::string> &subjectNames,
+    const std::vector<std::string> &predicateNames,
+    const std::vector<std::string> &objectNames,
+    const std::string &template_string_ext_subject,
+    const std::string &template_string_ext_predicate,
+    const std::string &template_string_ext_object,
+    std::unordered_set<uint64_t> &seen_elements,
+    std::unordered_set<u_int64_t> &seen_objects_triple_map_wo_join) {
+  /// Get number of duplicates in sample ///
+
+  float p = SAMPLING_PROB;
+
+  // Create a random number generator
+  std::random_device rd;
+  std::mt19937 mt(rd());
+
+  // Create a distribution from 0 to 1
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  // Load data of parent source
+  CsvReader reader(source);
+
+  // Get Header
+  std::string header;
+  reader.readNext(header);
+
+  // Split header
+  std::vector<std::string> split_header = split_csv_line(header, ',');
+
+  // Get index of elements in header
+  std::vector<u_int> indexes_subject;
+  for (auto &element : subjectNames) {
+    if (element[0] == '{') {
+      break;
+    }
+    uint index;
+    if (!get_index_of_element(split_header, element, index)) {
+      throw_error("Element not found -> Estimation not working!");
+    }
+    indexes_subject.push_back(index);
+  }
+
+  // handle predicates
+  std::vector<u_int> indexes_predicates;
+  for (auto &element : predicateNames) {
+    // Means that constant is used
+    if (element[0] == '{') {
+      break;
+    }
+    uint index;
+    if (!get_index_of_element(split_header, element, index)) {
+      throw_error("Element not found -> Estimation not working!");
+    }
+    indexes_predicates.push_back(index);
+  }
+
+  std::vector<u_int> indexes_objects;
+  for (auto &element : objectNames) {
+    if (element[0] == '{') {
+      break;
+    }
+    uint index;
+    if (!get_index_of_element(split_header, element, index)) {
+      throw_error("Element not found -> Estimation not working!");
+    }
+    indexes_objects.push_back(index);
+  }
+
+  // Read lines and check for duplicates
+  std::string next_element;
+  while (reader.readNext(next_element)) {
+    // Generate a random float
+    float randomFloat = dist(mt);
+    if (randomFloat > p) {
+      continue;
+    }
+    bool skip_entry = false;
+    std::vector<std::string> split_data = split_csv_line(next_element, ',');
+
+    std::string data = "";
+    // Add subject
+    // Add template string
+    data += template_string_ext_subject + ",";
+    data += template_string_ext_predicate + ",";
+    data += template_string_ext_object + ",";
+
+    if (indexes_subject.size() == 0) {
+      data += subjectNames[0];
+    } else {
+      for (auto &index : indexes_subject) {
+        std::string subject_data = split_data[index];
+        if (subject_data == "") {
+          skip_entry = true;
+          break;
+        }
+
+        data += subject_data;
+        data += ",";
+      }
+    }
+
+    // Add predicate
+    if (indexes_predicates.size() == 0) {
+      data += predicateNames[0];
+    } else {
+      for (auto &index : indexes_predicates) {
+        std::string object_data = split_data[index];
+        if (object_data == "") {
+          skip_entry = true;
+          break;
+        }
+        data += split_data[index];
+        data += ",";
+      }
+    }
+
+    // Add objects
+    if (indexes_objects.size() == 0) {
+      data += objectNames[0];
+    } else {
+      for (auto &index : indexes_objects) {
+        std::string object_data = split_data[index];
+        if (object_data == "") {
+          skip_entry = true;
+          break;
+        }
+
+        data += object_data;
+        data += ",";
+      }
+    }
+
+    // If entry is not complete skip it.
+    if (skip_entry) {
+      continue;
+    }
+    // Hash data
+    uint64_t hashed_data = CityHash64(data.c_str(), data.size());
+    // Add only if not yet seen on tripleMap level
+    auto triple_map_result = seen_objects_triple_map_wo_join.insert(hashed_data);
+    if (triple_map_result.second) {
+      // Item was newly inserted
+      seen_elements.insert(hashed_data);
+    }
+  }
+}
+
 int estimate_generated_triple(
     const std::vector<std::string> &tripleMap_nodes,
     std::vector<LogicalSourceInfo> &logicalSourceInfo_of_tripleMaps,
     std::vector<SubjectMapInfo> &subjectMapInfo_of_tripleMaps,
     std::vector<std::vector<PredicateMapInfo>> &predicateMapInfo_of_tripleMaps,
     std::vector<std::vector<ObjectMapInfo>> &objectMapInfo_of_tripleMaps) {
-
   // Counter for estimated result size
   int result = 0;
 
@@ -408,32 +622,15 @@ int estimate_generated_triple(
     // Get reference formulation
     std::string referenceFormulation = logicalSourceInfo_of_tripleMaps[i].reference_formulation;
 
-    // Count number of elements in source
-    int element_count = 0;
-
-    if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
-      CsvReader reader(source);
-      std::string next_element;
-
-      std::unordered_set<uint64_t> uniqueLines;
-      while (reader.readNext(next_element)) {
-        // Hash data
-        uint64_t hashed_data = CityHash64(next_element.c_str(), next_element.size());
-        uniqueLines.insert(hashed_data);
-      }
-      reader.close();
-
-      // Update element count; -1 beacause of header in csv
-      element_count = uniqueLines.size() - 1;
-    }
-
     // Generate sample to estimate duplicate rate:
-    float p = 0.05;
-    std::string sample = generate_subsample(source, p);
+    float p = SAMPLING_PROB;
+
+    // Count number of elements in source
+    int element_count = estimate_unique_elements_in_file(p, source, referenceFormulation);
+
+    // std::string sample = generate_subsample(source, p);
 
     ////// Handle classes //////
-    // Nr of triples generated by classes is elements times classes
-
     // If data is constant -> nr of classes * 1, since subject stays the same
     if (subjectMapInfo_of_tripleMaps[i].constant != "") {
       result += subjectMapInfo_of_tripleMaps[i].classes.size() * 1;
@@ -442,27 +639,10 @@ int estimate_generated_triple(
     }
     ////// Handle Subject Information //////
     // Get queries or iterators of subject
-    std::vector<std::string> subjectNames;
-    // Store template string
-    std::string template_string_ext_subject = "";
-    // Get template
-    if (subjectMapInfo_of_tripleMaps[i].template_str != "") {
-      subjectNames = extract_substrings(subjectMapInfo_of_tripleMaps[i].template_str);
-      template_string_ext_subject = subjectMapInfo_of_tripleMaps[i].template_str;
-    }
-    // Get reference
-    else if (subjectMapInfo_of_tripleMaps[i].reference != "") {
-      subjectNames.push_back(subjectMapInfo_of_tripleMaps[i].reference);
-    }
-    // Get constant
-    else if (subjectMapInfo_of_tripleMaps[i].constant != "") {
-      std::string constant_data = "{" + subjectMapInfo_of_tripleMaps[i].constant + ",";
-      subjectNames.push_back(constant_data);
-    }
+    auto [subjectNames, template_string_ext_subject] = extractSubjectNamesAndTemplate(subjectMapInfo_of_tripleMaps[i]);
 
     // Iterate over all found predicateObjectMap_uris and extract predicate
     for (size_t j = 0; j < predicateMapInfo_of_tripleMaps[i].size(); j++) {
-
       //// Handle Predicate Data ////
       PredicateMapInfo predicateMapInfo = predicateMapInfo_of_tripleMaps[i][j];
 
@@ -503,132 +683,19 @@ int estimate_generated_triple(
           objectNames.push_back("{" + objectMapInfo.constant + ",");
         }
 
-        /// Get number of duplicates in sample ///
-        std::unordered_set<uint64_t> seen_elements; // Store all seen elements
+        std::unordered_set<uint64_t> seen_elements;
 
         if (referenceFormulation == CSV_REFERENCE_FORMULATION) {
-
-          // Load data of parent source
-          CsvReader reader(sample, false);
-
-          // Get Header
-          std::string header;
-          reader.readNext(header);
-
-          // Split header
-          std::vector<std::string> split_header = split_csv_line(header, ',');
-
-          // Get index of elements in header
-          std::vector<u_int> indexes_subject;
-          for (auto &element : subjectNames) {
-            if (element[0] == '{') {
-              break;
-            }
-            uint index;
-            if (!get_index_of_element(split_header, element, index)) {
-              throw_error("Element not found -> Estimation not working!");
-            }
-            indexes_subject.push_back(index);
-          }
-
-          // handle predicates
-          std::vector<u_int> indexes_predicates;
-          for (auto &element : predicateNames) {
-            // Means that constant is used
-            if (element[0] == '{') {
-              break;
-            }
-            uint index;
-            if (!get_index_of_element(split_header, element, index)) {
-              throw_error("Element not found -> Estimation not working!");
-            }
-            indexes_predicates.push_back(index);
-          }
-
-          std::vector<u_int> indexes_objects;
-          for (auto &element : objectNames) {
-            if (element[0] == '{') {
-              break;
-            }
-            uint index;
-            if (!get_index_of_element(split_header, element, index)) {
-              throw_error("Element not found -> Estimation not working!");
-            }
-            indexes_objects.push_back(index);
-          }
-
-          // Read lines and check for duplicates
-          std::string next_element;
-          while (reader.readNext(next_element)) {
-            bool skip_entry = false;
-            std::vector<std::string> split_data = split_csv_line(next_element, ',');
-
-            std::string data = "";
-            // Add subject
-            // Add template string
-            data += template_string_ext_subject + ",";
-            data += template_string_ext_predicate + ",";
-            data += template_string_ext_object + ",";
-
-            if (indexes_subject.size() == 0) {
-              data += subjectNames[0];
-            } else {
-              for (auto &index : indexes_subject) {
-                std::string subject_data = split_data[index];
-                if (subject_data == "") {
-                  skip_entry = true;
-                  break;
-                }
-
-                data += subject_data;
-                data += ",";
-              }
-            }
-
-            // Add predicate
-            if (indexes_predicates.size() == 0) {
-              data += predicateNames[0];
-            } else {
-              for (auto &index : indexes_predicates) {
-                std::string object_data = split_data[index];
-                if (object_data == "") {
-                  skip_entry = true;
-                  break;
-                }
-                data += split_data[index];
-                data += ",";
-              }
-            }
-
-            // Add objects
-            if (indexes_objects.size() == 0) {
-              data += objectNames[0];
-            } else {
-              for (auto &index : indexes_objects) {
-                std::string object_data = split_data[index];
-                if (object_data == "") {
-                  skip_entry = true;
-                  break;
-                }
-
-                data += object_data;
-                data += ",";
-              }
-            }
-
-            // If entry is not complete skip it.
-            if (skip_entry) {
-              continue;
-            }
-            // Hash data
-            uint64_t hashed_data = CityHash64(data.c_str(), data.size());
-            // Add only if not yet seen on tripleMap level
-            auto triple_map_result = seen_objects_triple_map_wo_join.insert(hashed_data);
-            if (triple_map_result.second) {
-              // Item was newly inserted
-              seen_elements.insert(hashed_data);
-            }
-          }
+          estimateCSVData(
+              source,
+              subjectNames,
+              predicateNames,
+              objectNames,
+              template_string_ext_subject,
+              template_string_ext_predicate,
+              template_string_ext_object,
+              seen_elements,
+              seen_objects_triple_map_wo_join);
         }
 
         // U_hat is U' (No of unique lines in sample)
@@ -974,7 +1041,7 @@ std::string generate_object_with_hash_join(const ObjectMapInfo &objectMapInfo, c
       try {
         rowPosition = parent_file_index.at(childValue);
       } catch (const std::out_of_range &) {
-        return ""; // Element not found
+        return "";  // Element not found
       }
       reader.seekg(rowPosition);
 
@@ -982,7 +1049,7 @@ std::string generate_object_with_hash_join(const ObjectMapInfo &objectMapInfo, c
       reader.readNext(next_element);
       std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
     } else {
-      return ""; // Element not found
+      return "";  // Element not found
     }
 
     // If result is empty string -> no value available -> return
@@ -1159,7 +1226,7 @@ void generate_quads(
     // Set predicate which is constant
     temp_quad.predicate = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
     // Set object which is the class
-    temp_quad.object = "<" + subject_class + ">"; // Class is always IRI
+    temp_quad.object = "<" + subject_class + ">";  // Class is always IRI
     // Set graph to generated graph
     temp_quad.graph = current_graph;
 
@@ -1404,13 +1471,13 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
   logln_debug("Finished parsing RML rules.");
 
   // Estimate join size
-  // uint8 hash_method = 2;
-  uint8 hash_method = detect_hash_method(
+  uint8 hash_method = 2;
+  /*uint8 hash_method = detect_hash_method(
       tripleMap_nodes,
       logicalSourceInfo_of_tripleMaps,
       subjectMapInfo_of_tripleMaps,
       predicateMapInfo_of_tripleMaps,
-      objectMapInfo_of_tripleMaps);
+      objectMapInfo_of_tripleMaps);*/
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1552,43 +1619,44 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
 
 template <typename T>
 class ThreadSafeQueue {
-private:
+ private:
   std::queue<T> queue;
   std::mutex mtx;
-  std::condition_variable not_full_cv;
   std::condition_variable not_empty_cv;
   bool done = false;
   size_t max_size;
 
-public:
-  explicit ThreadSafeQueue(size_t max_size) : max_size(max_size) {}
+ public:
+  explicit ThreadSafeQueue(size_t max_size = 0) : max_size(max_size) {}
 
-  void push(const T &item) {
+  void push(const std::vector<T> &items) {
     std::unique_lock<std::mutex> lock(mtx);
-    not_full_cv.wait(lock, [this]() { return queue.size() < max_size || done; });
-    if (done)
-      return;
-    queue.push(item);
-    not_empty_cv.notify_one();
+    for (const auto &item : items) {
+      queue.push(item);
+    }
+    not_empty_cv.notify_one();  // Notify one waiting thread
   }
 
-  bool pop(T &item) {
+  size_t pop(std::vector<T> &items, size_t max_items_to_pop) {
     std::unique_lock<std::mutex> lock(mtx);
     while (queue.empty() && !done) {
       not_empty_cv.wait(lock);
     }
     if (queue.empty() && done)
-      return false;
-    item = queue.front();
-    queue.pop();
-    not_full_cv.notify_one();
-    return true;
+      return 0;
+
+    size_t popped_count = 0;
+    while (!queue.empty() && popped_count < max_items_to_pop) {
+      items.push_back(queue.front());
+      queue.pop();
+      ++popped_count;
+    }
+    return popped_count;
   }
 
   void mark_done() {
     std::unique_lock<std::mutex> lock(mtx);
     done = true;
-    not_full_cv.notify_all();
     not_empty_cv.notify_all();
   }
 
@@ -1656,6 +1724,7 @@ void process_triple_map(
     std::vector<std::string> split_header = split_csv_line(header, ',');
 
     std::string next_element;
+    std::vector<NQuad> quad_batch;
     while (reader.readNext(next_element)) {
       generate_quads(
           generated_quads,
@@ -1667,12 +1736,19 @@ void process_triple_map(
           split_header,
           parent_file_index);
 
-      // Write to file
-      for (const NQuad &quad : generated_quads) {
-        quadQueue.push(quad);
+      // Add generated quads to the batch
+      for (const auto &quad : generated_quads) {
+        quad_batch.push_back(quad);
+        if (quad_batch.size() >= BATCH_SIZE) {
+          quadQueue.push(quad_batch);
+          quad_batch.clear();
+        }
       }
 
       generated_quads.clear();
+    }
+    if (!quad_batch.empty()) {
+      quadQueue.push(quad_batch);
     }
     reader.close();
   } else {
@@ -1682,6 +1758,8 @@ void process_triple_map(
 
 void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, bool remove_duplicates, const uint8_t &hash_method) {
   NQuad quad;
+
+  std::ostringstream outStream;
 
   // Create data structures to store hashes
   // Used to store 128 bit hashes
@@ -1695,10 +1773,13 @@ void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, boo
 
   log("Using Method: ");
   logln(hash_method);
-
+  std::vector<NQuad> quad_batch;
   while (true) {
-    bool success = quadQueue.pop(quad);
-    if (success) {
+    size_t count = quadQueue.pop(quad_batch, BATCH_SIZE);
+    if (count == 0) {
+      break;
+    }
+    for (const NQuad &quad : quad_batch) {
       bool add_triple = true;
 
       // Check if value is a duplicate
@@ -1741,18 +1822,21 @@ void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, boo
       }
 
       if (add_triple) {
-        // Push to queue
-
-        outFile << quad.subject << " " << quad.predicate << " " << quad.object << " ";
+        // Append to the buffer instead of writing directly to the file
+        outStream << quad.subject << " " << quad.predicate << " " << quad.object << " ";
         if (quad.graph != "") {
-          outFile << quad.graph << " .\n";
+          outStream << quad.graph << " .\n";
         } else {
-          outFile << ".\n";
+          outStream << ".\n";
         }
       }
-    } else {
-      break; // Exit the loop when no more data and the queue is marked done.
     }
+    quad_batch.clear();
+
+    // Write the buffered data to the file
+    outFile << outStream.str();
+    outStream.str("");  // Clear the buffer
+    outStream.clear();  // Clear any error flags
   }
 
   log("Number of generated triples: ");
@@ -1811,13 +1895,13 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
   logln_debug("Finished parsing RML rules.");
 
   // Estimate join size
-  // uint8 hash_method = 1;
-  uint8 hash_method = detect_hash_method(
+  uint8 hash_method = 2;
+  /*uint8 hash_method = detect_hash_method(
       tripleMap_nodes,
       logicalSourceInfo_of_tripleMaps,
       subjectMapInfo_of_tripleMaps,
       predicateMapInfo_of_tripleMaps,
-      objectMapInfo_of_tripleMaps);
+      objectMapInfo_of_tripleMaps);*/
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1844,7 +1928,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
         std::ref(logicalSourceInfo_of_tripleMaps[i]),
         std::ref(quadQueue)));
 
-    if (threads.size() == numThreads || i == tripleMap_nodes.size() - 1) {
+    if (threads.size() == numThreads - 1 || i == tripleMap_nodes.size() - 1) {
       for (std::thread &t : threads) {
         t.join();
       }
