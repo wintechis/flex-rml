@@ -1,5 +1,7 @@
 #include "FlexRML.h"
 
+#include <set>
+
 #include "city.h"
 
 #define SAMPLING_PROB 0.1
@@ -176,17 +178,31 @@ std::pair<std::string, std::string> fill_in_template(
  */
 std::unordered_map<std::string, std::vector<std::streampos>> createIndex(const std::string &filePath, unsigned int columnIndex) {
   std::unordered_map<std::string, std::vector<std::streampos>> indexMap;
-  std::ifstream csvFile(filePath, std::ios::in | std::ios::binary);
+  std::ifstream csvFile(filePath);
+  std::set<std::string> seenLines;
+
+  if (!csvFile.is_open()) {
+    logln("Unable to open file: ");
+    throw_error(filePath.c_str());
+  }
 
   std::string line;
-  std::streampos position = csvFile.tellg();
+  std::streampos position;
 
-  while (std::getline(csvFile, line)) {
+  while (csvFile.good()) {
+    position = csvFile.tellg();
+    if (!std::getline(csvFile, line)) break;
+
+    // Check if the line is a duplicate and skip if it is
+    if (seenLines.find(line) != seenLines.end()) {
+      continue;
+    }
+    seenLines.insert(line);
+
     std::vector<std::string> split_data = split_csv_line(line, ',');
     if (split_data.size() > columnIndex) {
       indexMap[split_data[columnIndex]].push_back(position);
     }
-    position = csvFile.tellg();
   }
 
   csvFile.close();
@@ -977,7 +993,6 @@ std::vector<std::string> generate_object_with_hash_join(
     const std::unordered_map<std::string, std::vector<std::streampos>> &parent_file_index,
     std::vector<std::string> &split_header_ref) {
   std::vector<std::string> generated_objects;
-  std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
     // Fill in template and store the generate value
@@ -1056,6 +1071,7 @@ std::vector<std::string> generate_object_with_hash_join(
     }
   }
 
+  //logln(generated_objects.size());
   return generated_objects;
 }
 
