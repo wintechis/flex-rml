@@ -1,5 +1,7 @@
 #include "FlexRML.h"
 
+#include <iostream>
+#include <limits>
 #include <set>
 
 #include "city.h"
@@ -176,37 +178,50 @@ std::pair<std::string, std::string> fill_in_template(
  * @return An unordered map where each key is a distinct value from the specified column,
  * and each value is a vector of stream positions indicating where the key appears in the file.
  */
-std::unordered_map<std::string, std::vector<std::streampos>> createIndex(const std::string &filePath, unsigned int columnIndex) {
-  std::unordered_map<std::string, std::vector<std::streampos>> indexMap;
-  std::ifstream csvFile(filePath);
-  std::set<std::string> seenLines;
+std::unordered_map<std::string, std::vector<std::streampos>> create_index(const std::string &file_path, uint8_t parent_index, std::unordered_set<uint8_t> column_indices) {
+  std::unordered_map<std::string, std::vector<std::streampos>> index_map;
+  std::unordered_set<std::size_t> seen_line_hashes;
+  std::hash<std::string> hasher;
+  std::ifstream csv_file(file_path);
 
-  if (!csvFile.is_open()) {
+  if (!csv_file.is_open()) {
     logln("Unable to open file: ");
-    throw_error(filePath.c_str());
+    throw_error(file_path.c_str());
   }
 
   std::string line;
   std::streampos position;
 
-  while (csvFile.good()) {
-    position = csvFile.tellg();
-    if (!std::getline(csvFile, line)) break;
+  while (csv_file.good()) {
+    position = csv_file.tellg();
+    if (!std::getline(csv_file, line)) break;
+    std::vector<std::string> split_data = split_csv_line(line, ',');
 
-    // Check if the line is a duplicate and skip if it is
-    if (seenLines.find(line) != seenLines.end()) {
+    // Build a string for hashing using the relevant columns
+    std::string hash_input;
+    if (split_data.size() > parent_index) {
+      hash_input = split_data[parent_index];
+      for (auto index : column_indices) {
+        if (index < split_data.size()) {
+          hash_input += split_data[index];
+        }
+      }
+    }
+
+    std::size_t line_hash = hasher(hash_input);
+    // Check if the line's hash is a duplicate and skip if it is
+    if (seen_line_hashes.find(line_hash) != seen_line_hashes.end()) {
       continue;
     }
-    seenLines.insert(line);
+    seen_line_hashes.insert(line_hash);
 
-    std::vector<std::string> split_data = split_csv_line(line, ',');
-    if (split_data.size() > columnIndex) {
-      indexMap[split_data[columnIndex]].push_back(position);
+    if (split_data.size() > parent_index) {
+      index_map[split_data[parent_index]].push_back(position);
     }
   }
 
-  csvFile.close();
-  return indexMap;
+  csv_file.close();
+  return index_map;
 }
 
 std::unordered_map<std::string, std::streampos> createIndexFromCSVString(const std::string &csvString, unsigned int columnIndex) {
@@ -344,28 +359,42 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
   reader_child.readNext(header_child);
   std::vector<std::string> split_header_child = split_csv_line(header_child, ',');
 
+  std::unordered_set<uint8> relevant_collumn_index;
+
   // Load data of parent source
   CsvReader reader_parent(parent_source_file_path);
 
   // Get Header
-  std::string header_parent;
-  reader_parent.readNext(header_parent);
+  std::string header_ref;
+  reader_parent.readNext(header_ref);
 
   // Split header
-  std::vector<std::string> split_header_parent = split_csv_line(header_parent, ',');
+  std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
 
-  // Get index of element in header
-  u_int index = 0;
-  if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
+  // Get index of parent in header
+  u_int parent_index = 0;
+  if (!get_index_of_element(split_header_ref, objectMapInfo.parent, parent_index)) {
     throw_error("Element not found -> Join not working!");
   }
 
-  // Create index for hash join
-  auto parent_file_index = createIndex(parent_source_file_path, index);
+  // Get index of template or reference in header
+  if (objectMapInfo.template_str != "") {
+    std::vector<std::string> query_strings = extract_substrings(objectMapInfo.template_str);
+    u_int index = 0;
+    for (const auto &query_string : query_strings) {
+      if (!get_index_of_element(split_header_ref, query_string, index)) {
+        throw_error("Element not found -> Join not working!");
+      }
+      relevant_collumn_index.insert(index);
+    }
+  }
+
+  auto parent_file_index = create_index(objectMapInfo.parentSource, parent_index, relevant_collumn_index);
 
   //// Generate Subject ////
   // Get index of elements in header for subject
-  std::vector<u_int> indexes_subject;
+  std::vector<u_int>
+      indexes_subject;
   for (auto &element : subjectNames) {
     if (element[0] == '{') {
       break;
@@ -422,7 +451,7 @@ int estimate_join_size(const std::string &source_file_path, const std::string &p
       }
     }
     // Generate object
-    std::vector<std::string> join_result = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header_child, reader_parent, parent_file_index, split_header_parent);
+    std::vector<std::string> join_result = generate_object_with_hash_join_ex(objectMapInfo, split_data, split_header_child, reader_parent, parent_file_index, split_header_ref);
     for (const auto &generated_object : join_result) {
       if (generated_object == "") {
         continue;
@@ -1071,7 +1100,6 @@ std::vector<std::string> generate_object_with_hash_join(
     }
   }
 
-  //logln(generated_objects.size());
   return generated_objects;
 }
 
@@ -1368,6 +1396,9 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
         if (objectMap.parentSource == "") {
           continue;
         }
+
+        std::unordered_set<uint8> relevant_collumn_index;
+
         // Load data of parent source
         CsvReader reader(objectMap.parentSource);
 
@@ -1378,14 +1409,30 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
         // Split header
         std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
 
-        // Get index of element in header
-        u_int index = 0;
-        if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
+        // Get index of parent in header
+        u_int parent_index = 0;
+        if (!get_index_of_element(split_header_ref, objectMap.parent, parent_index)) {
           throw_error("Element not found -> Join not working!");
         }
 
-        parent_file_index[objectMap.parentSource] = createIndex(objectMap.parentSource, index);
+        // Get index of template or reference in header
+        if (objectMap.template_str != "") {
+          std::vector<std::string> query_strings = extract_substrings(objectMap.template_str);
+          u_int index = 0;
+          for (const auto &query_string : query_strings) {
+            if (!get_index_of_element(split_header_ref, query_string, index)) {
+              throw_error("Element not found -> Join not working!");
+            }
+            relevant_collumn_index.insert(index);
+          }
+        }
+
+        parent_file_index[objectMap.parentSource] = create_index(objectMap.parentSource, parent_index, relevant_collumn_index);
+
+        reader.close();
       }
+
+      logln("Finished Index");
 
       // Load data
       CsvReader reader(file_path);
@@ -1511,6 +1558,8 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
         if (objectMap.parentSource == "") {
           continue;
         }
+        std::unordered_set<uint8> relevant_collumn_index;
+
         // Load data of parent source
         CsvReader reader(objectMap.parentSource);
 
@@ -1521,16 +1570,29 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
         // Split header
         std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
 
-        // Get index of element in header
-        u_int index = 0;
-        if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
+        // Get index of parent in header
+        u_int parent_index = 0;
+        if (!get_index_of_element(split_header_ref, objectMap.parent, parent_index)) {
           throw_error("Element not found -> Join not working!");
         }
 
-        parent_file_index[objectMap.parentSource] = createIndex(objectMap.parentSource, index);
+        // Get index of template or reference in header
+        if (objectMap.template_str != "") {
+          std::vector<std::string> query_strings = extract_substrings(objectMap.template_str);
+          u_int index = 0;
+          for (const auto &query_string : query_strings) {
+            if (!get_index_of_element(split_header_ref, query_string, index)) {
+              throw_error("Element not found -> Join not working!");
+            }
+            relevant_collumn_index.insert(index);
+          }
+        }
+
+        parent_file_index[objectMap.parentSource] = create_index(objectMap.parentSource, parent_index, relevant_collumn_index);
 
         reader.close();
       }
+      logln("Finished Index");
 
       // Load data
       CsvReader reader(file_path);
@@ -1698,6 +1760,8 @@ void process_triple_map(
       if (objectMap.parentSource == "") {
         continue;
       }
+      std::unordered_set<uint8> relevant_collumn_index;
+
       // Load data of parent source
       CsvReader reader(objectMap.parentSource);
 
@@ -1708,16 +1772,29 @@ void process_triple_map(
       // Split header
       std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
 
-      // Get index of element in header
-      u_int index = 0;
-      if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
+      // Get index of parent in header
+      u_int parent_index = 0;
+      if (!get_index_of_element(split_header_ref, objectMap.parent, parent_index)) {
         throw_error("Element not found -> Join not working!");
       }
 
-      parent_file_index[objectMap.parentSource] = createIndex(objectMap.parentSource, index);
+      // Get index of template or reference in header
+      if (objectMap.template_str != "") {
+        std::vector<std::string> query_strings = extract_substrings(objectMap.template_str);
+        u_int index = 0;
+        for (const auto &query_string : query_strings) {
+          if (!get_index_of_element(split_header_ref, query_string, index)) {
+            throw_error("Element not found -> Join not working!");
+          }
+          relevant_collumn_index.insert(index);
+        }
+      }
+
+      parent_file_index[objectMap.parentSource] = create_index(objectMap.parentSource, parent_index, relevant_collumn_index);
 
       reader.close();
     }
+    logln("Finished Index");
 
     // Load data
     CsvReader reader(file_path);
