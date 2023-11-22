@@ -18,23 +18,22 @@
  * @example Input: "http://example.com/Student/{ID}/\\{escaped}/{Name}"
  *          Output: {"ID", "Name"}
  */
-std::vector<std::string> extract_substrings(const std::string& str) {
+std::vector<std::string> extract_substrings(const std::string &str) {
   std::vector<std::string> substrings;
-  size_t startPos = 0;
+  // Optional: substrings.reserve(estimated_number_of_substrings);
+
+  size_t startPos = 0, endPos = 0;
 
   while ((startPos = str.find('{', startPos)) != std::string::npos) {
-    // Check if the '{' character is not escaped
     if (startPos == 0 || str[startPos - 1] != '\\') {
-      size_t endPos = str.find('}', startPos);
+      endPos = str.find('}', startPos);
       if (endPos != std::string::npos) {
-        std::string substring = str.substr(startPos + 1, endPos - startPos - 1);
-        substrings.push_back(substring);
+        substrings.emplace_back(str, startPos + 1, endPos - startPos - 1);
         startPos = endPos + 1;
       } else {
-        break;  // no matching closing brace found
+        break; // no matching closing brace found
       }
     } else {
-      // If the '{' character is escaped, continue searching from the next character
       startPos++;
     }
   }
@@ -51,9 +50,9 @@ std::vector<std::string> extract_substrings(const std::string& str) {
  * @return std::string A string containing the modified original string with reolacement.
  *
  */
-std::string replace_substring(const std::string& original,
-                              const std::string& toReplace,
-                              const std::string& replacement) {
+std::string replace_substring(const std::string &original,
+                              const std::string &toReplace,
+                              const std::string &replacement) {
   std::string result = original;
   std::size_t pos = result.find(toReplace);
   if (pos != std::string::npos) {
@@ -71,17 +70,17 @@ std::string replace_substring(const std::string& original,
  * @example Input: ["ID", "Name"]
  *          Output: ["{ID}", "{Name}"]
  */
-std::vector<std::string> enclose_in_braces(const std::vector<std::string>& inputStrings) {
+std::vector<std::string> enclose_in_braces(const std::vector<std::string> &inputStrings) {
   std::vector<std::string> enclosedStrings;
-  // Reserve memory to avoid reallocations
   enclosedStrings.reserve(inputStrings.size());
-  for (const auto& str : inputStrings) {
-    enclosedStrings.push_back("{" + str + "}");
+
+  for (const auto &str : inputStrings) {
+    enclosedStrings.emplace_back("{" + str + "}");
   }
+
   return enclosedStrings;
 }
-
-std::vector<std::string> split_csv_line(const std::string& str, char separator) {
+std::vector<std::string> split_csv_line(const std::string &str, char separator) {
   std::vector<std::string> result;
   result.reserve(str.size());
 
