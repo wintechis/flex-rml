@@ -27,16 +27,17 @@ struct PredicateMapInfo {
 
 // Struct to hold the objectMap information
 struct ObjectMapInfo {
-  std::string constant;      // constant value of objectMap
-  std::string template_str;  // template of objectMap
-  std::string termType;      // termType of objectMap
-  std::string reference;     // reference of objectMap
-  std::string language;      // language tag
-  std::string parentSource;  // source of parent TriplesMap
-  std::string parentRef;     // Reference formualtion of parent source
-  std::string parent;        // Store parent key
-  std::string child;         // Store child key
-  std::string dataType;      // Stores specified dataType
+  std::string constant;                            // constant value of objectMap
+  std::string template_str;                        // template of objectMap
+  std::string termType;                            // termType of objectMap
+  std::string reference;                           // reference of objectMap
+  std::string language;                            // language tag
+  std::string parentSource;                        // source of parent TriplesMap
+  std::string parentRef;                           // Reference formualtion of parent source
+  std::string parent;                              // Store parent key
+  std::string child;                               // Store child key
+  std::string dataType;                            // Stores specified dataType
+  std::string join_reference_condition_available;  // Stores if join can be performed using reference condition
 };
 
 // Struct to hold the objectMap information
@@ -51,7 +52,6 @@ struct LogicalSourceInfo {
   std::string reference_formulation;
   std::string source_path;
   std::string logical_iterator;
-  bool join_required;  // is a join required
 };
 
 // Strcut to hold a generated Triple
@@ -79,9 +79,10 @@ struct Flags {
   std::string mappingFile = "";          // default is an empty string
   std::string outputFile = "output.nq";  // defualt output path
   bool streamToFile = false;             // use streaming?
-  bool checkDuplicates = false;          // check for duplicates?
+  bool check_duplicates = false;          // check for duplicates?
   bool threading = false;                // use threading?
   uint8_t thread_count = 0;              // number of threads to use
+  bool adaptive_hash_selection = false;  // use adaptive hash selection? or always 128 bit
 };
 
 // Starting Number when generating blank nodes

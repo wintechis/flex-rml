@@ -31,7 +31,7 @@ std::vector<std::string> extract_substrings(const std::string &str) {
         substrings.emplace_back(str, startPos + 1, endPos - startPos - 1);
         startPos = endPos + 1;
       } else {
-        break; // no matching closing brace found
+        break;  // no matching closing brace found
       }
     } else {
       startPos++;

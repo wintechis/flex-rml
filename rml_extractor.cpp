@@ -248,6 +248,7 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   objectMapInfo.parent = "";
   objectMapInfo.child = "";
   objectMapInfo.dataType = "";
+  objectMapInfo.join_reference_condition_available = "";
 
   // Get Uri of objectMap
   std::string node_uri;
@@ -301,6 +302,12 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   temp_result = find_matching_object(rml_triples, node_uri, RML_CHILD);
   if (temp_result.size() == 1) {
     objectMapInfo.child = temp_result[0];
+  }
+
+  // Get objectMap join_reference_condition
+  temp_result = find_matching_object(rml_triples, node_uri, JOIN_REFERENCE_CONDITION);
+  if (temp_result.size() == 1) {
+    objectMapInfo.join_reference_condition_available = temp_result[0];
   }
 
   // Get objectMap data type
@@ -447,8 +454,6 @@ void parse_rml_rules(
     // Initialize current tripleMap_node
     std::string tripleMap_node = tripleMap_nodes[i];
 
-    bool join_required = false;
-
     ///////////////////////////////////////////////
     // Get information about the subject mapping
     ///////////////////////////////////////////////
@@ -498,10 +503,6 @@ void parse_rml_rules(
     // Iterate over all found objectObjectMap_uris and extract predicate
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
       ObjectMapInfo objectMapInfo = extract_rml_info_of_objectMap(rml_triple, predicateObjectMap_uri);
-      // Check if join is required and set flag
-      if (objectMapInfo.parentSource != "") {
-        join_required = true;
-      }
       objectMapInfos.push_back(objectMapInfo);
     }
     // Add generated vector of objectMaps in current tripleMap to vector outside
@@ -512,8 +513,6 @@ void parse_rml_rules(
     ///////////////////////////////////////////////
 
     LogicalSourceInfo logicalSourceInfo = extract_rml_info_of_source_data(rml_triple, tripleMap_node);
-    // Set join required
-    logicalSourceInfo.join_required = join_required;
     logicalSourceInfo_of_tripleMaps.push_back(logicalSourceInfo);
   }
 }

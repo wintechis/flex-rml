@@ -201,6 +201,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Store extracted Info
       std::string new_template_of_parent = "";
 
+      std::string join_reference_condition_available = "false";
       // Query for template in subjectMap of parent
       temp_result = find_matching_object(triples, subjectMap_node, RML_TEMPLATE);
       if (temp_result.size() != 0) {
@@ -211,6 +212,13 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
 
         // replace all entries of "parent" with "child"
         new_template_of_parent = replace_substring(current_template_parent, temp_parent, temp_child);
+
+        std::vector<std::string> query_string = extract_substrings(current_template_parent);
+
+        // Reference Condition is working if parent key and string in template are the same
+        if (query_string[0] == parent) {
+          join_reference_condition_available = "true";
+        }
       }
 
       // -> Get source of parent triples map
@@ -281,6 +289,13 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       temp_triple.subject = blank_node;
       temp_triple.predicate = RML_CHILD;
       temp_triple.object = child;
+
+      triples.push_back(temp_triple);
+
+      // Add join_reference_condition
+      temp_triple.subject = blank_node;
+      temp_triple.predicate = JOIN_REFERENCE_CONDITION;
+      temp_triple.object = join_reference_condition_available;
 
       triples.push_back(temp_triple);
 

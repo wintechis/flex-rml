@@ -20,7 +20,6 @@
 
 // For writing to files only available on PC
 #ifndef ARDUINO
-#include "city.h"
 #include <condition_variable>
 #include <fstream>
 #include <functional>
@@ -28,6 +27,8 @@
 #include <queue>
 #include <random>
 #include <thread>
+
+#include "city.h"
 #endif
 
 // Number used when expanding maps
@@ -55,13 +56,25 @@ struct hash<NQuad> {
     return result;
   }
 };
-} // namespace std
+}  // namespace std
 
 // Functions
 std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &input_data = "");
 #ifndef ARDUINO
-void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, uint8_t num_threads);
-void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates);
+void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection, uint8_t num_threads);
+void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection);
+std::string generate_object_with_hash_join(
+    const ObjectMapInfo &objectMapInfo,
+    const std::vector<std::string> &split_data,
+    const std::vector<std::string> &split_header,
+    CsvReader &reader,
+    const std::unordered_map<std::string, std::streampos> &parent_file_index);
+std::vector<std::string> generate_object_with_hash_join_full(
+    const ObjectMapInfo &objectMapInfo,
+    const std::vector<std::string> &split_data_child,
+    const std::vector<std::string> &split_header_child,
+    const std::vector<std::string> &split_header_parent,
+    std::unordered_map<std::string, std::vector<std::vector<std::string>>> &parent_file_index_full);
 #endif
 
 #endif

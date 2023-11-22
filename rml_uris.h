@@ -39,4 +39,5 @@ const std::string DEFAULT_GRAPH = "http://www.w3.org/ns/r2rml#defaultGraph";
 const std::string NO_GRAPH = "ng";
 const std::string PARENT_SOURCE = "http://www.example.com#parentSource";
 const std::string PARENT_REFERENCE_FORMULATION = "http://www.example.com#parentRef";
+const std::string JOIN_REFERENCE_CONDITION = "http://www.example.com#joinReferenceCondition";
 #endif

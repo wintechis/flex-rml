@@ -40,7 +40,7 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
   for (int i = 1; i < argc; i++) {
     std::string flag = argv[i];
 
-    // Handle Flag '-m'
+    // -m Path to mapping file
     if (flag == "-m") {
       if (i + 1 < argc) {
         std::string value = argv[++i];
@@ -50,7 +50,7 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
       }
     }
 
-    // Handle Flag '-o'
+    // -o Path to output file
     else if (flag == "-o") {
       if (i + 1 < argc) {
         std::string value = argv[++i];
@@ -60,19 +60,22 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
       }
     }
 
-    // Handle Flag '-s'
-    else if (flag == "-s") {
-      flags.streamToFile = true;
-    }
-
+    // Remove duplicates
     else if (flag == "-d") {
-      flags.checkDuplicates = true;
+      flags.check_duplicates = true;
     }
 
+    // Use multithreading
     else if (flag == "-t") {
       flags.threading = true;
     }
 
+    // Use adaptive hash selection
+    else if (flag == "-a") {
+      flags.adaptive_hash_selection = true;
+    }
+
+    // Set number of threads to use
     else if (flag == "-tc") {
       if (i + 1 < argc) {
         std::string value = argv[++i];
@@ -96,7 +99,7 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
   // Error handling flags
   if (flags.mappingFile.empty()) {
     std::cerr << "Missing mandatory -m flag with mapping file path.\n";
-    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS TO USE\"]\n";
+    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -a \"ADAPTIVE SELECTION OF HASH SIZE\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS TO USE\"]\n";
     return false;
   }
   return true;
@@ -134,11 +137,11 @@ int main(int argc, char* argv[]) {
 
   if (flags.threading) {
     // Performe data mapping using threads
-    map_data_to_file_threading(rml_rule, outFile, flags.checkDuplicates, flags.thread_count);
+    map_data_to_file_threading(rml_rule, outFile, flags.check_duplicates, flags.adaptive_hash_selection, flags.thread_count);
   } else {
     // Performe data mapping
     std::cout << "Without Threading..." << std::endl;
-    map_data_to_file(rml_rule, outFile, flags.checkDuplicates);
+    map_data_to_file(rml_rule, outFile, flags.check_duplicates, flags.adaptive_hash_selection);
   }
 
   // Close the file
