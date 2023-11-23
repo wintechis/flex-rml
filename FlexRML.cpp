@@ -1383,9 +1383,13 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
 //// MAP DATA TO FILE - SINGLE THREAD ////
 /////////////////////////////////////////
 
-void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, bool remove_duplicates, bool adaptive_hash_selection, float sampling_probability) {
+void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &flags) {
+  bool remove_duplicates = flags.check_duplicates;
+  bool adaptive_hash_selection = flags.adaptive_hash_selection;
+  uint8 fixed_bit_size = flags.fixed_bit_size;
+
   // Set sampling probability
-  gloabl_sampling_probability = sampling_probability;
+  gloabl_sampling_probability = flags.sampling_probability;
 
   // Set dummy value for input data
   std::string input_data = "";
@@ -1448,7 +1452,23 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, bool remov
   logln_debug("Finished parsing RML rules.");
 
   // Decide on hash size
-  uint8 hash_method = 2;
+  uint8 hash_method;
+
+  // Handle fixed bit size
+  if (fixed_bit_size == 128) {
+    hash_method = 2;
+    adaptive_hash_selection = false;
+  } else if (fixed_bit_size == 64) {
+    hash_method = 1;
+    adaptive_hash_selection = false;
+  } else if (fixed_bit_size == 32) {
+    hash_method = 0;
+    adaptive_hash_selection = false;
+  } else {
+    hash_method = 2;
+  }
+
+  // Check if adaptive selection is needed
   if (adaptive_hash_selection == true) {
     hash_method = detect_hash_method(
         tripleMap_nodes,
@@ -1890,7 +1910,13 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
   }
 }
 
-void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, bool remove_duplicates, bool adaptive_hash_selection, uint8_t num_threads, float sampling_probability) {
+void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, Flags &flags) {
+  bool remove_duplicates = flags.check_duplicates;
+  bool adaptive_hash_selection = flags.adaptive_hash_selection;
+  uint8_t num_threads = flags.thread_count;
+  float sampling_probability = flags.sampling_probability;
+  int fixed_bit_size = flags.fixed_bit_size;
+
   // Set sampling probability
   gloabl_sampling_probability = sampling_probability;
 
@@ -1915,7 +1941,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, 
 
   // If only one tripleMap is found use single threading, to reduce overhead sicne there is no advantage
   if (tripleMap_nodes.size() == 1) {
-    map_data_to_file(rml_rule, out_file, remove_duplicates, adaptive_hash_selection, sampling_probability);
+    map_data_to_file(rml_rule, out_file, flags);
     return;
   }
 
@@ -1944,8 +1970,23 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, 
 
   logln_debug("Finished parsing RML rules.");
 
-  // Estimate join size
-  uint8 hash_method = 2;
+  // Decide on hash size
+  uint8 hash_method;
+
+  // Handle fixed bit size
+  if (fixed_bit_size == 128) {
+    hash_method = 2;
+    adaptive_hash_selection = false;
+  } else if (fixed_bit_size == 64) {
+    hash_method = 1;
+    adaptive_hash_selection = false;
+  } else if (fixed_bit_size == 32) {
+    hash_method = 0;
+    adaptive_hash_selection = false;
+  } else {
+    hash_method = 2;
+  }
+
   if (adaptive_hash_selection == true) {
     hash_method = detect_hash_method(
         tripleMap_nodes,

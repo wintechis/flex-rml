@@ -49,8 +49,8 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
 
         if (config_file.is_open()) {
           while (getline(config_file, line)) {
-            // Ignore comments
-            if (line.rfind("//", 0) == 0) {
+            // Ignore comments and empty lines
+            if (line.empty() || line.rfind("#", 0) == 0) {
               continue;
             }
 
@@ -58,9 +58,9 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
             std::string key, value;
             if (getline(iss, key, '=') && getline(iss, value)) {
               if (key == "mapping") {
-                flags.mappingFile = value;
+                flags.mapping_file = value;
               } else if (key == "output_file") {
-                flags.outputFile = value;
+                flags.output_file = value;
               } else if (key == "remove_duplicates") {
                 flags.check_duplicates = (value == "true");
               } else if (key == "use_threading") {
@@ -83,7 +83,6 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
                   throw_error("Invalid sampling probability! - The number is out of range for a float.");
                 }
               } else if (key == "number_of_threads") {
-                std::string value = argv[++i];
                 try {
                   flags.thread_count = std::stoi(value);
                 } catch (const std::invalid_argument& e) {
@@ -91,12 +90,31 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
                 } catch (const std::out_of_range& e) {
                   throw_error("Invalid thread count! - The number is out of range for an integer.");
                 }
+              } else if (key == "fixed_bit_size") {
+                try {
+                  int parsed_value = std::stoi(value);
+
+                  int allowed_values[] = {32, 64, 128};
+
+                  // Check if the value is within allowed values
+                  bool is_allowed = std::find(std::begin(allowed_values), std::end(allowed_values), parsed_value) != std::end(allowed_values);
+                  if (!is_allowed) {
+                    throw_error("Invalid bit size! - Only values 32, 64, 128 are allowed.");
+                  }
+
+                  flags.fixed_bit_size = parsed_value;
+                } catch (const std::invalid_argument& e) {
+                  throw_error("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
+                } catch (const std::out_of_range& e) {
+                  throw_error("Invalid bit size! - The number is out of range for an integer.");
+                }
               } else {
                 std::cerr << "Unknown flag: " << flag << "\n";
               }
             }
-            config_file.close();
           }
+          config_file.close();
+
         } else {
           std::cerr << "Unable to open config file: " << config_file_path << "\n";
           return false;
@@ -105,13 +123,14 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
         std::cerr << flag << " requires an argument.\n";
         return false;
       }
+      return true;
     }
 
     // -m Path to mapping file
     if (flag == "-m") {
       if (i + 1 < argc) {
         std::string value = argv[++i];
-        flags.mappingFile = value;
+        flags.mapping_file = value;
       } else {
         std::cerr << flag << " requires an argument.\n";
       }
@@ -121,7 +140,7 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
     else if (flag == "-o") {
       if (i + 1 < argc) {
         std::string value = argv[++i];
-        flags.outputFile = value;
+        flags.output_file = value;
       } else {
         std::cerr << flag << " requires an argument.\n";
       }
@@ -165,6 +184,32 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
       }
     }
 
+    // Set bitsize of hash function
+    else if (flag == "-b") {
+      if (i + 1 < argc) {
+        std::string value = argv[++i];
+        try {
+          int parsed_value = std::stoi(value);
+
+          int allowed_values[] = {32, 64, 128};
+
+          // Check if the value is within allowed values
+          bool is_allowed = std::find(std::begin(allowed_values), std::end(allowed_values), parsed_value) != std::end(allowed_values);
+          if (!is_allowed) {
+            throw_error("Invalid bit size! - Only values 32, 64, 128 are allowed.");
+          }
+
+          flags.fixed_bit_size = parsed_value;
+        } catch (const std::invalid_argument& e) {
+          throw_error("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
+        } catch (const std::out_of_range& e) {
+          throw_error("Invalid bit size! - The number is out of range for an integer.");
+        }
+      } else {
+        std::cerr << flag << " requires an argument.\n";
+      }
+    }
+
     // Set number of threads to use
     else if (flag == "-tc") {
       if (i + 1 < argc) {
@@ -182,14 +227,14 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
     }
 
     else {
-      std::cerr << "Unknown flag: " << flag << "\n";
+      std::cerr << "Unknown command line flag: " << flag << "\n";
     }
   }
 
   // Error handling flags
-  if (flags.mappingFile.empty()) {
+  if (flags.mapping_file.empty()) {
     std::cerr << "Missing mandatory -m flag with mapping file path.\n";
-    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -a \"ADAPTIVE SELECTION OF HASH SIZE\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS TO USE\" -p \"SAMPLING PROBABILITY TO USE\"]\n";
+    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -a \"ADAPTIVE SELECTION OF HASH SIZE\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS\" -p \"SAMPLING PROBABILITY\" -c \"PATH TO CONFIG FILE\" -b \"FIXED BIT SIZE\"]\n";
     return false;
   }
   return true;
@@ -204,12 +249,15 @@ int main(int argc, char* argv[]) {
 
   // Load RML rule
   std::string rml_rule;
-  if (!readRmlFile(flags.mappingFile, rml_rule)) {
+  if (!readRmlFile(flags.mapping_file, rml_rule)) {
     return 1;
   }
 
   // Start timing
   auto start = std::chrono::high_resolution_clock::now();
+
+  std::cout << "Processing: " << flags.mapping_file << std::endl;
+  std::cout << "Output file: " << flags.output_file << std::endl;
 
   /////////////////////////////////
   //////// Prepare Mapping ////////
@@ -217,24 +265,24 @@ int main(int argc, char* argv[]) {
 
   ////// Streaming Mode: Stream data to file //////
   // Open a file in write mode
-  std::ofstream outFile(flags.outputFile);
+  std::ofstream out_file(flags.output_file);
 
   // Check if the file is opened successfully
-  if (!outFile.is_open()) {
+  if (!out_file.is_open()) {
     std::cerr << "Failed to open the output file!" << std::endl;
     return 1;
   }
 
   if (flags.threading) {
     // Performe data mapping using threads
-    map_data_to_file_threading(rml_rule, outFile, flags.check_duplicates, flags.adaptive_hash_selection, flags.thread_count, flags.sampling_probability);
+    map_data_to_file_threading(rml_rule, out_file, flags);
   } else {
     // Performe data mapping
-    map_data_to_file(rml_rule, outFile, flags.check_duplicates, flags.adaptive_hash_selection, flags.sampling_probability);
+    map_data_to_file(rml_rule, out_file, flags);
   }
 
   // Close the file
-  outFile.close();
+  out_file.close();
 
   // Stop timing
   auto end = std::chrono::high_resolution_clock::now();

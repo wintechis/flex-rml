@@ -76,14 +76,14 @@ struct NQuad {
 };
 
 struct Flags {
-  std::string mappingFile = "";          // default is an empty string
-  std::string outputFile = "output.nq";  // defualt output path
-  bool streamToFile = false;             // use streaming?
-  bool check_duplicates = false;         // check for duplicates?
-  bool threading = false;                // use threading?
-  uint8_t thread_count = 0;              // number of threads to use
-  bool adaptive_hash_selection = false;  // use adaptive hash selection? or always 128 bit
-  float sampling_probability = 0.05;     // defines the sampling probability used when estimating result size
+  std::string mapping_file = "";          // default is an empty string
+  std::string output_file = "output.nq";  // defualt output path
+  bool check_duplicates = false;          // check for duplicates?
+  bool threading = false;                 // use threading?
+  uint8_t thread_count = 0;               // number of threads to use
+  bool adaptive_hash_selection = false;   // use adaptive hash selection? or always 128 bit
+  float sampling_probability = 0.05;      // defines the sampling probability used when estimating result size
+  uint8_t fixed_bit_size = 0;             // Specife the bit size of the hash function manually, 0 means not fixed
 };
 
 // Starting Number when generating blank nodes
