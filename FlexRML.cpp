@@ -1,7 +1,8 @@
 #include "FlexRML.h"
 
-#define SAMPLING_PROB 0.99
 #define BATCH_SIZE 100
+
+float gloabl_sampling_probability = 0.05;
 
 // Counter for generated blank nodes
 int blank_node_counter = 18956;
@@ -250,7 +251,7 @@ int estimate_join_size(
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
   // Sampling probabilities
-  float p1 = SAMPLING_PROB;
+  float p1 = gloabl_sampling_probability;
   float p2 = 1.0;
 
   // Store unique generated elements.
@@ -475,7 +476,7 @@ void estimateCSVData(
     std::unordered_set<uint64_t> &seen_objects_triple_map_wo_join) {
   /// Get number of duplicates in sample ///
 
-  float p = SAMPLING_PROB;
+  float p = gloabl_sampling_probability;
 
   // Create a random number generator
   std::random_device rd;
@@ -621,6 +622,9 @@ int estimate_generated_triple(
   // Counter for estimated result size
   int result = 0;
 
+  log("Using a sampling probability of: ");
+  logln(std::to_string(gloabl_sampling_probability).substr(0, 5).c_str());
+
   // Store generated elements with join
   std::unordered_set<uint64_t> seen_elements_triple_map;
   // Store generated elements without join
@@ -636,7 +640,7 @@ int estimate_generated_triple(
     std::string referenceFormulation = logicalSourceInfo_of_tripleMaps[i].reference_formulation;
 
     // Generate sample to estimate duplicate rate:
-    float p = SAMPLING_PROB;
+    float p = gloabl_sampling_probability;
 
     ////// Handle classes //////
     // If data is constant -> nr of classes * 1, since subject stays the same
@@ -713,7 +717,6 @@ int estimate_generated_triple(
         float U_hat = seen_elements.size() / p;
 
         // Estimate number of triples
-        logln(int(U_hat));
         result += U_hat;
       } else {
         // Join required
@@ -760,16 +763,6 @@ uint8 detect_hash_method(
     // 128bit
     hash_method = 2;
   }
-
-  log("Using a ");
-  if (hash_method == 0) {
-    log(32);
-  } else if (hash_method == 1) {
-    log(64);
-  } else if (hash_method == 2) {
-    log(128);
-  }
-  logln(" bit hash function.");
 
   return hash_method;
 }
@@ -1390,7 +1383,10 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
 //// MAP DATA TO FILE - SINGLE THREAD ////
 /////////////////////////////////////////
 
-void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection) {
+void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, bool remove_duplicates, bool adaptive_hash_selection, float sampling_probability) {
+  // Set sampling probability
+  gloabl_sampling_probability = sampling_probability;
+
   // Set dummy value for input data
   std::string input_data = "";
 
@@ -1461,6 +1457,16 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
         predicateMapInfo_of_tripleMaps,
         objectMapInfo_of_tripleMaps);
   }
+
+  log("Using a ");
+  if (hash_method == 0) {
+    log(32);
+  } else if (hash_method == 1) {
+    log(64);
+  } else if (hash_method == 2) {
+    log(128);
+  }
+  logln(" bit hash function.");
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1595,14 +1601,14 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove
           }
 
           if (add_triple) {
-            outFile << quad.subject << " "
-                    << quad.predicate << " "
-                    << quad.object << " ";
+            out_file << quad.subject << " "
+                     << quad.predicate << " "
+                     << quad.object << " ";
 
             if (quad.graph != "") {
-              outFile << quad.graph << " .\n";
+              out_file << quad.graph << " .\n";
             } else {
-              outFile << ".\n";
+              out_file << ".\n";
             }
           }
         }
@@ -1793,7 +1799,7 @@ void process_triple_map(
   }
 }
 
-void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, bool remove_duplicates, const uint8_t &hash_method) {
+void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bool remove_duplicates, const uint8_t &hash_method) {
   NQuad quad;
 
   std::ostringstream outStream;
@@ -1808,8 +1814,6 @@ void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, boo
   // Used to store 32 bit hashes
   std::unordered_set<uint32_t> nquad_hashes_32;
 
-  log("Using Method: ");
-  logln(hash_method);
   std::vector<NQuad> quad_batch;
   while (true) {
     size_t count = quadQueue.pop(quad_batch, BATCH_SIZE);
@@ -1871,7 +1875,7 @@ void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, boo
     quad_batch.clear();
 
     // Write the buffered data to the file
-    outFile << outStream.str();
+    out_file << outStream.str();
     outStream.str("");  // Clear the buffer
     outStream.clear();  // Clear any error flags
   }
@@ -1886,7 +1890,10 @@ void writerThread(std::ofstream &outFile, ThreadSafeQueue<NQuad> &quadQueue, boo
   }
 }
 
-void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection, uint8_t num_threads) {
+void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, bool remove_duplicates, bool adaptive_hash_selection, uint8_t num_threads, float sampling_probability) {
+  // Set sampling probability
+  gloabl_sampling_probability = sampling_probability;
+
   // Set dummy value for input data
   std::string input_data = "";
 
@@ -1905,6 +1912,12 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
 
   // Get all tripleMaps
   std::vector<std::string> tripleMap_nodes = find_matching_subject(rml_triple, RDF_TYPE, TRIPLES_MAP);
+
+  // If only one tripleMap is found use single threading, to reduce overhead sicne there is no advantage
+  if (tripleMap_nodes.size() == 1) {
+    map_data_to_file(rml_rule, out_file, remove_duplicates, adaptive_hash_selection, sampling_probability);
+    return;
+  }
 
   // Store all logicalSourceInfos of all tripleMaps
   std::vector<LogicalSourceInfo> logicalSourceInfo_of_tripleMaps;
@@ -1942,6 +1955,16 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
         objectMapInfo_of_tripleMaps);
   }
 
+  log("Using a ");
+  if (hash_method == 0) {
+    log(32);
+  } else if (hash_method == 1) {
+    log(64);
+  } else if (hash_method == 2) {
+    log(128);
+  }
+  logln(" bit hash function.");
+
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
   /////////////////////////////////////////////////////
@@ -1956,7 +1979,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, b
   ThreadSafeQueue<NQuad> quadQueue(1000);
 
   // Start the writer thread before the worker threads
-  std::thread writer(writerThread, std::ref(outFile), std::ref(quadQueue), remove_duplicates, std::ref(hash_method));
+  std::thread writer(writerThread, std::ref(out_file), std::ref(quadQueue), remove_duplicates, std::ref(hash_method));
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     threads.push_back(std::thread(
         process_triple_map,

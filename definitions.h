@@ -79,10 +79,11 @@ struct Flags {
   std::string mappingFile = "";          // default is an empty string
   std::string outputFile = "output.nq";  // defualt output path
   bool streamToFile = false;             // use streaming?
-  bool check_duplicates = false;          // check for duplicates?
+  bool check_duplicates = false;         // check for duplicates?
   bool threading = false;                // use threading?
   uint8_t thread_count = 0;              // number of threads to use
   bool adaptive_hash_selection = false;  // use adaptive hash selection? or always 128 bit
+  float sampling_probability = 0.05;     // defines the sampling probability used when estimating result size
 };
 
 // Starting Number when generating blank nodes

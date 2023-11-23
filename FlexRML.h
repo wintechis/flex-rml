@@ -61,8 +61,8 @@ struct hash<NQuad> {
 // Functions
 std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &input_data = "");
 #ifndef ARDUINO
-void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection, uint8_t num_threads);
-void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection);
+void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection, uint8_t num_threads, float sampling_probability);
+void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, bool remove_duplicates, bool adaptive_hash_selection, float sampling_probability);
 std::string generate_object_with_hash_join(
     const ObjectMapInfo &objectMapInfo,
     const std::vector<std::string> &split_data,
