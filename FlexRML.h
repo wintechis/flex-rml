@@ -74,7 +74,7 @@ std::vector<std::string> generate_object_with_hash_join_full(
     const std::vector<std::string> &split_data_child,
     const std::vector<std::string> &split_header_child,
     const std::vector<std::string> &split_header_parent,
-    std::unordered_map<std::string, std::vector<std::vector<std::string>>> &parent_file_index_full);
+    const std::unordered_map<std::string, std::vector<std::vector<std::string>>> &parent_file_index_full);
 #endif
 
 #endif
