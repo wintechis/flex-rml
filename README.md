@@ -11,24 +11,28 @@ RML (RDF Mapping Language) is central to data transformation and knowledge graph
 - Consumer Hardware
 - Cloud Environments
 
-## Installation
+Currently, FlexRML only supports data in CSV format. However, future versions will include support for additional data formats such as JSON and XML.
 
+## Installation
+### Using Prebuilt Binaries
+Prebuilt binaries for various systems are available in the releases section.
+
+### Compiling from Source
 **Prerequisites**
 
-Before compilation, a build environment must be set up on the system.
-
-This can be done on Debian based systems via :
+Before compilation, set up a build environment on your system. 
+On Debian-based systems, this can be done using:
 
 ```bash
 apt install build-essential
 ```
 
-**Compiling from Source:**
+**Compilation Process:**
 
 1. Clone or download the repository.
 2. Navigate to the project directory.
-3. Execute the make file with the command: `make`
-4. After compilation, you'll find the executable named `FlexRML`.
+3. Run the makefile using the command: `make`.
+4. After compilation, the executable `FlexRML` will be available in the directory.
 
 ## Usage
 
@@ -103,3 +107,6 @@ If you are in the example folder and run:
 The resulting RDF graph can be found in output_file.nq.
 The graph looks like this:
 ![Resulting_Graph](https://github.com/FreuMi/FlexRML/blob/main/example/output_graph.png)
+
+## Conformance
+FlexRML is validated against the latest applicable [RML test cases](https://github.com/kg-construct/rml-test-cases) to ensure conformance with the specification.
