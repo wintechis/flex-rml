@@ -89,4 +89,7 @@ struct Flags {
 // Starting Number when generating blank nodes
 extern int blank_node_counter;
 
+const int THRESHOLD_32BIT = 2073;
+const int THRESHOLD_64BIT = 135835773;
+
 #endif
