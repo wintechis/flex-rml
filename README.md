@@ -34,7 +34,7 @@ apt install build-essential
 3. Run the makefile using the command: `make`.
 4. After compilation, the executable `FlexRML` will be available in the directory.
 
-## Usage
+## Getting Started
 
 FlexRML operates as a command-line program, offering a variety of configuration flags for ease of use:
 
@@ -42,15 +42,20 @@ FlexRML operates as a command-line program, offering a variety of configuration 
 ./FlexRML [OPTIONS]
 ```
 
-- -m [path] Specify the path to the mapping file.
-- -o [name] Define the name for the output file.
-- -d Remove duplicate entries before writing to the output file.
-- -t Use threading, by default the maximum number of available threads are used.
-- -tc [integer] Specify the number of threads that should be used.
-- -a Use adaptive Result Size Estimation and adaptive hash size selection
-- -p [float] Set sampling probability used for Result Size Estimation. Higher probabities produce better estimates but need more time.
-- -c [path] Use config file instead of command line arguments.
-- -b [integer] Use a fixed hash size, value which must be one of [32, 64, 128]
+| Flag  | Description    | Default |
+| --- | ------- | ----- | 
+| -h | Display available flags | -- |
+| -m [path] | Specify the path to the mapping file. | --  | 
+| -o [name]  | Define the name for the output file. | "output.nq"  | 
+| -d   | Remove duplicate entries before writing to the output file. | false | 
+| -t   | Use threading, by default the maximum number of available threads are used. | false | 
+| -tc [integer]   | Specify the number of threads to use. If set to 0 all threads are used. | 0 | 
+| -a   | Use adaptive Result Size Estimation and adaptive hash size selection. | 0 | 
+| -p [float]   | Set sampling probability used for Result Size Estimation. Higher probabities produce better estimates but need more time. | 0.2 | 
+| -c [path]   | Use config file instead of command line arguments. | -- | 
+| -b [integer]   | Use a fixed hash size, value which must be one of [32, 64, 128] | -- |
+| -r [tokens,to,remove]   | ist of tokens which should be removed from the input. | -- | 
+
 
 **Note:**
 
@@ -84,6 +89,25 @@ fixed_hash_size=
 adaptive_hash_selection=false
 sampling_probability=0.1
 ```
+
+## Suggested Configurations
+Depending on the use case and environment FlexRML is executed, different configurations are usefull.
+
+**Fastest Execution Speed**
+
+The method prioritizes faster execution speed at the expense of increased memory usage. It uses a 128-bit hash function to identify duplicates and bypasses the result size estimation step to achieve faster performance. To use this mode, run the following command:
+```bash
+./FlexRML -m [path] -d -t
+```
+
+
+**Lowest memory consumption**
+
+This mode is optimized for minimal memory usage by using a result size estimator to approximate the number of N-Quads generated. Although this process takes more time due to the additional computation, it conserves memory, in particular when the estimated number of N-Quads is less than 135,835,773. This approach is beneficial in memory-constrained environments. To enable this mode, use the following command:
+```bash
+./FlexRML -m [path] -d -t -a
+```
+
 
 ## Example
 
