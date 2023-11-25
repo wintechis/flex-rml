@@ -36,9 +36,60 @@ bool readRmlFile(const std::string& filePath, std::string& rml_rule) {
   return true;
 }
 
+/**
+ * Splits a string into a set based on a specified delimiter.
+ *
+ * @param str The string to be split.
+ * @param delimiter The character used as a delimiter to split the string.
+ * @return std::unordered_set<std::string> A set containing the split substrings.
+ */
+std::unordered_set<std::string> split_to_set(const std::string& str, char delimiter) {
+  std::unordered_set<std::string> result_set;
+  std::string::size_type start = 0;
+  std::string::size_type end = str.find(delimiter);
+
+  while (end != std::string::npos) {
+    result_set.insert(str.substr(start, end - start));
+    start = end + 1;
+    end = str.find(delimiter, start);
+  }
+
+  result_set.insert(str.substr(start));
+  return result_set;
+}
+
+void display_help() {
+  std::cout << "FlexRML is a flexible RML processor optimized for a wide range of devices.\n"
+            << "Usage: ./FlexRML [OPTIONS]\n"
+            << "-m [path] Specify the path to the mapping file.\n"
+            << "-o [name] Define the name for the output file. Default is 'output.nq' \n"
+            << "-d Remove duplicate entries before writing to the output file.\n"
+            << "-t Use threading, by default the maximum number of available threads are used.\n"
+            << "-tc [integer] Specify the number of threads that should be used.\n"
+            << "-a Use adaptive Result Size Estimation and adaptive hash size selection.\n"
+            << "-p [float] Set sampling probability used for Result Size Estimation. Higher probabities produce better estimates but need more time.\n"
+            << "-c [path] Use config file instead of command line arguments.\n"
+            << "-b [integer] Use a fixed hash size, value which must be one of [32, 64, 128]\n"
+            << "\n"
+            << "Notes:\n"
+            << "When a config file is specified using the '-c' flag, all other command-line arguments are ignored, and settings are exclusively loaded from the config file.\n"
+            << "Selecting a fixed hash size using the '-b' flag skips the adaptive Result Size Estimation. Be aware that if the manually chosen hash size is too small for the input data, hash collisions may occur. This can lead to missing N-Quads in the output.\n"
+            << "\n"
+            << "Configuration for fastest mapping:\n"
+            << "./FlexRML -m [path] -d -t\n"
+            << "Configuration for least memory usage during mapping:\n"
+            << "./FlexRML -m [path] -d -t -a\n"
+            << std::endl;
+}
+
 bool handle_flags(const int& argc, char* argv[], Flags& flags) {
   for (int i = 1; i < argc; i++) {
     std::string flag = argv[i];
+
+    if (flag == "-h") {
+      display_help();
+      std::exit(0);
+    }
 
     // Handle config file
     if (flag == "-c") {
@@ -108,6 +159,9 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
                 } catch (const std::out_of_range& e) {
                   throw_error("Invalid bit size! - The number is out of range for an integer.");
                 }
+              } else if (key == "tokens_to_remove") {
+                std::unordered_set<std::string> tokens_set = split_to_set(value, ',');
+                flags.tokens_to_remove = tokens_set;
               } else {
                 std::cerr << "Unknown flag: " << flag << "\n";
               }
@@ -159,6 +213,19 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
     // Use adaptive hash selection
     else if (flag == "-a") {
       flags.adaptive_hash_selection = true;
+    }
+
+    // List of elements to remove
+    else if (flag == "-r") {
+      if (i + 1 < argc) {
+        std::string value = argv[++i];
+
+        std::unordered_set<std::string> tokens_set = split_to_set(value, ',');
+        flags.tokens_to_remove = tokens_set;
+
+      } else {
+        std::cerr << flag << " requires an argument.\n";
+      }
     }
 
     // Set sampling probability
@@ -234,7 +301,7 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
   // Error handling flags
   if (flags.mapping_file.empty()) {
     std::cerr << "Missing mandatory -m flag with mapping file path.\n";
-    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -a \"ADAPTIVE SELECTION OF HASH SIZE\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS\" -p \"SAMPLING PROBABILITY\" -c \"PATH TO CONFIG FILE\" -b \"FIXED BIT SIZE\"]\n";
+    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -a \"ADAPTIVE SELECTION OF HASH SIZE\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS\" -p \"SAMPLING PROBABILITY\" -c \"PATH TO CONFIG FILE\" -b \"FIXED BIT SIZE\"] -r \"ELEMENTS,TO,REMOVE\"]\n";
     return false;
   }
   return true;

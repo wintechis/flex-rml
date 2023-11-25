@@ -7,6 +7,8 @@ float gloabl_sampling_probability = 0.05;
 // Counter for generated blank nodes
 int blank_node_counter = 18956;
 
+std::unordered_set<std::string> global_tokens_to_remove;
+
 //////////////////////////////////////
 ///// HASH FUNCTIONS /////////////////
 //////////////////////////////////////
@@ -111,6 +113,11 @@ std::string fill_in_template(
 
     generated_value_last = split_data[index];
     if (generated_value_last.empty()) {
+      return "";
+    }
+
+    // Check if value is tokens_to_remove
+    if (global_tokens_to_remove.find(generated_value_last) != global_tokens_to_remove.end()) {
       return "";
     }
 
@@ -1389,6 +1396,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
   bool remove_duplicates = flags.check_duplicates;
   bool adaptive_hash_selection = flags.adaptive_hash_selection;
   uint8 fixed_bit_size = flags.fixed_bit_size;
+  global_tokens_to_remove = flags.tokens_to_remove;
 
   // Set sampling probability
   gloabl_sampling_probability = flags.sampling_probability;
@@ -1923,6 +1931,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, 
   uint8_t num_threads = flags.thread_count;
   float sampling_probability = flags.sampling_probability;
   int fixed_bit_size = flags.fixed_bit_size;
+  global_tokens_to_remove = flags.tokens_to_remove;
 
   // Set sampling probability
   gloabl_sampling_probability = sampling_probability;
