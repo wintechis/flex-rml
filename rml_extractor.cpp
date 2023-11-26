@@ -283,10 +283,20 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   // Get objectMap parentSource
   temp_result = find_matching_object(rml_triples, node_uri, PARENT_SOURCE);
   if (temp_result.size() == 1) {
-    objectMapInfo.parentSource = temp_result[0];
+    //  Check if source is a blanknode
+    std::vector<std::string> temp_result2 = find_matching_object(rml_triples, temp_result[0], SD_NAME);
+    if (temp_result2.empty()) {
+      // Assign the found source to source
+      objectMapInfo.parentSource = temp_result[0];
+      objectMapInfo.parent_in_memory_name = "";
+    } else {
+      //  Handle in-memory structure
+      objectMapInfo.parent_in_memory_name = temp_result2[0];
+      objectMapInfo.parentSource = "";
+    }
   }
 
-  // Get objectMap parentSource
+  // Get objectMap parentSourceReferrence
   temp_result = find_matching_object(rml_triples, node_uri, PARENT_REFERENCE_FORMULATION);
   if (temp_result.size() == 1) {
     objectMapInfo.parentRef = temp_result[0];
@@ -403,9 +413,6 @@ LogicalSourceInfo extract_rml_info_of_source_data(const std::vector<NTriple>& rm
     logicalSource_uri = temp_result[0];
   }
 
-  // String to store the source
-  // TODO CHECK IF source is needed
-  std::string source;
   // Find matching object for source
   temp_result = find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
   if (temp_result.empty()) {
@@ -413,8 +420,17 @@ LogicalSourceInfo extract_rml_info_of_source_data(const std::vector<NTriple>& rm
   } else if (temp_result.size() > 1) {
     throw_error("Error: More than one source definition found!");
   } else {
-    // Assign the found source to source
-    temp_logicalSourceInfo.source_path = temp_result[0];
+    // Check if source is a blanknode
+    std::vector<std::string> temp_result2 = find_matching_object(rml_triples, temp_result[0], SD_NAME);
+    if (temp_result2.empty()) {
+      // Assign the found source to source
+      temp_logicalSourceInfo.source_path = temp_result[0];
+      temp_logicalSourceInfo.in_memory_name = "";
+    } else {
+      //  Handle in-memory structure
+      temp_logicalSourceInfo.in_memory_name = temp_result2[0];
+      temp_logicalSourceInfo.source_path = "";
+    }
   }
 
   temp_result = find_matching_object(rml_triples, logicalSource_uri, "http://semweb.mmlab.be/ns/rml#iterator");

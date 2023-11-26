@@ -2,6 +2,7 @@
 #define FLEXRML_H
 
 #include <cstdint>
+#include <map>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -59,7 +60,7 @@ struct hash<NQuad> {
 }  // namespace std
 
 // Functions
-std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &input_data = "");
+std::unordered_set<NQuad> map_data(std::string &rml_rule, std::map<std::string, std::string> &input_data);
 #ifndef ARDUINO
 void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, Flags &flags);
 void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, Flags &flags);

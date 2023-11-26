@@ -951,6 +951,143 @@ std::string generate_predicate(const PredicateMapInfo &predicateMapInfo, const s
 ///// OBJECT GENERATOR FUNCTIONS //////
 ///////////////////////////////////////
 
+std::string generate_object_with_nested_loop_join(
+    const ObjectMapInfo &objectMapInfo,
+    const std::vector<std::string> &split_data_child,
+    const std::vector<std::string> &split_header_child,
+    CsvReader &reader_parent) {
+  std::string generated_object = "";
+  // Check if template is available
+  if (objectMapInfo.template_str != "") {
+    // Fill in template and store it the generate value
+    logln_debug("Generating object based on template...");
+
+    generated_object = fill_in_template(objectMapInfo.template_str, split_data_child, split_header_child);
+
+    // Reset file
+    reader_parent.reset();
+
+    // Get Header
+    std::string header_parent;
+    reader_parent.readNext(header_parent);
+
+    // Split header
+    std::vector<std::string> split_header_parent = split_csv_line(header_parent, ',');
+
+    // Get index of element in header
+    uint index = 0;
+    if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    // Generate value
+    uint index_child = 0;
+    if (!get_index_of_element(split_header_child, objectMapInfo.child, index_child)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    std::string next_element;
+    // Flag to indicate if the element was found
+    bool found_element = false;
+    while (reader_parent.readNext(next_element)) {
+      std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
+      if (split_data_ref[index] == split_data_child[index_child]) {
+        // If column name is found exit. And add triple
+        found_element = true;
+        break;
+      }
+    }
+
+    // If the element is not found in the
+    if (!found_element) {
+      return "";
+    }
+
+    // If result is empty string -> no value available -> return
+    if (generated_object == "") {
+      return "";
+    }
+  }
+
+  generated_object = handle_term_type(objectMapInfo.termType, generated_object);
+
+  //// NOTE: Datatype is more important than language!!! ////
+  if (objectMapInfo.dataType == "") {
+    // Handle language info
+    if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
+      generated_object = generated_object + "@" + objectMapInfo.language;
+    }
+  } else {
+    generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
+  }
+
+  return generated_object;
+}
+
+std::vector<std::string> generate_object_with_nested_loop_join_full(
+    const ObjectMapInfo &objectMapInfo,
+    const std::vector<std::string> &split_data_child,
+    const std::vector<std::string> &split_header_child,
+    CsvReader &reader_parent) {
+  std::vector<std::string> generated_objects;
+  if (!objectMapInfo.template_str.empty()) {
+    uint index_child = 0;
+    if (!get_index_of_element(split_header_child, objectMapInfo.child, index_child)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    std::string child_value = split_data_child[index_child];
+    if (child_value == "") {
+      generated_objects.push_back("");
+      return generated_objects;
+    }
+
+    // Reset file
+    reader_parent.reset();
+
+    // Get Header
+    std::string header_parent;
+    reader_parent.readNext(header_parent);
+
+    // Split header
+    std::vector<std::string> split_header_parent = split_csv_line(header_parent, ',');
+
+    // Get index of element in header
+    uint index_parent = 0;
+    if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index_parent)) {
+      throw_error("Element not found -> Join not working!");
+    }
+
+    std::string result;
+    result.reserve(1000);
+    std::string next_element;
+    while (reader_parent.readNext(next_element)) {
+      std::vector<std::string> split_data_parent = split_csv_line(next_element, ',');
+      if (split_data_parent[index_parent] == split_data_child[index_child]) {
+        result = fill_in_template(objectMapInfo.template_str, split_data_parent, split_header_parent);
+        if (!result.empty()) {
+          generated_objects.push_back(result);
+        }
+      }
+    }
+  }
+
+  for (auto &generated_object : generated_objects) {
+    generated_object = handle_term_type(objectMapInfo.termType, generated_object);
+
+    //// NOTE: Datatype is more important than language!!! ////
+    if (objectMapInfo.dataType == "") {
+      // Handle language info
+      if (objectMapInfo.language != "" && objectMapInfo.termType == LITERAL_TERM_TYPE) {
+        generated_object = generated_object + "@" + objectMapInfo.language;
+      }
+    } else {
+      generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
+    }
+  }
+  return generated_objects;
+}
+
 std::vector<std::string> generate_object_with_hash_join_full(
     const ObjectMapInfo &objectMapInfo,
     const std::vector<std::string> &split_data_child,
@@ -1115,7 +1252,8 @@ std::vector<std::string> generate_object(
     const std::vector<std::string> &split_header_child,
     const std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> &parent_file_index,
     const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::vector<std::string>>>> &parent_file_index_full,
-    const std::unordered_map<std::string, std::vector<std::string>> &new_split_header_indices) {
+    const std::unordered_map<std::string, std::vector<std::string>> &new_split_header_indices,
+    std::map<std::string, std::string> &input_data) {
   // Check if a join is required
   if (objectMapInfo.parentSource != "") {
     std::vector<std::string> res;
@@ -1132,6 +1270,22 @@ std::vector<std::string> generate_object(
     }
     reader_parent.close();
     return res;
+  }
+  // Generate object in-memory
+  else if (objectMapInfo.parent_in_memory_name != "") {
+    std::vector<std::string> res;
+
+    CsvReader reader_parent(input_data[objectMapInfo.parent_in_memory_name], false);
+
+    if (objectMapInfo.join_reference_condition_available == "true") {
+      std::string result = generate_object_with_nested_loop_join(objectMapInfo, split_data_child, split_header_child, reader_parent);
+      res.push_back(result);
+      return res;
+    } else {
+      res = generate_object_with_nested_loop_join_full(objectMapInfo, split_data_child, split_header_child, reader_parent);
+      return res;
+    }
+
   } else {
     // No join required
     std::string result = generate_object_wo_join(objectMapInfo, split_data_child, split_header_child);
@@ -1155,7 +1309,8 @@ void generate_quads(
     const std::vector<std::string> &split_header,
     const std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> &parent_file_indices,
     const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::vector<std::string>>>> &parent_file_indices_full,
-    const std::unordered_map<std::string, std::vector<std::string>> &new_split_header_indices) {
+    const std::unordered_map<std::string, std::vector<std::string>> &new_split_header_indices,
+    std::map<std::string, std::string> &input_data) {
   // Parse data for this iteration
   std::vector<std::string> split_data = split_csv_line(line_data, ',');
 
@@ -1235,7 +1390,13 @@ void generate_quads(
     // Generate Object //
     /////////////////////
 
-    std::vector<std::string> objects = generate_object(objectMapInfo_vec[k], split_data, split_header, parent_file_indices, parent_file_indices_full, new_split_header_indices);
+    std::vector<std::string> objects = generate_object(
+        objectMapInfo_vec[k],
+        split_data, split_header,
+        parent_file_indices,
+        parent_file_indices_full,
+        new_split_header_indices,
+        input_data);
     // If current_graph is "" -> No value in input data
     for (const auto &obj : objects) {
       if (obj == "") {
@@ -1267,9 +1428,8 @@ void generate_quads(
   }
 }
 
-/*
 // Function to map data in memory
-std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &input_data) {
+std::unordered_set<NQuad> map_data(std::string &rml_rule, std::map<std::string, std::string> &input_data) {
   ///////////////////////////////////
   //// STEP 1: Read RDF triples ////
   //////////////////////////////////
@@ -1282,8 +1442,7 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
   /////////////////////////////////
 
   // Get all tripleMaps
-  std::vector<std::string>
-      tripleMap_nodes = find_matching_subject(rml_triple, RDF_TYPE, TRIPLES_MAP);
+  std::vector<std::string> tripleMap_nodes = find_matching_subject(rml_triple, RDF_TYPE, TRIPLES_MAP);
 
   // Store all logicalSourceInfos of all tripleMaps
   std::vector<LogicalSourceInfo> logicalSourceInfo_of_tripleMaps;
@@ -1335,37 +1494,17 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
     // Get path of specified source file
     std::string file_path = logicalSourceInfo_of_tripleMaps[i].source_path;
 
+    std::string in_memory_name = logicalSourceInfo_of_tripleMaps[i].in_memory_name;
+
     // Handle CSV
     if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
-      // Check if join is required
-
-      // Load data of parent source if needed
-      std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> parent_file_index;
-      for (const auto &objectMap : objectMapInfo_of_tripleMaps[i]) {
-        if (objectMap.parentSource == "") {
-          continue;
-        }
-        // Load data of parent source
-        CsvReader reader(objectMap.parentSource);
-
-        // Get Header
-        std::string header_ref;
-        reader.readNext(header_ref);
-
-        // Split header
-        std::vector<std::string> split_header_ref = split_csv_line(header_ref, ',');
-
-        // Get index of element in header
-        uint index = 0;
-        if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-          throw_error("Element not found -> Join not working!");
-        }
-
-        parent_file_index[objectMap.parentSource] = create_index(objectMap.parentSource, index);
-      }
+      // Create dummy data structure
+      std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> parent_file_indices;
+      std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::vector<std::string>>>> parent_file_indices_full;
+      std::unordered_map<std::string, std::vector<std::string>> new_split_header_indices;
 
       // Load data
-      CsvReader reader(file_path);
+      CsvReader reader(input_data[in_memory_name], false);
 
       // Get Header and split it
       std::string header;
@@ -1374,7 +1513,18 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
 
       std::string next_element;
       while (reader.readNext(next_element)) {
-        generate_quads(generated_quads, subjectMapInfo_of_tripleMaps[i], predicateObjectMapInfo_of_tripleMaps[i], predicateMapInfo_of_tripleMaps[i], objectMapInfo_of_tripleMaps[i], next_element, split_header, parent_file_index);
+        generate_quads(
+            generated_quads,
+            subjectMapInfo_of_tripleMaps[i],
+            predicateObjectMapInfo_of_tripleMaps[i],
+            predicateMapInfo_of_tripleMaps[i],
+            objectMapInfo_of_tripleMaps[i],
+            next_element,
+            split_header,
+            parent_file_indices,
+            parent_file_indices_full,
+            new_split_header_indices,
+            input_data);
       }
     } else {
       throw_error("Error: Found unsupported encoding.");
@@ -1383,8 +1533,6 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, const std::string &inp
 
   return generated_quads;
 }
-
-*/
 
 // Map directly to file -> only available on PC
 #ifndef ARDUINO
@@ -1402,7 +1550,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
   gloabl_sampling_probability = flags.sampling_probability;
 
   // Set dummy value for input data
-  std::string input_data = "";
+  std::map<std::string, std::string> input_data;
 
   //////////////////////////////////
   //// STEP 1: Read RDF triple ////
@@ -1589,7 +1737,8 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
             split_header,
             parent_file_indices,
             parent_file_indices_full,
-            new_split_header_indices);
+            new_split_header_indices,
+            input_data);
 
         // Write to file
         for (const NQuad &quad : generated_quads) {
@@ -1729,6 +1878,9 @@ void process_triple_map(
     const std::vector<PredicateMapInfo> &predicateMapInfo_of_tripleMap,
     const LogicalSourceInfo &logicalSourceInfo_of_tripleMap,
     ThreadSafeQueue<NQuad> &quadQueue) {
+  // Dummy for input data
+  std::map<std::string, std::string> input_data;
+
   // Store index of parent file
   std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> parent_file_index;
   // Stores generate quads
@@ -1812,7 +1964,8 @@ void process_triple_map(
           split_header,
           parent_file_indices,
           parent_file_indices_full,
-          new_split_header_indices);
+          new_split_header_indices,
+          input_data);
 
       // Add generated quads to the batch
       for (const auto &quad : generated_quads) {

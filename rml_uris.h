@@ -30,6 +30,7 @@ const std::string RML_LOGICAL_SOURCE = "http://semweb.mmlab.be/ns/rml#logicalSou
 const std::string RML_PREDICATE_OBJECT_MAP = "http://www.w3.org/ns/r2rml#predicateObjectMap";
 const std::string RML_PARENT_TRIPLES_MAP = "http://www.w3.org/ns/r2rml#parentTriplesMap";
 const std::string RML_JOIN_CONDITION = "http://www.w3.org/ns/r2rml#joinCondition";
+const std::string SD_NAME = "https://w3id.org/okn/o/sd#name";
 const std::string RML_CLASS = "http://www.w3.org/ns/r2rml#class";
 const std::string RML_SOURCE = "http://semweb.mmlab.be/ns/rml#source";
 const std::string RML_REFERENCE_FORMULATION = "http://semweb.mmlab.be/ns/rml#referenceFormulation";

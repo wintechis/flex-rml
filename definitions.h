@@ -2,8 +2,8 @@
 #define DEFINITIONS_H
 
 #include <string>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 // Struct to hold the subjectMap information
 struct SubjectMapInfo {
@@ -34,6 +34,7 @@ struct ObjectMapInfo {
   std::string reference;                           // reference of objectMap
   std::string language;                            // language tag
   std::string parentSource;                        // source of parent TriplesMap
+  std::string parent_in_memory_name;               // in memory name of parten TriplesMap
   std::string parentRef;                           // Reference formualtion of parent source
   std::string parent;                              // Store parent key
   std::string child;                               // Store child key
@@ -53,6 +54,7 @@ struct LogicalSourceInfo {
   std::string reference_formulation;
   std::string source_path;
   std::string logical_iterator;
+  std::string in_memory_name;
 };
 
 // Strcut to hold a generated Triple
@@ -77,15 +79,16 @@ struct NQuad {
 };
 
 struct Flags {
-  std::string mapping_file = "";                    // default is an empty string
-  std::string output_file = "output.nq";            // defualt output path
-  bool check_duplicates = false;                    // check for duplicates?
-  bool threading = false;                           // use threading?
-  uint8_t thread_count = 0;                         // number of threads to use
-  bool adaptive_hash_selection = false;             // use adaptive hash selection? or always 128 bit
-  float sampling_probability = 0.05;                // defines the sampling probability used when estimating result size
-  uint8_t fixed_bit_size = 0;                       // Specife the bit size of the hash function manually, 0 means not fixed
+  std::string mapping_file = "";                     // default is an empty string
+  std::string output_file = "output.nq";             // defualt output path
+  bool check_duplicates = false;                     // check for duplicates?
+  bool threading = false;                            // use threading?
+  uint8_t thread_count = 0;                          // number of threads to use
+  bool adaptive_hash_selection = false;              // use adaptive hash selection? or always 128 bit
+  float sampling_probability = 0.2;                  // defines the sampling probability used when estimating result size
+  uint8_t fixed_bit_size = 0;                        // Specife the bit size of the hash function manually, 0 means not fixed
   std::unordered_set<std::string> tokens_to_remove;  // Hash set of tokens when encountered triple should be skipped
+  bool in_memory_mapping = false;                    // Map data completely in memory
 };
 
 // Starting Number when generating blank nodes
