@@ -27,7 +27,8 @@
 // possible hash functions, by using SIMD instructions, or by
 // compromising on hash quality.
 
-#include <city.h>
+#include "city.h"
+
 #include <string.h>  // for memcpy and memset
 
 #include <algorithm>
