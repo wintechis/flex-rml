@@ -71,7 +71,6 @@ If you are in the example folder and run:
 
 ```bash
 ./FlexRML -m ./mapping.ttl -o output_file.nq -d
-./FlexRML -m ./mapping.ttl -o output_file.nq -d
 ```
 
 The resulting RDF graph can be found in output_file.nq.
