@@ -36,62 +36,7 @@ apt install build-essential
 
 ## Getting Started
 
-FlexRML operates as a command-line program, offering a variety of configuration flags for ease of use:
-
-```bash
-./FlexRML [OPTIONS]
-```
-
-| Flag  | Description    | Default |
-| --- | ------- | ----- | 
-| -h | Display available flags | -- |
-| -m [path] | Specify the path to the mapping file. | --  | 
-| -o [name]  | Define the name for the output file. | "output.nq"  | 
-| -d   | Remove duplicate entries before writing to the output file. | false | 
-| -t   | Use threading, by default the maximum number of available threads are used. | false | 
-| -tc [integer]   | Specify the number of threads to use. If set to 0 all threads are used. | 0 | 
-| -a   | Use adaptive Result Size Estimation and adaptive hash size selection. | 0 | 
-| -p [float]   | Set sampling probability used for Result Size Estimation. Higher probabities produce better estimates but need more time. | 0.2 | 
-| -c [path]   | Use config file instead of command line arguments. | -- | 
-| -b [integer]   | Use a fixed hash size, value which must be one of [32, 64, 128] | -- |
-| -r [tokens,to,remove]   | ist of tokens which should be removed from the input. | -- | 
-
-
-**Note:**
-
-- When a config file is specified using the '-c' flag, all other command-line arguments are ignored, and settings are exclusively loaded from the config file.
-- Selecting a fixed hash size using the '-b' flag skips the adaptive Result Size Estimation. Be aware that if the manually chosen hash size is too small for the input data, hash collisions may occur. This can lead to missing N-Quads in the output.
-
-For example:
-
-```bash
-./FlexRML -m ./path/to/mapping_file.ttl -o output_file.nq -d
-```
-
-or when using a config file equivalent to the command above:
-
-```bash
-./FlexRML -c ./path/to/config_file.ini
-```
-
-```python
-# Config File
-#
-# I/O Settings
-mapping=./path/to/mapping_file.ttl
-output_file=output_file.nq
-
-# Mapping Settings
-remove_duplicates=true
-use_threading=false
-number_of_threads=4
-fixed_hash_size=
-adaptive_hash_selection=false
-sampling_probability=0.1
-```
-
-## Suggested Configurations
-Depending on the use case and environment FlexRML is executed, different configurations are usefull.
+Depending on the use case and environment FlexRML is executed, different configurations are usefull. 
 
 **Fastest Execution Speed**
 
@@ -108,6 +53,7 @@ This mode is optimized for minimal memory usage by using a result size estimator
 ./FlexRML -m [path] -d -t -a
 ```
 
+More informatioin about available flags can be found on the [wiki](https://github.com/wintechis/FlexRML/wiki/cli_parameters).
 
 ## Example
 
