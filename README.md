@@ -79,6 +79,7 @@ The graph looks like this:
 
 ## Conformance
 FlexRML is validated against the latest applicable [RML test cases](https://github.com/kg-construct/rml-test-cases) to ensure conformance with the specification.
+The results can be found in the [wiki](https://github.com/wintechis/flex-rml/wiki/Conformence-to-Test-Cases).
 
 ## Planned Features for FlexRML
 We are constantly working to improve FlexRML and expand its capabilities. Here's what we have planned for the future development of FlexRML:
