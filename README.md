@@ -92,3 +92,22 @@ We are constantly working to improve FlexRML and expand its capabilities. Here's
 - [ ] **Provide Library for Arduinos** Develop a specialized library to make FlexRML easier useable on Arduino devices, expanding its use in IoT applications.
 
 We welcome community feedback and contributions! If you have suggestions or want to contribute to any of these features, please let us know through GitHub issues.
+
+
+## Licenses
+
+### Project License
+
+This project is licensed under the GNU Affero General Public License version 3 (AGPLv3). The full text of the license can be found in the `LICENSE` file in this repository.
+
+### External Libraries
+This project uses external libraries:
+
+- [Serd](https://github.com/drobilla/serd) is licensed under the ISC License.
+- [CityHash](https://github.com/google/cityhash/) is licensed under the MIT License.
+
+The full texts of these licenses are included in the `LICENSE-ISC.txt` and `LICENSE-MIT.txt` files in this repository.
+
+### Notice
+
+While this project is licensed under AGPLv3, it incorporates components under different licenses (ISC and MIT). We adhere to the terms of these licenses for the respective components and include their full license texts as stated above.
