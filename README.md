@@ -53,7 +53,7 @@ This mode is optimized for minimal memory usage by using a result size estimator
 ./FlexRML -m [path] -d -t -a
 ```
 
-More informatioin about available flags can be found on the [wiki](https://github.com/wintechis/FlexRML/wiki/cli_parameters).
+More informatioin about available flags can be found on the [wiki](https://github.com/wintechis/flex-rml/wiki/How-To-Use%3F).
 
 ## Example
 
