@@ -15,7 +15,7 @@ Currently, FlexRML only supports data in CSV format. However, future versions wi
 
 ## Installation
 ### Using Prebuilt Binaries
-Prebuilt binaries for various systems are available in the releases section.
+Prebuilt binaries for various systems are available in the [releases](https://github.com/wintechis/flex-rml/releases) section.
 
 ### Compiling from Source
 **Prerequisites**
