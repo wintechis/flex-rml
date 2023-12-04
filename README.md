@@ -1,5 +1,7 @@
 # FlexRML - A Flexible RML Processor
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10256148.svg)](https://doi.org/10.5281/zenodo.10256148)
+
 FlexRML provides a robust RML processing solution tailored for different devices. Whether you're working with microcontrollers, single-board computers, consumer hardware, or cloud environments, FlexRML ensures seamless integration and efficient processing.
 
 ## Description
