@@ -16,6 +16,7 @@ RML (RDF Mapping Language) is central to data transformation and knowledge graph
 Currently, FlexRML only supports data in CSV format. However, future versions will include support for additional data formats such as JSON and XML.
 
 ## Installation
+
 ### Using Prebuilt Binaries
 Prebuilt binaries for various systems are available in the [releases](https://github.com/wintechis/flex-rml/releases) section.
 
@@ -94,6 +95,12 @@ We are constantly working to improve FlexRML and expand its capabilities. Here's
 - [ ] **Provide Library for Arduinos** Develop a specialized library to make FlexRML easier useable on Arduino devices, expanding its use in IoT applications.
 
 We welcome community feedback and contributions! If you have suggestions or want to contribute to any of these features, please let us know through GitHub issues.
+
+## ESP32 Compatible Version
+
+For those working with ESP32, we have a dedicated version of this project. It's tailored specifically for compatibility with ESP32 and the Arduino IDE. You can access it and find detailed instructions for setup and use at the following link:
+[FlexRML ESP32 Repository](https://github.com/wintechis/flex-rml-esp32/tree/main)
+
 
 
 ## Licenses
