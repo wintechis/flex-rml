@@ -110,7 +110,9 @@ std::string fill_in_template(
   for (size_t i = 0; i < query_strings.size(); ++i) {
     uint index = 0;
     if (!get_index_of_element(split_header, query_strings[i], index)) {
-      throw_error("Error: Element not found in csv.");
+      log("Error: Element '");
+      log(query_strings[i].c_str());
+      throw_error("' not found in input.");
     }
 
     generated_value_last = split_data[index];
@@ -294,7 +296,9 @@ int estimate_join_size(
   // Get index of element in header
   uint index = 0;
   if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
-    throw_error("Element not found -> Join not working!");
+    log("Error: Element '");
+    log(objectMapInfo.parent.c_str());
+    throw_error("' not found in input.");
   }
 
   std::unordered_map<std::string, std::streampos> parent_file_index;
@@ -311,7 +315,9 @@ int estimate_join_size(
     for (size_t i = 0; i < query_strings.size(); ++i) {
       uint index = 0;
       if (!get_index_of_element(split_header_parent, query_strings[i], index)) {
-        throw_error("Error: Element not found in csv.");
+        log("Error: Element '");
+        log(query_strings[i].c_str());
+        throw_error("' not found in input.");
       }
       split_header_index.push_back(query_strings[i]);
       element_index.push_back(index);
@@ -328,7 +334,9 @@ int estimate_join_size(
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      throw_error("Element not found -> Estimation not working!");
+      log("Error: Element '");
+      log(element.c_str());
+      throw_error("' not found in input.");
     }
     indices_subject.push_back(index);
   }
@@ -342,7 +350,9 @@ int estimate_join_size(
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      throw_error("Element not found -> Estimation not working!");
+      log("Error: Element '");
+      log(element.c_str());
+      throw_error("' not found in input.");
     }
     indices_predicates.push_back(index);
   }
@@ -453,7 +463,7 @@ int estimate_unique_elements_in_file(const float &p, const std::string &source, 
       return static_cast<int>(U_hat);
     }
   } else {
-    throw_error("Error: Unsupported encoding!");
+    throw_error("Error: Found unsupported data encoding!");
     return 0;
   }
 }
@@ -513,7 +523,9 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      throw_error("Element not found -> Estimation not working!");
+      log("Error: Element '");
+      log(element.c_str());
+      throw_error("' not found in input.");
     }
     indices_subject.push_back(index);
   }
@@ -527,7 +539,9 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      throw_error("Element not found -> Estimation not working!");
+      log("Error: Element '");
+      log(element.c_str());
+      throw_error("' not found in input.");
     }
     indices_predicates.push_back(index);
   }
@@ -539,7 +553,9 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      throw_error("Element not found -> Estimation not working!");
+      log("Error: Element '");
+      log(element.c_str());
+      throw_error("' not found in input.");
     }
     indices_objects.push_back(index);
   }
@@ -808,7 +824,8 @@ std::string generate_graph_logic(
     const std::vector<std::string> &split_header) {
   // Ensure the provided termType is supported (only 'IRI' is supported).
   if (graph_termType != IRI_TERM_TYPE) {
-    throw_error("Error: Unsupported graph termType - termType of graph can only be 'IRI'.");
+    log("Error: Unsupported graph termType - termType of graph can only be 'IRI'. Used termType was: ");
+    throw_error(graph_termType.c_str());
   }
 
   // If a graph template is provided, process and return the graph based on the template.
@@ -979,13 +996,17 @@ std::string generate_object_with_nested_loop_join(
     // Get index of element in header
     uint index = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
-      throw_error("Element not found -> Join not working!");
+      log("Error: Element '");
+      log(objectMapInfo.parent.c_str());
+      throw_error("' not found in input.");
     }
 
     // Generate value
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child, index_child)) {
-      throw_error("Element not found -> Join not working!");
+      log("Error: Element '");
+      log(objectMapInfo.child.c_str());
+      throw_error("' not found in input.");
     }
 
     std::string next_element;
@@ -1035,7 +1056,9 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
   if (!objectMapInfo.template_str.empty()) {
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child, index_child)) {
-      throw_error("Element not found -> Join not working!");
+      log("Error: Element '");
+      log(objectMapInfo.child.c_str());
+      throw_error("' not found in input.");
     }
 
     std::string child_value = split_data_child[index_child];
@@ -1057,7 +1080,9 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
     // Get index of element in header
     uint index_parent = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index_parent)) {
-      throw_error("Element not found -> Join not working!");
+      log("Error: Element '");
+      log(objectMapInfo.parent.c_str());
+      throw_error("' not found in input.");
     }
 
     std::string result;
@@ -1100,7 +1125,9 @@ std::vector<std::string> generate_object_with_hash_join_full(
   if (!objectMapInfo.template_str.empty()) {
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child, index_child)) {
-      throw_error("Element not found -> Join not working!");
+      log("Error: Element '");
+      log(objectMapInfo.child.c_str());
+      throw_error("' not found in input.");
     }
 
     std::string child_value = split_data_child[index_child];
@@ -1153,7 +1180,9 @@ std::string generate_object_with_hash_join(
   // GENERATE VALUE
   uint index_old = 0;
   if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
-    throw_error("Element not found -> Join not working!");
+    log("Error: Element '");
+    log(objectMapInfo.child.c_str());
+    throw_error("' not found in input.");
   }
 
   std::string childValue = split_data[index_old];
@@ -1162,7 +1191,7 @@ std::string generate_object_with_hash_join(
     try {
       rowPosition = parent_file_index.at(childValue);
     } catch (const std::out_of_range &) {
-      return "";  // Element not found
+      return ""; // Element not found
     }
     reader.seekg(rowPosition);
 
@@ -1170,7 +1199,7 @@ std::string generate_object_with_hash_join(
     reader.readNext(next_element);
     std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
   } else {
-    return "";  // Element not found
+    return ""; // Element not found
   }
 
   // If result is empty string -> no value available -> return
@@ -1359,7 +1388,7 @@ void generate_quads(
     // Set predicate which is constant
     temp_quad.predicate = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
     // Set object which is the class
-    temp_quad.object = "<" + subject_class + ">";  // Class is always IRI
+    temp_quad.object = "<" + subject_class + ">"; // Class is always IRI
     // Set graph to generated graph
     temp_quad.graph = current_graph;
 
@@ -1529,7 +1558,7 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, std::map<std::string, 
             input_data);
       }
     } else {
-      throw_error("Error: Found unsupported encoding.");
+      throw_error("Error: Found unsupported data encoding!");
     }
   }
 
@@ -1690,7 +1719,9 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
         // Get index of element in header
         uint index = 0;
         if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-          throw_error("Element not found -> Join not working!");
+          log("Error: Element '");
+          log(objectMap.parent.c_str());
+          throw_error("' not found in input.");
         }
 
         // Create Index for full join
@@ -1704,7 +1735,9 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
           for (size_t i = 0; i < query_strings.size(); ++i) {
             uint index = 0;
             if (!get_index_of_element(split_header_ref, query_strings[i], index)) {
-              throw_error("Error: Element not found in csv.");
+              log("Error: Element '");
+              log(query_strings[i].c_str());
+              throw_error("' not found in input.");
             }
             element_index.push_back(index);
             new_split_header.push_back(query_strings[i]);
@@ -1801,7 +1834,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
         generated_quads.clear();
       }
     } else {
-      throw_error("Error: Found unsupported encoding.");
+      throw_error("Error: Found unsupported data encoding!");
     }
   }
 
@@ -1821,14 +1854,14 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
 
 template <typename T>
 class ThreadSafeQueue {
- private:
+private:
   std::queue<T> queue;
   std::mutex mtx;
   std::condition_variable not_empty_cv;
   bool done = false;
   size_t max_size;
 
- public:
+public:
   explicit ThreadSafeQueue(size_t max_size = 0) : max_size(max_size) {}
 
   void push(const std::vector<T> &items) {
@@ -1836,7 +1869,7 @@ class ThreadSafeQueue {
     for (const auto &item : items) {
       queue.push(item);
     }
-    not_empty_cv.notify_one();  // Notify one waiting thread
+    not_empty_cv.notify_one(); // Notify one waiting thread
   }
 
   size_t pop(std::vector<T> &items, size_t max_items_to_pop) {
@@ -1916,7 +1949,9 @@ void process_triple_map(
       // Get index of element in header
       uint index = 0;
       if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-        throw_error("Element not found -> Join not working!");
+        log("Error: Element '");
+        log(objectMap.parent.c_str());
+        throw_error("' not found in input.");
       }
 
       // Create Index for full join
@@ -1930,7 +1965,9 @@ void process_triple_map(
         for (size_t i = 0; i < query_strings.size(); ++i) {
           uint index = 0;
           if (!get_index_of_element(split_header_ref, query_strings[i], index)) {
-            throw_error("Error: Element not found in csv.");
+            log("Error: Element '");
+            log(query_strings[i].c_str());
+            throw_error("' not found in input.");
           }
           element_index.push_back(index);
           new_split_header.push_back(query_strings[i]);
@@ -1985,7 +2022,7 @@ void process_triple_map(
     }
     reader.close();
   } else {
-    throw_error("Error: Found unsupported encoding.");
+    throw_error("Error: Found unsupported data encoding!");
   }
 }
 
@@ -2066,8 +2103,8 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
 
     // Write the buffered data to the file
     out_file << outStream.str();
-    outStream.str("");  // Clear the buffer
-    outStream.clear();  // Clear any error flags
+    outStream.str(""); // Clear the buffer
+    outStream.clear(); // Clear any error flags
   }
 
   log("Number of generated triples: ");
