@@ -1,6 +1,6 @@
 #include "FlexRML.h"
 
-#define BATCH_SIZE 100
+#define BATCH_SIZE 200
 
 float gloabl_sampling_probability = 0.05;
 
@@ -1567,6 +1567,23 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, std::map<std::string, 
 
 // Map directly to file -> only available on PC
 #ifndef ARDUINO
+void addDataToStream(std::ostringstream &outStream, const std::string &format, const NQuad &quad) {
+  if (format == "nquad") {
+    // Append to the buffer instead of writing directly to the file
+    outStream << quad.subject << " " << quad.predicate << " " << quad.object << " ";
+    if (quad.graph != "") {
+      outStream << quad.graph << " .\n";
+    } else {
+      outStream << ".\n";
+    }
+  } else if (format == "ntriple") {
+    outStream << quad.subject << " " << quad.predicate << " " << quad.object << " "
+              << ".\n";
+  } else {
+    throw_error("Error: Unknown output format detected!");
+  }
+}
+
 ///////////////////////////////////////////
 //// MAP DATA TO FILE - SINGLE THREAD ////
 /////////////////////////////////////////
@@ -2027,8 +2044,6 @@ void process_triple_map(
 }
 
 void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bool remove_duplicates, const uint8_t &hash_method) {
-  NQuad quad;
-
   std::ostringstream outStream;
 
   // Create data structures to store hashes
@@ -2047,58 +2062,75 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
     if (count == 0) {
       break;
     }
-    for (const NQuad &quad : quad_batch) {
-      bool add_triple = true;
 
-      // Check if value is a duplicate
-      if (remove_duplicates && hash_method == 2) {
-        uint128 hash_of_quad = performCity128Hash(quad);
+    if (remove_duplicates) {
+      if (hash_method == 2) { // 128 bit hash
+        for (const NQuad &quad : quad_batch) {
+          bool add_data = true;
+          uint128 hash_of_quad = performCity128Hash(quad);
 
-        // Attempt to find the first part of the 128-bit hash in the map
-        auto it = nquad_hashes_128.find(hash_of_quad.first);
+          // Attempt to find the first part of the 128-bit hash in the map
+          auto it = nquad_hashes_128.find(hash_of_quad.first);
+          // Check if the first part of the hash was found in the map
+          if (it != nquad_hashes_128.end() && it->second == hash_of_quad) {
+            // If found, check if the second part of the hash also matches
+            // If both parts match, we have found a complete match
+            add_data = false;
+          } else {
+            // If the first part of the hash is not found, or the second part does not match
+            // This means the hash is not found in the map
+            nquad_hashes_128[hash_of_quad.first] = hash_of_quad;
+          }
 
-        // Check if the first part of the hash was found in the map
-        if (it != nquad_hashes_128.end() && it->second == hash_of_quad) {
-          // If found, check if the second part of the hash also matches
-          // If both parts match, we have found a complete match
-          add_triple = false;
-        } else {
-          // If the first part of the hash is not found, or the second part does not match
-          // This means the hash is not found in the map
-          nquad_hashes_128[hash_of_quad.first] = hash_of_quad;
+          // Add triple if needed
+          if (add_data) {
+            std::string format = "nquad";
+            addDataToStream(outStream, format, quad);
+          }
         }
-      } else if (remove_duplicates && hash_method == 1) {
-        uint64_t hash_of_quad = performCity64Hash(quad);
-        // If not found
-        if (nquad_hashes_64.find(hash_of_quad) == nquad_hashes_64.end()) {
-          // Add to hashes
-          nquad_hashes_64.insert(hash_of_quad);
-        } else {
-          // Otherwise dont add triple
-          add_triple = false;
-        }
-      } else if (remove_duplicates && hash_method == 0) {
-        uint32_t hash_of_quad = performCity32Hash(quad);
-        // If not found
-        if (nquad_hashes_32.find(hash_of_quad) == nquad_hashes_32.end()) {
-          // Add to hashes
-          nquad_hashes_32.insert(hash_of_quad);
-        } else {
-          // Otherwise dont add triple
-          add_triple = false;
-        }
-      }
+      } else if (hash_method == 1) {
+        for (const NQuad &quad : quad_batch) {
+          bool add_data = true;
 
-      if (add_triple) {
-        // Append to the buffer instead of writing directly to the file
-        outStream << quad.subject << " " << quad.predicate << " " << quad.object << " ";
-        if (quad.graph != "") {
-          outStream << quad.graph << " .\n";
-        } else {
-          outStream << ".\n";
+          uint64_t hash_of_quad = performCity64Hash(quad);
+          // If not found
+          if (nquad_hashes_64.find(hash_of_quad) == nquad_hashes_64.end()) {
+            // Add to hashes
+            nquad_hashes_64.insert(hash_of_quad);
+          } else {
+            // Otherwise dont add triple
+            add_data = false;
+          }
+
+          // Add triple if needed
+          if (add_data) {
+            std::string format = "nquad";
+            addDataToStream(outStream, format, quad);
+          }
+        }
+      } else if (hash_method == 0) {
+        for (const NQuad &quad : quad_batch) {
+          bool add_data = true;
+
+          uint32_t hash_of_quad = performCity32Hash(quad);
+          // If not found
+          if (nquad_hashes_32.find(hash_of_quad) == nquad_hashes_32.end()) {
+            // Add to hashes
+            nquad_hashes_32.insert(hash_of_quad);
+          } else {
+            // Otherwise dont add triple
+            add_data = false;
+          }
+
+          // Add triple if needed
+          if (add_data) {
+            std::string format = "nquad";
+            addDataToStream(outStream, format, quad);
+          }
         }
       }
     }
+
     quad_batch.clear();
 
     // Write the buffered data to the file
