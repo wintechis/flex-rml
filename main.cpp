@@ -15,7 +15,7 @@ void* operator new(size_t size) {
   return malloc(size);
 } */
 
-bool readRmlFile(const std::string& filePath, std::string& rml_rule) {
+bool readRmlFile(const std::string &filePath, std::string &rml_rule) {
   // Open the rml file in input mode
   std::ifstream file(filePath);
 
@@ -43,7 +43,7 @@ bool readRmlFile(const std::string& filePath, std::string& rml_rule) {
  * @param delimiter The character used as a delimiter to split the string.
  * @return std::unordered_set<std::string> A set containing the split substrings.
  */
-std::unordered_set<std::string> split_to_set(const std::string& str, char delimiter) {
+std::unordered_set<std::string> split_to_set(const std::string &str, char delimiter) {
   std::unordered_set<std::string> result_set;
   std::string::size_type start = 0;
   std::string::size_type end = str.find(delimiter);
@@ -63,6 +63,7 @@ void display_help() {
             << "Usage: ./FlexRML [OPTIONS]\n"
             << "-m [path] Specify the path to the mapping file.\n"
             << "-o [name] Define the name for the output file. Default is 'output.nq' \n"
+            << "-f [format] Define the output serialization of the generated RDF data must be one of [ntriple, nquad]"
             << "-d Remove duplicate entries before writing to the output file.\n"
             << "-t Use threading, by default the maximum number of available threads are used.\n"
             << "-tc [integer] Specify the number of threads that should be used.\n"
@@ -82,7 +83,7 @@ void display_help() {
             << std::endl;
 }
 
-bool handle_flags(const int& argc, char* argv[], Flags& flags) {
+bool handle_flags(const int &argc, char *argv[], Flags &flags) {
   for (int i = 1; i < argc; i++) {
     std::string flag = argv[i];
 
@@ -128,17 +129,17 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
                   }
 
                   flags.sampling_probability = parsed_value;
-                } catch (const std::invalid_argument& e) {
+                } catch (const std::invalid_argument &e) {
                   throw_error("Invalid sampling probability! - The provided value is not a valid floating-point number.");
-                } catch (const std::out_of_range& e) {
+                } catch (const std::out_of_range &e) {
                   throw_error("Invalid sampling probability! - The number is out of range for a float.");
                 }
               } else if (key == "number_of_threads") {
                 try {
                   flags.thread_count = std::stoi(value);
-                } catch (const std::invalid_argument& e) {
+                } catch (const std::invalid_argument &e) {
                   throw_error("Invalid thread count! - Only integers are allowed.");
-                } catch (const std::out_of_range& e) {
+                } catch (const std::out_of_range &e) {
                   throw_error("Invalid thread count! - The number is out of range for an integer.");
                 }
               } else if (key == "fixed_bit_size") {
@@ -154,14 +155,24 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
                   }
 
                   flags.fixed_bit_size = parsed_value;
-                } catch (const std::invalid_argument& e) {
+                } catch (const std::invalid_argument &e) {
                   throw_error("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
-                } catch (const std::out_of_range& e) {
+                } catch (const std::out_of_range &e) {
                   throw_error("Invalid bit size! - The number is out of range for an integer.");
                 }
               } else if (key == "tokens_to_remove") {
                 std::unordered_set<std::string> tokens_set = split_to_set(value, ',');
                 flags.tokens_to_remove = tokens_set;
+              } else if (key == "output_format") {
+                std::vector<std::string> allowed_values = {"nquad", "ntriple"};
+                auto it = std::find(allowed_values.begin(), allowed_values.end(), value);
+                if (it != allowed_values.end()) {
+                  // Value is in allowed values
+                  flags.output_serialization = value;
+                } else {
+                  // Value is not in allowed values, log to console
+                  throw_error("Invalid output_format! - Must be one of [ntriple, nquad].");
+                }
               } else {
                 std::cerr << "Unknown flag: " << flag << "\n";
               }
@@ -195,6 +206,26 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
       if (i + 1 < argc) {
         std::string value = argv[++i];
         flags.output_file = value;
+      } else {
+        std::cerr << flag << " requires an argument.\n";
+      }
+    }
+
+    // output serialization of RDF data
+    else if (flag == "-f") {
+      if (i + 1 < argc) {
+        std::string value = argv[++i];
+
+        std::vector<std::string> allowed_values = {"nquad", "ntriple"};
+        auto it = std::find(allowed_values.begin(), allowed_values.end(), value);
+        flags.output_serialization = value;
+        if (it != allowed_values.end()) {
+          // Value is in allowed values
+          flags.output_serialization = value;
+        } else {
+          // Value is not in allowed values, log to console
+          throw_error("Invalid output format! - Must be one of [ntriple, nquad].");
+        }
       } else {
         std::cerr << flag << " requires an argument.\n";
       }
@@ -241,9 +272,9 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
           }
 
           flags.sampling_probability = parsed_value;
-        } catch (const std::invalid_argument& e) {
+        } catch (const std::invalid_argument &e) {
           throw_error("Invalid sampling probability! - The provided value is not a valid floating-point number.");
-        } catch (const std::out_of_range& e) {
+        } catch (const std::out_of_range &e) {
           throw_error("Invalid sampling probability! - The number is out of range for a float.");
         }
       } else {
@@ -267,9 +298,9 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
           }
 
           flags.fixed_bit_size = parsed_value;
-        } catch (const std::invalid_argument& e) {
+        } catch (const std::invalid_argument &e) {
           throw_error("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
-        } catch (const std::out_of_range& e) {
+        } catch (const std::out_of_range &e) {
           throw_error("Invalid bit size! - The number is out of range for an integer.");
         }
       } else {
@@ -283,9 +314,9 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
         std::string value = argv[++i];
         try {
           flags.thread_count = std::stoi(value);
-        } catch (const std::invalid_argument& e) {
+        } catch (const std::invalid_argument &e) {
           throw_error("Invalid thread count! - Only integers are allowed.");
-        } catch (const std::out_of_range& e) {
+        } catch (const std::out_of_range &e) {
           throw_error("Invalid thread count! - The number is out of range for an integer.");
         }
       } else {
@@ -307,7 +338,7 @@ bool handle_flags(const int& argc, char* argv[], Flags& flags) {
   return true;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   // Extract command line arguments
   Flags flags;
   if (!handle_flags(argc, argv, flags)) {
@@ -325,6 +356,7 @@ int main(int argc, char* argv[]) {
 
   std::cout << "Processing: " << flags.mapping_file << std::endl;
   std::cout << "Output file: " << flags.output_file << std::endl;
+  std::cout << "Output format: " << flags.output_serialization << std::endl;
 
   /////////////////////////////////
   //////// Prepare Mapping ////////

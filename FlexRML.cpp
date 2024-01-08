@@ -1575,6 +1575,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
   bool remove_duplicates = flags.check_duplicates;
   bool adaptive_hash_selection = flags.adaptive_hash_selection;
   uint8 fixed_bit_size = flags.fixed_bit_size;
+  std::string format = flags.output_serialization;
   global_tokens_to_remove = flags.tokens_to_remove;
 
   // Set sampling probability
@@ -1817,9 +1818,6 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
               add_data = false;
             }
           }
-
-          std::string format = "nquad";
-
           if (add_data) {
             out_file << quad.subject << " "
                      << quad.predicate << " "
@@ -1915,7 +1913,7 @@ void process_triple_map(
     const std::vector<ObjectMapInfo> &objectMapInfo_of_tripleMap,
     const std::vector<PredicateMapInfo> &predicateMapInfo_of_tripleMap,
     const LogicalSourceInfo &logicalSourceInfo_of_tripleMap,
-    ThreadSafeQueue<NQuad> &quadQueue) {
+    ThreadSafeQueue<NQuad> &quad_queue) {
   // Dummy for input data
   std::map<std::string, std::string> input_data;
 
@@ -2013,7 +2011,7 @@ void process_triple_map(
       for (const auto &quad : generated_quads) {
         quad_batch.push_back(quad);
         if (quad_batch.size() >= BATCH_SIZE) {
-          quadQueue.push(quad_batch);
+          quad_queue.push(quad_batch);
           quad_batch.clear();
         }
       }
@@ -2021,7 +2019,7 @@ void process_triple_map(
       generated_quads.clear();
     }
     if (!quad_batch.empty()) {
-      quadQueue.push(quad_batch);
+      quad_queue.push(quad_batch);
     }
     reader.close();
   } else {
@@ -2029,7 +2027,7 @@ void process_triple_map(
   }
 }
 
-void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bool remove_duplicates, const uint8_t &hash_method) {
+void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue, bool remove_duplicates, const uint8_t &hash_method, const std::string &format) {
   std::ostringstream outStream;
 
   // Create data structures to store hashes
@@ -2044,7 +2042,7 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
 
   std::vector<NQuad> quad_batch;
   while (true) {
-    size_t count = quadQueue.pop(quad_batch, BATCH_SIZE);
+    size_t count = quad_queue.pop(quad_batch, BATCH_SIZE);
     if (count == 0) {
       break;
     }
@@ -2069,8 +2067,6 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
           }
 
           // Add triple if needed
-          std::string format = "nquad";
-
           if (add_data) {
             outStream << quad.subject << " "
                       << quad.predicate << " "
@@ -2099,8 +2095,6 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
           }
 
           // Add triple if needed
-          std::string format = "nquad";
-
           if (add_data) {
             outStream << quad.subject << " "
                       << quad.predicate << " "
@@ -2129,8 +2123,6 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
           }
 
           // Add triple if needed
-          std::string format = "nquad";
-
           if (add_data) {
             outStream << quad.subject << " "
                       << quad.predicate << " "
@@ -2172,6 +2164,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, 
   float sampling_probability = flags.sampling_probability;
   int fixed_bit_size = flags.fixed_bit_size;
   global_tokens_to_remove = flags.tokens_to_remove;
+  std::string format = flags.output_serialization;
 
   // Set sampling probability
   gloabl_sampling_probability = sampling_probability;
@@ -2273,10 +2266,10 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, 
   logln_debug(" threads.");
   std::vector<std::thread> threads;
 
-  ThreadSafeQueue<NQuad> quadQueue(1000);
+  ThreadSafeQueue<NQuad> quad_queue(1000);
 
   // Start the writer thread before the worker threads
-  std::thread writer(writerThread, std::ref(out_file), std::ref(quadQueue), remove_duplicates, std::ref(hash_method));
+  std::thread writer(writer_thread, std::ref(out_file), std::ref(quad_queue), remove_duplicates, std::ref(hash_method), std::ref(format));
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     threads.push_back(std::thread(
         process_triple_map,
@@ -2285,7 +2278,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, 
         std::ref(objectMapInfo_of_tripleMaps[i]),
         std::ref(predicateMapInfo_of_tripleMaps[i]),
         std::ref(logicalSourceInfo_of_tripleMaps[i]),
-        std::ref(quadQueue)));
+        std::ref(quad_queue)));
 
     if (threads.size() == numThreads - 1 || i == tripleMap_nodes.size() - 1) {
       for (std::thread &t : threads) {
@@ -2295,7 +2288,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file, 
     }
   }
 
-  quadQueue.mark_done();
+  quad_queue.mark_done();
 
   writer.join();
 }
