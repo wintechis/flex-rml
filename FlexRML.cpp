@@ -1567,23 +1567,6 @@ std::unordered_set<NQuad> map_data(std::string &rml_rule, std::map<std::string, 
 
 // Map directly to file -> only available on PC
 #ifndef ARDUINO
-void addDataToStream(std::ostringstream &outStream, const std::string &format, const NQuad &quad) {
-  if (format == "nquad") {
-    // Append to the buffer instead of writing directly to the file
-    outStream << quad.subject << " " << quad.predicate << " " << quad.object << " ";
-    if (quad.graph != "") {
-      outStream << quad.graph << " .\n";
-    } else {
-      outStream << ".\n";
-    }
-  } else if (format == "ntriple") {
-    outStream << quad.subject << " " << quad.predicate << " " << quad.object << " "
-              << ".\n";
-  } else {
-    throw_error("Error: Unknown output format detected!");
-  }
-}
-
 ///////////////////////////////////////////
 //// MAP DATA TO FILE - SINGLE THREAD ////
 /////////////////////////////////////////
@@ -2086,9 +2069,19 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
           }
 
           // Add triple if needed
+          std::string format = "nquad";
+
           if (add_data) {
-            std::string format = "nquad";
-            addDataToStream(outStream, format, quad);
+            outStream << quad.subject << " "
+                      << quad.predicate << " "
+                      << quad.object << " ";
+
+            // Case NQuad with graph
+            if (format == "nquad" && quad.graph != "") {
+              outStream << quad.graph << " .\n";
+            } else { // Case NQuad without graph or NTriple
+              outStream << ".\n";
+            }
           }
         }
       } else if (hash_method == 1) {
@@ -2106,9 +2099,19 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
           }
 
           // Add triple if needed
+          std::string format = "nquad";
+
           if (add_data) {
-            std::string format = "nquad";
-            addDataToStream(outStream, format, quad);
+            outStream << quad.subject << " "
+                      << quad.predicate << " "
+                      << quad.object << " ";
+
+            // Case NQuad with graph
+            if (format == "nquad" && quad.graph != "") {
+              outStream << quad.graph << " .\n";
+            } else { // Case NQuad without graph or NTriple
+              outStream << ".\n";
+            }
           }
         }
       } else if (hash_method == 0) {
@@ -2126,9 +2129,19 @@ void writerThread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quadQueue, bo
           }
 
           // Add triple if needed
+          std::string format = "nquad";
+
           if (add_data) {
-            std::string format = "nquad";
-            addDataToStream(outStream, format, quad);
+            outStream << quad.subject << " "
+                      << quad.predicate << " "
+                      << quad.object << " ";
+
+            // Case NQuad with graph
+            if (format == "nquad" && quad.graph != "") {
+              outStream << quad.graph << " .\n";
+            } else { // Case NQuad without graph or NTriple
+              outStream << ".\n";
+            }
           }
         }
       }
