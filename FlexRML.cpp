@@ -1794,7 +1794,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
 
         // Write to file
         for (const NQuad &quad : generated_quads) {
-          bool add_triple = true;
+          bool add_data = true;
 
           // Check if value is a duplicate
           if (remove_duplicates && hash_method == 2) {
@@ -1807,7 +1807,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
             if (it != nquad_hashes_128.end() && it->second == hash_of_quad) {
               // If found, check if the second part of the hash also matches
               // If both parts match, we have found a complete match
-              add_triple = false;
+              add_data = false;
             } else {
               // If the first part of the hash is not found, or the second part does not match
               // This means the hash is not found in the map
@@ -1821,7 +1821,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
               nquad_hashes_64.insert(hash_of_quad);
             } else {
               // Otherwise dont add triple
-              add_triple = false;
+              add_data = false;
             }
           } else if (remove_duplicates && hash_method == 0) {
             uint32_t hash_of_quad = performCity32Hash(quad);
@@ -1831,18 +1831,21 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file, Flags &fla
               nquad_hashes_32.insert(hash_of_quad);
             } else {
               // Otherwise dont add triple
-              add_triple = false;
+              add_data = false;
             }
           }
 
-          if (add_triple) {
+          std::string format = "nquad";
+
+          if (add_data) {
             out_file << quad.subject << " "
                      << quad.predicate << " "
                      << quad.object << " ";
 
-            if (quad.graph != "") {
+            // Case NQuad with graph
+            if (format == "nquad" && quad.graph != "") {
               out_file << quad.graph << " .\n";
-            } else {
+            } else { // Case NQuad without graph or NTriple
               out_file << ".\n";
             }
           }
