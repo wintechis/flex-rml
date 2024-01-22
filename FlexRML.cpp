@@ -217,36 +217,6 @@ std::unordered_map<std::string, std::streampos> createIndexFromCSVString(const s
 /////// TRIPLES MAP SIZE ESTIMATION ///////
 ///////////////////////////////////////////
 
-std::string generate_subsample(const std::string &file_path, const float &p) {
-  std::string result;
-
-  // Create a random number generator
-  std::random_device rd;
-  std::mt19937 mt(rd());
-
-  // Create a distribution from 0 to 1
-  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-
-  CsvReader reader(file_path);
-  std::string next_element;
-
-  // Get header
-  reader.readNext(next_element);
-  result += next_element + "\n";
-
-  // Read all lines and decide if they should be added to the result
-  while (reader.readNext(next_element)) {
-    // Generate a random float
-    float randomFloat = dist(mt);
-    if (randomFloat <= p) {
-      result += next_element + "\n";
-    }
-  }
-  reader.close();
-
-  return result;
-}
-
 int estimate_join_size(
     const std::string &source_file_path,
     const std::string &parent_source_file_path,
@@ -268,12 +238,6 @@ int estimate_join_size(
 
   // Store unique generated elements.
   std::unordered_set<uint64_t> seen_objects;
-
-  // Step 1 : Create Bernoulli samples S1 and S2 from tables T1 and T2
-  // std::string sampled_table_child = generate_subsample(source_file_path, p1);
-  // std::string sampled_table_parent = generate_subsample(parent_source_file_path, p2);
-
-  // Step 2 : Compute the join size J' of the two samples
 
   // Load child data
   CsvReader reader_child(source_file_path);

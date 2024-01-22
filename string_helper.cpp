@@ -80,6 +80,21 @@ std::vector<std::string> enclose_in_braces(const std::vector<std::string> &input
 
   return enclosedStrings;
 }
+
+/**
+ * @brief Splits a single line of a CSV file into its constituent elements.
+ *
+ * This function parses a CSV line, taking into account the presence of quotes
+ * and separators within the quoted text. It handles control characters and
+ * provides a mechanism to clean them from the tokens. An exception is thrown
+ * if there's an unmatched quote in the line, indicating malformed CSV format.
+ *
+ * @param str The CSV line string to be split.
+ * @param separator The character used as a separator in the CSV (commonly a comma).
+ * @return std::vector<std::string> A vector containing the separated elements from the line.
+ * @throws A runtime error if an unmatched quote is found in the line.
+ *
+ */
 std::vector<std::string> split_csv_line(const std::string &str, char separator) {
   std::vector<std::string> result;
   result.reserve(str.size());
