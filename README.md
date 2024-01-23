@@ -81,15 +81,18 @@ The graph looks like this:
 ![Resulting_Graph](https://github.com/FreuMi/FlexRML/blob/main/example/output_graph.png)
 
 ## Conformance
-FlexRML is validated against the latest applicable [RML test cases](https://github.com/kg-construct/rml-test-cases) to ensure conformance with the specification.
+FlexRML is validated against the latest applicable [RML test cases](https://github.com/kg-construct/rml-test-cases) to ensure conformance with the specification. Currently only CSV related test cases are applicable.
 The results can be found in the [wiki](https://github.com/wintechis/flex-rml/wiki/Conformence-to-Test-Cases).
 
 ## Planned Features for FlexRML
 We are constantly working to improve FlexRML and expand its capabilities. Here's what we have planned for the future development of FlexRML:
 - [ ] **Add Support for Other Data Encodings** Enhancing FlexRML to work with various data formats.
      + [ ] JSON
+          - [x] Add JSON reader and JSON Path parser
+          - [ ] Adjust generation of index for hash join to JSON
+          - [ ] Adjust result size estimation to JSON
      + [ ] XML
-- [ ] **Add Support for N-Triple RDF Serialization** Implementing N-Triple format compatibility for broader RDF serialization options.
+- [x] **Add Support for N-Triple RDF Serialization** Implementing N-Triple format compatibility for broader RDF serialization options.
 - [ ] **Explore WASM (WebAssembly)** Investigate the possibility of running FlexRML in web browsers.
 - [ ] **Improve Performance of Join Algorithm** Optimize the current join algorithm for faster and more efficient data processing.
 - [ ] **Provide Library for Arduinos** Develop a specialized library to make FlexRML easier useable on Arduino devices, expanding its use in IoT applications.
