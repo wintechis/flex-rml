@@ -13,6 +13,7 @@
 #include "definitions.h"
 #include "file_reader/csv_reader.h"
 #include "file_reader/file_reader.h"
+#include "file_reader/json_reader.h"
 #include "rdf_vector_helper.h"
 #include "rml_extractor.h"
 #include "rml_uris.h"
@@ -154,22 +155,25 @@ struct hash<NQuad> {
 #endif
 
 // Functions
-std::unordered_set<NQuad> map_data(std::string &rml_rule, std::map<std::string, std::string> &input_data);
+std::unordered_set<NQuad> map_data(
+    std::string &rml_rule, std::map<std::string, std::string> &input_data);
 #ifndef ARDUINO
-void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile, Flags &flags);
-void map_data_to_file(std::string &rml_rule, std::ofstream &outFile, Flags &flags);
+void map_data_to_file_threading(std::string &rml_rule, std::ofstream &outFile,
+                                Flags &flags);
+void map_data_to_file(std::string &rml_rule, std::ofstream &outFile,
+                      Flags &flags);
 std::string generate_object_with_hash_join(
     const ObjectMapInfo &objectMapInfo,
     const std::vector<std::string> &split_data,
-    const std::vector<std::string> &split_header,
-    CsvReader &reader,
+    const std::vector<std::string> &split_header, CsvReader &reader,
     const std::unordered_map<std::string, std::streampos> &parent_file_index);
 std::vector<std::string> generate_object_with_hash_join_full(
     const ObjectMapInfo &objectMapInfo,
     const std::vector<std::string> &split_data_child,
     const std::vector<std::string> &split_header_child,
     const std::vector<std::string> &split_header_parent,
-    const std::unordered_map<std::string, std::vector<std::vector<std::string>>> &parent_file_index_full);
+    const std::unordered_map<std::string, std::vector<std::vector<std::string>>>
+        &parent_file_index_full);
 #endif
 
 #endif

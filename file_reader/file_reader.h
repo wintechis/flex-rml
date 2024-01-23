@@ -2,6 +2,7 @@
 #define FILE_READER_H
 
 #include <string>
+#include <vector>
 
 class FileReader {
  public:

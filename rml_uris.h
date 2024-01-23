@@ -7,6 +7,7 @@ const std::string IRI_TERM_TYPE = "http://www.w3.org/ns/r2rml#IRI";
 const std::string LITERAL_TERM_TYPE = "http://www.w3.org/ns/r2rml#Literal";
 const std::string TRIPLES_MAP = "http://www.w3.org/ns/r2rml#TriplesMap";
 const std::string CSV_REFERENCE_FORMULATION = "http://semweb.mmlab.be/ns/ql#CSV";
+const std::string JSON_PATH = "http://semweb.mmlab.be/ns/ql#JSONPath";
 const std::string RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const std::string RML_CONSTANT = "http://www.w3.org/ns/r2rml#constant";
 const std::string RML_SUBJECT = "http://www.w3.org/ns/r2rml#subject";
