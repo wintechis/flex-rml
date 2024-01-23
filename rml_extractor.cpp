@@ -28,13 +28,18 @@ std::unordered_set<std::string> valid_language_subtags = {
 /**
  * @brief Retrieves subject map data from a vector of NTriple objects.
  *
- * @param rml_triples Vector of NTriple objects containing the RDF triples to be searched.
- * @param tripleMap_node String representing the node in the RDF triples to be matched.
+ * @param rml_triples Vector of NTriple objects containing the RDF triples to be
+ * searched.
+ * @param tripleMap_node String representing the node in the RDF triples to be
+ * matched.
  * @return SubjectMapInfo struct containing all found information.
  *
- * @note This function will enter an infinite loop if any inconsistencies are found.
+ * @note This function will enter an infinite loop if any inconsistencies are
+ * found.
  */
-SubjectMapInfo extract_rml_info_of_subjectMap(const std::vector<NTriple>& rml_triples, const std::string& tripleMap_node) {
+SubjectMapInfo extract_rml_info_of_subjectMap(
+    const std::vector<NTriple>& rml_triples,
+    const std::string& tripleMap_node) {
   // -> Each triples map has exactly 1 subjectMap
 
   SubjectMapInfo subjectMapInfo;
@@ -54,7 +59,8 @@ SubjectMapInfo extract_rml_info_of_subjectMap(const std::vector<NTriple>& rml_tr
   subjectMapInfo.name_triplesMap_node = tripleMap_node;
 
   // Get blank node of subjectMap
-  temp_result = find_matching_object(rml_triples, tripleMap_node, RML_SUBJECT_MAP);
+  temp_result =
+      find_matching_object(rml_triples, tripleMap_node, RML_SUBJECT_MAP);
   if (temp_result.empty()) {
     throw_error("Error: No subjectMap blank node found!");
   } else if (temp_result.size() > 1) {
@@ -105,19 +111,22 @@ SubjectMapInfo extract_rml_info_of_subjectMap(const std::vector<NTriple>& rml_tr
     std::string subjectMap_graph_blank_node = temp_result[0];
 
     // Get graph constant
-    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node, RML_CONSTANT);
+    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node,
+                                       RML_CONSTANT);
     if (!temp_result.empty()) {
       subjectMapInfo.graph_constant = temp_result[0];
     }
 
     // Get graph template
-    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node, RML_TEMPLATE);
+    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node,
+                                       RML_TEMPLATE);
     if (!temp_result.empty()) {
       subjectMapInfo.graph_template = temp_result[0];
     }
 
     // Get graph termType
-    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node, RML_TERM_TYPE);
+    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node,
+                                       RML_TERM_TYPE);
     if (!temp_result.empty()) {
       subjectMapInfo.graph_termType = temp_result[0];
     }
@@ -129,13 +138,18 @@ SubjectMapInfo extract_rml_info_of_subjectMap(const std::vector<NTriple>& rml_tr
 /**
  * @brief Retrieves predicate map data from a vector of NTriple objects.
  *
- * @param rml_triples Vector of NTriple objects containing the RDF triples to be searched.
- * @param predicateObjectMap_uri String representing the node in the RDF triples to be matched.
+ * @param rml_triples Vector of NTriple objects containing the RDF triples to be
+ * searched.
+ * @param predicateObjectMap_uri String representing the node in the RDF triples
+ * to be matched.
  * @return PredicateMapInfo struct containing all found information.
  *
- * @note This function will enter an infinite loop if any inconsistencies are found.
+ * @note This function will enter an infinite loop if any inconsistencies are
+ * found.
  */
-PredicateMapInfo extract_rml_info_of_predicateMap(const std::vector<NTriple>& rml_triples, const std::string& predicateObjectMap_uri) {
+PredicateMapInfo extract_rml_info_of_predicateMap(
+    const std::vector<NTriple>& rml_triples,
+    const std::string& predicateObjectMap_uri) {
   std::vector<std::string> temp_result;
 
   //// Handle predicateMap ////
@@ -148,7 +162,8 @@ PredicateMapInfo extract_rml_info_of_predicateMap(const std::vector<NTriple>& rm
 
   // Get Uri of predicateMap
   std::string node_uri;
-  temp_result = find_matching_object(rml_triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
+  temp_result = find_matching_object(rml_triples, predicateObjectMap_uri,
+                                     RML_PREDICATE_MAP);
   if (temp_result.empty()) {
     throw_error("Error: No predicateMap uri/blank node found!");
 
@@ -180,7 +195,9 @@ PredicateMapInfo extract_rml_info_of_predicateMap(const std::vector<NTriple>& rm
   return predicateMapInfo;
 }
 
-PredicateObjectMapInfo extract_rml_info_of_predicateObjectMap(const std::vector<NTriple>& rml_triples, const std::string& predicateObjectMap_uri) {
+PredicateObjectMapInfo extract_rml_info_of_predicateObjectMap(
+    const std::vector<NTriple>& rml_triples,
+    const std::string& predicateObjectMap_uri) {
   std::vector<std::string> temp_result;
 
   //// Handle predicateMap ////
@@ -195,25 +212,29 @@ PredicateObjectMapInfo extract_rml_info_of_predicateObjectMap(const std::vector<
   // Can contain rr:constant, rr:template anbd rr:termType
 
   // Get predicateObjectMap graph blank node
-  temp_result = find_matching_object(rml_triples, predicateObjectMap_uri, RML_GRAPH_MAP);
+  temp_result =
+      find_matching_object(rml_triples, predicateObjectMap_uri, RML_GRAPH_MAP);
   // Only if blank node is found a graph is specified
   if (!temp_result.empty()) {
     std::string subjectMap_graph_blank_node = temp_result[0];
 
     // Get graph constant
-    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node, RML_CONSTANT);
+    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node,
+                                       RML_CONSTANT);
     if (!temp_result.empty()) {
       predicateObjectMapInfo.graph_constant = temp_result[0];
     }
 
     // Get graph template
-    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node, RML_TEMPLATE);
+    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node,
+                                       RML_TEMPLATE);
     if (!temp_result.empty()) {
       predicateObjectMapInfo.graph_template = temp_result[0];
     }
 
     // Get graph termType
-    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node, RML_TERM_TYPE);
+    temp_result = find_matching_object(rml_triples, subjectMap_graph_blank_node,
+                                       RML_TERM_TYPE);
     if (!temp_result.empty()) {
       predicateObjectMapInfo.graph_termType = temp_result[0];
     }
@@ -225,13 +246,18 @@ PredicateObjectMapInfo extract_rml_info_of_predicateObjectMap(const std::vector<
 /**
  * @brief Retrieves object map data from a vector of NTriple objects.
  *
- * @param rml_triples Vector of NTriple objects containing the RDF triples to be searched.
- * @param objectObjectMap_uri String representing the node in the RDF triples to be matched.
+ * @param rml_triples Vector of NTriple objects containing the RDF triples to be
+ * searched.
+ * @param objectObjectMap_uri String representing the node in the RDF triples to
+ * be matched.
  * @return PredicateMapInfo struct containing all found information.
  *
- * @note This function will enter an infinite loop if any inconsistencies are found.
+ * @note This function will enter an infinite loop if any inconsistencies are
+ * found.
  */
-ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_triples, const std::string& objectObjectMap_uri) {
+ObjectMapInfo extract_rml_info_of_objectMap(
+    const std::vector<NTriple>& rml_triples,
+    const std::string& objectObjectMap_uri) {
   std::vector<std::string> temp_result;
 
   //// Handle objectMap ////
@@ -252,7 +278,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
 
   // Get Uri of objectMap
   std::string node_uri;
-  temp_result = find_matching_object(rml_triples, objectObjectMap_uri, RML_OBJECT_MAP);
+  temp_result =
+      find_matching_object(rml_triples, objectObjectMap_uri, RML_OBJECT_MAP);
   if (temp_result.empty()) {
     throw_error("Error: No objectMap uri/blank node found!");
   } else if (temp_result.size() > 1) {
@@ -284,7 +311,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   temp_result = find_matching_object(rml_triples, node_uri, PARENT_SOURCE);
   if (temp_result.size() == 1) {
     //  Check if source is a blanknode
-    std::vector<std::string> temp_result2 = find_matching_object(rml_triples, temp_result[0], SD_NAME);
+    std::vector<std::string> temp_result2 =
+        find_matching_object(rml_triples, temp_result[0], SD_NAME);
     if (temp_result2.empty()) {
       // Assign the found source to source
       objectMapInfo.parentSource = temp_result[0];
@@ -297,7 +325,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   }
 
   // Get objectMap parentSourceReferrence
-  temp_result = find_matching_object(rml_triples, node_uri, PARENT_REFERENCE_FORMULATION);
+  temp_result =
+      find_matching_object(rml_triples, node_uri, PARENT_REFERENCE_FORMULATION);
   if (temp_result.size() == 1) {
     objectMapInfo.parentRef = temp_result[0];
   }
@@ -315,7 +344,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   }
 
   // Get objectMap join_reference_condition
-  temp_result = find_matching_object(rml_triples, node_uri, JOIN_REFERENCE_CONDITION);
+  temp_result =
+      find_matching_object(rml_triples, node_uri, JOIN_REFERENCE_CONDITION);
   if (temp_result.size() == 1) {
     objectMapInfo.join_reference_condition_available = temp_result[0];
   }
@@ -324,7 +354,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   temp_result = find_matching_object(rml_triples, node_uri, RML_DATA_TYPE_MAP);
   if (temp_result.size() == 1) {
     // Query for constant -> temp_result changes here!
-    temp_result = find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
+    temp_result =
+        find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
     if (temp_result.size() == 1) {
       objectMapInfo.dataType = temp_result[0];
     }
@@ -334,7 +365,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
   temp_result = find_matching_object(rml_triples, node_uri, RML_LANGUAGE_MAP);
   if (temp_result.size() == 1) {
     // Query for constant -> temp_result changes here!
-    temp_result = find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
+    temp_result =
+        find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
     if (temp_result.size() == 1) {
       std::string lang_tag = temp_result[0];
       // split en-US -> en
@@ -344,7 +376,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
       }
 
       // Check if value is supported
-      if (valid_language_subtags.find(lang_tag) == valid_language_subtags.end()) {
+      if (valid_language_subtags.find(lang_tag) ==
+          valid_language_subtags.end()) {
         throw_error("Error: Language tag is not supported!");
       }
 
@@ -386,54 +419,110 @@ ObjectMapInfo extract_rml_info_of_objectMap(const std::vector<NTriple>& rml_trip
 }
 
 /**
- * @brief Retrieves logical source data including reference formulation and source from a vector of NTriple objects.
+ * @brief Retrieves logical source data including reference formulation and
+ * source from a vector of NTriple objects.
  *
- * @param rml_triples Vector of NTriple objects containing the RDF triples to be searched.
- * @param tripleMap_node String representing the node in the RDF triples to be matched.
+ * @param rml_triples Vector of NTriple objects containing the RDF triples to be
+ * searched.
+ * @param tripleMap_node String representing the node in the RDF triples to be
+ * matched.
  * @return LogicalSourceInfo struct containing all found information.
  * and the source as the second element.
  *
- * @note This function will enter an infinite loop if any inconsistencies are found or if an unsupported
- * reference formulation is identified.
+ * @note This function will enter an infinite loop if any inconsistencies are
+ * found or if an unsupported reference formulation is identified.
  */
-LogicalSourceInfo extract_rml_info_of_source_data(const std::vector<NTriple>& rml_triples, const std::string& tripleMap_node) {
-  std::vector<std::string> temp_result;  // Temporary vector to store intermediate results
+#include <iostream>
+void logNTriples(const std::vector<NTriple>& rml_triples) {
+  for (const auto& triple : rml_triples) {
+    std::cout << triple.subject << "  " << triple.predicate << "  "
+              << triple.object << std::endl;
+  }
+}
+
+std::string extract_file_path(const std::string& input) {
+  std::string prefix = "<file://";
+  std::string suffix = ">";
+
+  // Check if the string starts with the prefix and ends with the suffix
+  if (input.substr(0, prefix.size()) == prefix &&
+      input.substr(input.size() - suffix.size()) == suffix) {
+    // Remove the prefix and suffix
+    return input.substr(prefix.size(),
+                        input.size() - prefix.size() - suffix.size());
+  } else {
+    throw_error("Error: String has unsupported format.");
+    return "";
+  }
+}
+
+LogicalSourceInfo extract_rml_info_of_source_data(
+    const std::vector<NTriple>& rml_triples,
+    const std::string& tripleMap_node) {
+  std::vector<std::string>
+      temp_result;  // Temporary vector to store intermediate results
 
   LogicalSourceInfo temp_logicalSourceInfo;  // Store gained information
 
   std::string logicalSource_uri;
 
+  std::string reference_formulation;
+
+  logNTriples(rml_triples);
+
   // Find matching object for logical source
-  temp_result = find_matching_object(rml_triples, tripleMap_node, RML_LOGICAL_SOURCE);
+  temp_result =
+      find_matching_object(rml_triples, tripleMap_node, RML_LOGICAL_SOURCE);
   if (temp_result.empty()) {
     throw_error("Error: No logical source found!");
   } else if (temp_result.size() > 1) {
     throw_error("Error: More than one logical source found!");
-  } else {
-    logicalSource_uri = temp_result[0];
   }
+  logicalSource_uri = temp_result[0];
 
   // Find matching object for source
-  temp_result = find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
+  temp_result =
+      find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
   if (temp_result.empty()) {
     throw_error("Error: No source specified!");
   } else if (temp_result.size() > 1) {
     throw_error("Error: More than one source definition found!");
-  } else {
-    // Check if source is a blanknode
-    std::vector<std::string> temp_result2 = find_matching_object(rml_triples, temp_result[0], SD_NAME);
-    if (temp_result2.empty()) {
-      // Assign the found source to source
-      temp_logicalSourceInfo.source_path = temp_result[0];
-      temp_logicalSourceInfo.in_memory_name = "";
-    } else {
-      //  Handle in-memory structure
-      temp_logicalSourceInfo.in_memory_name = temp_result2[0];
-      temp_logicalSourceInfo.source_path = "";
-    }
   }
 
-  temp_result = find_matching_object(rml_triples, logicalSource_uri, "http://semweb.mmlab.be/ns/rml#iterator");
+  std::vector<std::string> temp_result2;
+
+  // Keep track of sources
+  bool csv_source = false;
+  bool in_memory_source = false;
+
+  // Check if source is CSV
+  temp_result2 = find_matching_object(rml_triples, temp_result[0],
+                                      "http://www.w3.org/ns/csvw#url");
+  if (!temp_result2.empty()) {
+    std::string path = extract_file_path(temp_result2[0]);
+    temp_logicalSourceInfo.source_path = path;
+    temp_logicalSourceInfo.in_memory_name = "";
+
+    csv_source = true;
+  }
+  // Check if source is type In Memory
+  temp_result2 = find_matching_object(rml_triples, temp_result[0], SD_NAME);
+  if (!temp_result2.empty()) {
+    //  Handle in-memory structure
+    temp_logicalSourceInfo.in_memory_name = temp_result2[0];
+    temp_logicalSourceInfo.source_path = "";
+    in_memory_source = true;
+  }
+
+  if (!(in_memory_source || csv_source)) {
+    // If empty -> legacy method
+    // Assign the found source to source
+    temp_logicalSourceInfo.source_path = temp_result[0];
+    temp_logicalSourceInfo.in_memory_name = "";
+  }
+
+  temp_result = find_matching_object(rml_triples, logicalSource_uri,
+                                     "http://semweb.mmlab.be/ns/rml#iterator");
   if (temp_result.empty()) {
     temp_logicalSourceInfo.logical_iterator = "";
   } else if (temp_result.size() > 1) {
@@ -444,7 +533,8 @@ LogicalSourceInfo extract_rml_info_of_source_data(const std::vector<NTriple>& rm
   }
 
   // Find matching object for reference formulation
-  temp_result = find_matching_object(rml_triples, logicalSource_uri, RML_REFERENCE_FORMULATION);
+  temp_result = find_matching_object(rml_triples, logicalSource_uri,
+                                     RML_REFERENCE_FORMULATION);
   if (temp_result.empty()) {
     throw_error("Error: No reference_formulation found!");
   } else if (temp_result.size() > 1) {
@@ -464,7 +554,8 @@ void parse_rml_rules(
     std::vector<SubjectMapInfo>& subjectMapInfo_of_tripleMaps,
     std::vector<std::vector<PredicateMapInfo>>& predicateMapInfo_of_tripleMaps,
     std::vector<std::vector<ObjectMapInfo>>& objectMapInfo_of_tripleMaps,
-    std::vector<std::vector<PredicateObjectMapInfo>>& predicateObjectMapInfo_of_tripleMaps) {
+    std::vector<std::vector<PredicateObjectMapInfo>>&
+        predicateObjectMapInfo_of_tripleMaps) {
   // Handle all tripleMaps
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     // Initialize current tripleMap_node
@@ -473,7 +564,8 @@ void parse_rml_rules(
     ///////////////////////////////////////////////
     // Get information about the subject mapping
     ///////////////////////////////////////////////
-    SubjectMapInfo subjectMapInfo = extract_rml_info_of_subjectMap(rml_triple, tripleMap_node);
+    SubjectMapInfo subjectMapInfo =
+        extract_rml_info_of_subjectMap(rml_triple, tripleMap_node);
     // Add base uri
     subjectMapInfo.base_uri = base_uri;
     subjectMapInfo_of_tripleMaps.push_back(subjectMapInfo);
@@ -483,17 +575,20 @@ void parse_rml_rules(
     //////////////////////////
 
     // Get all predicateObjectMap Uris  of current tripleMap_node
-    std::vector<std::string> predicateObjectMap_uris = find_matching_object(rml_triple, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
+    std::vector<std::string> predicateObjectMap_uris = find_matching_object(
+        rml_triple, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
 
     // Stores all extracted inforation of all predicateMaps in current tripleMap
     std::vector<PredicateMapInfo> predicateMapInfos;
 
     // Iterate over all found predicateObjectMap_uris and extract predicate
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
-      PredicateMapInfo predicateMapInfo = extract_rml_info_of_predicateMap(rml_triple, predicateObjectMap_uri);
+      PredicateMapInfo predicateMapInfo =
+          extract_rml_info_of_predicateMap(rml_triple, predicateObjectMap_uri);
       predicateMapInfos.push_back(predicateMapInfo);
     }
-    // Add generated vector of predicateMaps in current tripleMap to vector outside
+    // Add generated vector of predicateMaps in current tripleMap to vector
+    // outside
     predicateMapInfo_of_tripleMaps.push_back(predicateMapInfos);
 
     //////////////////////////////////////
@@ -503,10 +598,13 @@ void parse_rml_rules(
 
     // Iterate over all found predicateObjectMap_uris and extract predicate
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
-      PredicateObjectMapInfo predicateObjectMapInfo = extract_rml_info_of_predicateObjectMap(rml_triple, predicateObjectMap_uri);
+      PredicateObjectMapInfo predicateObjectMapInfo =
+          extract_rml_info_of_predicateObjectMap(rml_triple,
+                                                 predicateObjectMap_uri);
       predicateObjectMapInfos.push_back(predicateObjectMapInfo);
     }
-    // Add generated vector of predicateMaps in current tripleMap to vector outside
+    // Add generated vector of predicateMaps in current tripleMap to vector
+    // outside
     predicateObjectMapInfo_of_tripleMaps.push_back(predicateObjectMapInfos);
 
     ///////////////////////
@@ -518,7 +616,8 @@ void parse_rml_rules(
 
     // Iterate over all found objectObjectMap_uris and extract predicate
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
-      ObjectMapInfo objectMapInfo = extract_rml_info_of_objectMap(rml_triple, predicateObjectMap_uri);
+      ObjectMapInfo objectMapInfo =
+          extract_rml_info_of_objectMap(rml_triple, predicateObjectMap_uri);
       objectMapInfos.push_back(objectMapInfo);
     }
     // Add generated vector of objectMaps in current tripleMap to vector outside
@@ -528,7 +627,8 @@ void parse_rml_rules(
     // Get meta data of mapping
     ///////////////////////////////////////////////
 
-    LogicalSourceInfo logicalSourceInfo = extract_rml_info_of_source_data(rml_triple, tripleMap_node);
+    LogicalSourceInfo logicalSourceInfo =
+        extract_rml_info_of_source_data(rml_triple, tripleMap_node);
     logicalSourceInfo_of_tripleMaps.push_back(logicalSourceInfo);
   }
 }
