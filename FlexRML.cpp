@@ -1646,6 +1646,7 @@ std::unordered_set<NQuad> map_data(
 
 void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
                       Flags &flags) {
+  // Set Flags
   bool remove_duplicates = flags.check_duplicates;
   bool adaptive_hash_selection = flags.adaptive_hash_selection;
   uint8 fixed_bit_size = flags.fixed_bit_size;
@@ -1666,6 +1667,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
   std::vector<NTriple> rml_triple;
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
+  
   // Create data structures to store hashes
   // Used to store 128 bit hashes
   std::unordered_map<uint64_t, uint128, uint128Hash> nquad_hashes_128;

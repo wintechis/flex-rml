@@ -83,10 +83,10 @@ struct Flags {
   std::string output_file = "output.nq";            // defualt output path
   bool check_duplicates = false;                    // check for duplicates?
   bool threading = false;                           // use threading?
-  uint8_t thread_count = 0;                         // number of threads to use
+  int thread_count = 0;                             // number of threads to use
   bool adaptive_hash_selection = false;             // use adaptive hash selection? or always 128 bit
   float sampling_probability = 0.2;                 // defines the sampling probability used when estimating result size
-  uint8_t fixed_bit_size = 0;                       // Specife the bit size of the hash function manually, 0 means not fixed
+  int fixed_bit_size = 0;                           // Specife the bit size of the hash function manually, 0 means not fixed
   std::unordered_set<std::string> tokens_to_remove; // Hash set of tokens when encountered triple should be skipped
   bool in_memory_mapping = false;                   // Map data completely in memory
   std::string output_serialization = "nquad";       // Output RDF serialization

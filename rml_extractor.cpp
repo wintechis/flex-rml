@@ -468,7 +468,7 @@ LogicalSourceInfo extract_rml_info_of_source_data(
 
   std::string reference_formulation;
 
-  logNTriples(rml_triples);
+  // logNTriples(rml_triples);
 
   // Find matching object for logical source
   temp_result =
