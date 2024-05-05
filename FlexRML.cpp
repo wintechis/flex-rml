@@ -159,8 +159,8 @@ std::string fill_in_template(const std::string &template_str,
  * @return Returns an unordered map with the values from the specified column as
  * keys and the corresponding stream positions as values.
  */
-std::unordered_map<std::string, std::streampos> create_index(
-    const std::string &file_path, const uint &column_index) {
+std::unordered_map<std::string, std::streampos>
+create_index(const std::string &file_path, const uint &column_index) {
   std::unordered_map<std::string, std::streampos> index_map;
   std::ifstream csv_file(file_path, std::ios::in | std::ios::binary);
 
@@ -205,8 +205,9 @@ create_index_full(const std::string &file_path, const uint &column_index,
   return indexMap;
 }
 
-std::unordered_map<std::string, std::streampos> createIndexFromCSVString(
-    const std::string &csvString, const uint &columnIndex) {
+std::unordered_map<std::string, std::streampos>
+createIndexFromCSVString(const std::string &csvString,
+                         const uint &columnIndex) {
   std::unordered_map<std::string, std::streampos> indexMap;
   std::istringstream csvStream(csvString);
 
@@ -453,8 +454,8 @@ int estimate_unique_elements_in_file(const float &p, const std::string &source,
   }
 }
 
-std::pair<std::vector<std::string>, std::string> extractSubjectNamesAndTemplate(
-    const SubjectMapInfo &subjectMapInfo) {
+std::pair<std::vector<std::string>, std::string>
+extractSubjectNamesAndTemplate(const SubjectMapInfo &subjectMapInfo) {
   std::vector<std::string> names;
   std::string templateString;
 
@@ -1232,7 +1233,7 @@ std::string generate_object_with_hash_join(
     try {
       rowPosition = parent_file_index.at(childValue);
     } catch (const std::out_of_range &) {
-      return "";  // Element not found
+      return ""; // Element not found
     }
     reader.seekg(rowPosition);
 
@@ -1240,7 +1241,7 @@ std::string generate_object_with_hash_join(
     reader.readNext(next_element);
     std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
   } else {
-    return "";  // Element not found
+    return ""; // Element not found
   }
 
   // If result is empty string -> no value available -> return
@@ -1275,10 +1276,10 @@ std::string generate_object_with_hash_join(
  * @return std::string String containing the processed object.
  *
  */
-std::string generate_object_wo_join(
-    const ObjectMapInfo &objectMapInfo,
-    const std::vector<std::string> &split_data,
-    const std::vector<std::string> &split_header) {
+std::string
+generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
+                        const std::vector<std::string> &split_data,
+                        const std::vector<std::string> &split_header) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
@@ -1460,7 +1461,7 @@ void generate_quads(
     // Set predicate which is constant
     temp_quad.predicate = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
     // Set object which is the class
-    temp_quad.object = "<" + subject_class + ">";  // Class is always IRI
+    temp_quad.object = "<" + subject_class + ">"; // Class is always IRI
     // Set graph to generated graph
     temp_quad.graph = current_graph;
 
@@ -1533,8 +1534,9 @@ void generate_quads(
 }
 
 // Function to map data in memory
-std::unordered_set<NQuad> map_data(
-    std::string &rml_rule, std::map<std::string, std::string> &input_data) {
+std::unordered_set<NQuad>
+map_data(std::string &rml_rule,
+         std::map<std::string, std::string> &input_data) {
   ///////////////////////////////////
   //// STEP 1: Read RDF triples ////
   //////////////////////////////////
@@ -1656,6 +1658,9 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
   // Set sampling probability
   gloabl_sampling_probability = flags.sampling_probability;
 
+  // Create counter for triples
+  unsigned long int triple_counter = 0;
+
   // Set dummy value for input data
   std::map<std::string, std::string> input_data;
 
@@ -1667,7 +1672,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
   std::vector<NTriple> rml_triple;
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
-  
+
   // Create data structures to store hashes
   // Used to store 128 bit hashes
   std::unordered_map<uint64_t, uint128, uint128Hash> nquad_hashes_128;
@@ -1773,6 +1778,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
 
     // Handle CSV
     if (current_logical_source_format == CSV_REFERENCE_FORMULATION) {
+      // Setup data structures
       std::unordered_map<std::string,
                          std::unordered_map<std::string, std::streampos>>
           parent_file_indices;
@@ -1782,6 +1788,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
           parent_file_indices_full;
       std::unordered_map<std::string, std::vector<std::string>>
           new_split_header_indices;
+
       for (const auto &objectMap : objectMapInfo_of_tripleMaps[i]) {
         if (objectMap.parentSource == "") {
           continue;
@@ -1903,9 +1910,12 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               out_file << quad.graph << " .\n";
-            } else {  // Case NQuad without graph or NTriple
+            } else { // Case NQuad without graph or NTriple
               out_file << ".\n";
             }
+
+            // Increase counter
+            triple_counter++;
           }
         }
 
@@ -1992,9 +2002,12 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               out_file << quad.graph << " .\n";
-            } else {  // Case NQuad without graph or NTriple
+            } else { // Case NQuad without graph or NTriple
               out_file << ".\n";
             }
+
+            // Increase counter
+            triple_counter++;
           }
         }
 
@@ -2006,30 +2019,24 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
     }
   }
 
+  // Log number of generated elements
   log("Number of generated triples: ");
-  if (hash_method == 0) {
-    logln(std::to_string(nquad_hashes_32.size()).c_str());
-  } else if (hash_method == 1) {
-    logln(std::to_string(nquad_hashes_64.size()).c_str());
-  } else if (hash_method == 2) {
-    logln(std::to_string(nquad_hashes_128.size()).c_str());
-  }
+  logln(std::to_string(triple_counter).c_str());
 }
 
 /////////////////////////////////////////////
 //// MAP DATA TO FILE - MULTIPLE THREAD ////
 ///////////////////////////////////////////
 
-template <typename T>
-class ThreadSafeQueue {
- private:
+template <typename T> class ThreadSafeQueue {
+private:
   std::queue<T> queue;
   std::mutex mtx;
   std::condition_variable not_empty_cv;
   bool done = false;
   size_t max_size;
 
- public:
+public:
   explicit ThreadSafeQueue(size_t max_size = 0) : max_size(max_size) {}
 
   void push(const std::vector<T> &items) {
@@ -2037,7 +2044,7 @@ class ThreadSafeQueue {
     for (const auto &item : items) {
       queue.push(item);
     }
-    not_empty_cv.notify_one();  // Notify one waiting thread
+    not_empty_cv.notify_one(); // Notify one waiting thread
   }
 
   size_t pop(std::vector<T> &items, size_t max_items_to_pop) {
@@ -2045,7 +2052,8 @@ class ThreadSafeQueue {
     while (queue.empty() && !done) {
       not_empty_cv.wait(lock);
     }
-    if (queue.empty() && done) return 0;
+    if (queue.empty() && done)
+      return 0;
 
     size_t popped_count = 0;
     while (!queue.empty() && popped_count < max_items_to_pop) {
@@ -2217,6 +2225,9 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
   // Used to store 32 bit hashes
   std::unordered_set<uint32_t> nquad_hashes_32;
 
+  // Create counter for triples
+  unsigned long int triple_counter = 0;
+
   std::vector<NQuad> quad_batch;
   while (true) {
     size_t count = quad_queue.pop(quad_batch, BATCH_SIZE);
@@ -2225,7 +2236,7 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
     }
 
     if (remove_duplicates) {
-      if (hash_method == 2) {  // 128 bit hash
+      if (hash_method == 2) { // 128 bit hash
         for (const NQuad &quad : quad_batch) {
           bool add_data = true;
           uint128 hash_of_quad = performCity128Hash(quad);
@@ -2251,9 +2262,11 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               outStream << quad.graph << " .\n";
-            } else {  // Case NQuad without graph or NTriple
+            } else { // Case NQuad without graph or NTriple
               outStream << ".\n";
             }
+            // Increase triple counter
+            triple_counter++;
           }
         }
       } else if (hash_method == 1) {
@@ -2278,9 +2291,11 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               outStream << quad.graph << " .\n";
-            } else {  // Case NQuad without graph or NTriple
+            } else { // Case NQuad without graph or NTriple
               outStream << ".\n";
             }
+            // Increase triple counter
+            triple_counter++;
           }
         }
       } else if (hash_method == 0) {
@@ -2305,9 +2320,11 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               outStream << quad.graph << " .\n";
-            } else {  // Case NQuad without graph or NTriple
+            } else { // Case NQuad without graph or NTriple
               outStream << ".\n";
             }
+            // Increase triple counter
+            triple_counter++;
           }
         }
       }
@@ -2317,18 +2334,12 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
 
     // Write the buffered data to the file
     out_file << outStream.str();
-    outStream.str("");  // Clear the buffer
-    outStream.clear();  // Clear any error flags
+    outStream.str(""); // Clear the buffer
+    outStream.clear(); // Clear any error flags
   }
 
   log("Number of generated triples: ");
-  if (hash_method == 0) {
-    logln(std::to_string(nquad_hashes_32.size()).c_str());
-  } else if (hash_method == 1) {
-    logln(std::to_string(nquad_hashes_64.size()).c_str());
-  } else if (hash_method == 2) {
-    logln(std::to_string(nquad_hashes_128.size()).c_str());
-  }
+  logln(std::to_string(triple_counter++).c_str());
 }
 
 void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
