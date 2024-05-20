@@ -96,6 +96,7 @@ We are constantly working to improve FlexRML and expand its capabilities. Here's
 - [ ] **Explore WASM (WebAssembly)** Investigate the possibility of running FlexRML in web browsers.
 - [ ] **Improve Performance of Join Algorithm** Optimize the current join algorithm for faster and more efficient data processing.
 - [ ] **Provide Library for Arduinos** Develop a specialized library to make FlexRML easier useable on Arduino devices, expanding its use in IoT applications.
+- [ ] **Support latest RML vocabulary** Modify the parsing of RML rules to allow the new RML vocabulary to be used.
 
 We welcome community feedback and contributions! If you have suggestions or want to contribute to any of these features, please let us know through GitHub issues.
 
