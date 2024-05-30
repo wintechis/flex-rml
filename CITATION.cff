@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - given-names: Michael
+    family-names: Freund
+    email: michael.freund@iis.fraunhofer.de
+    orcid: 'https://orcid.org/0000-0003-1601-9331'
+  - given-names: Sebastian
+    family-names: Schmid
+    orcid: 'https://orcid.org/0000-0002-5836-3029'
+  - given-names: Rene
+    family-names: Dorsch
+    orcid: 'https://orcid.org/0000-0001-6857-7314'
+  - given-names: Andreas
+    family-names: Harth
+    orcid: 'https://orcid.org/0000-0002-0702-510X'
+title: "FlexRML: A Flexible and Memory Efficient Knowledge Graph Materializer"
+url: "https://github.com/wintechis/flex-rml/"
+preferred-citation:
+  type: article
+  authors:
+  - given-names: Michael
+    family-names: Freund
+    orcid: 'https://orcid.org/0000-0003-1601-9331'
+  - given-names: Sebastian
+    family-names: Schmid
+    orcid: 'https://orcid.org/0000-0002-5836-3029'
+  - given-names: Rene
+    family-names: Dorsch
+    orcid: 'https://orcid.org/0000-0001-6857-7314'
+  - given-names: Andreas
+    family-names: Harth
+    orcid: 'https://orcid.org/0000-0002-0702-510X'
+  journal: "Extended Semantic Web Conference"
+  month: 5
+  title: "FlexRML: A Flexible and Memory Efficient Knowledge Graph Materializer"
+  year: 2024
