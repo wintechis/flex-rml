@@ -93,7 +93,6 @@ We are constantly working to improve FlexRML and expand its capabilities. Here's
           - [ ] Adjust result size estimation to JSON
      + [ ] XML
 - [x] **Add Support for N-Triple RDF Serialization** Implementing N-Triple format compatibility for broader RDF serialization options.
-- [ ] **Explore WASM (WebAssembly)** Investigate the possibility of running FlexRML in web browsers.
 - [ ] **Improve Performance of Join Algorithm** Optimize the current join algorithm for faster and more efficient data processing.
 - [ ] **Provide Library for Arduinos** Develop a specialized library to make FlexRML easier useable on Arduino devices, expanding its use in IoT applications.
 - [ ] **Support latest RML vocabulary** Modify the parsing of RML rules to allow the new RML vocabulary to be used.
