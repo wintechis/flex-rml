@@ -105,7 +105,8 @@ We welcome community feedback and contributions! If you have suggestions or want
 For those working with ESP32, we have a dedicated version of this project. It's tailored specifically for compatibility with ESP32 and the Arduino IDE. You can access it and find detailed instructions for setup and use at the following link:
 [FlexRML ESP32 Repository](https://github.com/wintechis/flex-rml-esp32/tree/main)
 
-
+## JavaScript Compatible Version
+For those working with JavaScript, we have created a node.js compatible version of FlexRML using [node-gyp](https://github.com/nodejs/node-gyp). FlexRML-node is published on [npm](https://www.npmjs.com/package/flexrml-node). 
 
 ## Licenses
 
@@ -118,6 +119,7 @@ This project uses external libraries:
 
 - [Serd](https://github.com/drobilla/serd) is licensed under the ISC License.
 - [CityHash](https://github.com/google/cityhash/) is licensed under the MIT License.
+- [AdrduinoJson](https://github.com/bblanchon/ArduinoJson) is licensed under the MIT License.
 
 The full texts of these licenses are included in the `LICENSE-ISC.txt` and `LICENSE-MIT.txt` files in this repository.
 
