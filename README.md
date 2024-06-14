@@ -105,7 +105,7 @@ For those working with ESP32, we have a dedicated version of this project. It's 
 [FlexRML ESP32 Repository](https://github.com/wintechis/flex-rml-esp32/tree/main)
 
 ## JavaScript Compatible Version
-For those working with JavaScript, we have created a node.js compatible version of FlexRML using [node-gyp](https://github.com/nodejs/node-gyp). FlexRML-node is published on [npm](https://www.npmjs.com/package/flexrml-node). 
+For those working with JavaScript, we have created a [Webassembly version of FlexRML](https://github.com/wintechis/flex-rml-node/). FlexRML-node is published on [npm](https://www.npmjs.com/package/flexrml-node).
 
 ## Licenses
 
