@@ -724,6 +724,16 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
     base_uri = parser.extracted_base_uri;
   }
 
+#ifdef DEBUG
+  // Print all the triples if in debug mode
+  std::cout << "===================" << std::endl;
+  std::cout << "Parsed RML Triple:" << std::endl;
+  for (const NTriple& trip : rml_triple) {
+    std::cout << trip.subject << "   " << trip.predicate << "   " << trip.object << " ." << std::endl;
+  }
+  std::cout << "===================" << std::endl;
+#endif
+
   // Add types to triples map
   expand_classes(rml_triple);
 
@@ -743,8 +753,11 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
 
 #ifdef DEBUG
   // Print all the triples if in debug mode
+  std::cout << "===================" << std::endl;
+  std::cout << "Prepared RML Triple:" << std::endl;
   for (const NTriple& trip : rml_triple) {
     std::cout << trip.subject << "   " << trip.predicate << "   " << trip.object << " ." << std::endl;
   }
+  std::cout << "===================" << std::endl;
 #endif
 }
