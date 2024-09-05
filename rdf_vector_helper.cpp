@@ -184,7 +184,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       std::string join_condition_bn = temp_result[0];
 
       // Get child
-      temp_result = find_matching_object(triples, join_condition_bn, "http://www.w3.org/ns/r2rml#child");
+      temp_result = find_matching_object(triples, join_condition_bn, RML_CHILD);
       if (temp_result.size() != 1) {
         throw std::runtime_error("Runtime error occurred.\nMore than one child in joinCondition specified!");
       }

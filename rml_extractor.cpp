@@ -1,5 +1,6 @@
 #include "rml_extractor.h"
 
+#include <iostream>
 #include <stdexcept>
 
 #include "rml_uris.h"
@@ -462,8 +463,7 @@ std::string extract_file_path(const std::string& input) {
 LogicalSourceInfo extract_rml_info_of_source_data(
     const std::vector<NTriple>& rml_triples,
     const std::string& tripleMap_node) {
-  std::vector<std::string>
-      temp_result;  // Temporary vector to store intermediate results
+  std::vector<std::string> temp_result;  // Temporary vector to store intermediate results
 
   LogicalSourceInfo temp_logicalSourceInfo;  // Store gained information
 
@@ -471,11 +471,8 @@ LogicalSourceInfo extract_rml_info_of_source_data(
 
   std::string reference_formulation;
 
-  // logNTriples(rml_triples);
-
   // Find matching object for logical source
-  temp_result =
-      find_matching_object(rml_triples, tripleMap_node, RML_LOGICAL_SOURCE);
+  temp_result = find_matching_object(rml_triples, tripleMap_node, RML_LOGICAL_SOURCE);
   if (temp_result.empty()) {
     throw std::runtime_error("Runtime error occurred.\nNo logical source found!");
   } else if (temp_result.size() > 1) {
@@ -484,55 +481,46 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   logicalSource_uri = temp_result[0];
 
   // Find matching object for source
-  temp_result =
-      find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
+  temp_result = find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
   if (temp_result.empty()) {
     throw std::runtime_error("Runtime error occurred.\nNo source specified!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error("Runtime error occurred.\nMore than one source definition found!");
   }
+  std::string rml_source_object_node = temp_result[0];
 
-  std::vector<std::string> temp_result2;
-
-  // Keep track of sources
-  bool csv_source = false;
-  bool in_memory_source = false;
-
-  // Check if source is CSV
-  temp_result2 = find_matching_object(rml_triples, temp_result[0],
-                                      "http://www.w3.org/ns/csvw#url");
-  if (!temp_result2.empty()) {
-    std::string path = extract_file_path(temp_result2[0]);
-    temp_logicalSourceInfo.source_path = path;
-    temp_logicalSourceInfo.in_memory_name = "";
-
-    csv_source = true;
-  }
-  // Check if source is type In Memory
-  temp_result2 = find_matching_object(rml_triples, temp_result[0], SD_NAME);
-  if (!temp_result2.empty()) {
-    //  Handle in-memory structure
-    temp_logicalSourceInfo.in_memory_name = temp_result2[0];
-    temp_logicalSourceInfo.source_path = "";
-    in_memory_source = true;
-  }
-
-  if (!(in_memory_source || csv_source)) {
-    // If empty -> legacy method
-    // Assign the found source to source
-    temp_logicalSourceInfo.source_path = temp_result[0];
-    temp_logicalSourceInfo.in_memory_name = "";
-  }
-
-  temp_result = find_matching_object(rml_triples, logicalSource_uri,
-                                     "http://semweb.mmlab.be/ns/rml#iterator");
+  // Get type
+  temp_result = find_matching_object(rml_triples, rml_source_object_node, RDF_TYPE);
   if (temp_result.empty()) {
-    temp_logicalSourceInfo.logical_iterator = "";
+    throw std::runtime_error("Runtime error occurred.\nNo type found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one iterator definition found!");
-  } else {
-    // Assign the found source to source
-    temp_logicalSourceInfo.logical_iterator = temp_result[0];
+    throw std::runtime_error("Runtime error occurred.\nMore than one type found!");
+  }
+  std::string rml_path_type = temp_result[0];
+
+  // Get root
+  temp_result = find_matching_object(rml_triples, rml_source_object_node, RML_ROOT);
+  if (temp_result.empty()) {
+    throw std::runtime_error("Runtime error occurred.\nNo root found!");
+  } else if (temp_result.size() > 1) {
+    throw std::runtime_error("Runtime error occurred.\nMore than one root found!");
+  }
+  std::string rml_root_uri = temp_result[0];
+
+  // Get path
+  temp_result = find_matching_object(rml_triples, rml_source_object_node, RML_PATH);
+  if (temp_result.empty()) {
+    throw std::runtime_error("Runtime error occurred.\nNo path found!");
+  } else if (temp_result.size() > 1) {
+    throw std::runtime_error("Runtime error occurred.\nMore than one path found!");
+  }
+  std::string rml_path_uri = temp_result[0];
+
+  // Build path
+  if (rml_path_type == "http://w3id.org/rml/RelativePathSource") {
+    if (rml_root_uri == "http://w3id.org/rml/MappingDirectory") {
+      temp_logicalSourceInfo.source_path = "./" + rml_path_uri;
+    }
   }
 
   // Find matching object for reference formulation
@@ -546,6 +534,7 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   } else {
     temp_logicalSourceInfo.reference_formulation = temp_result[0];
   }
+
   // Return the reference_formulation and source as a pair
   return temp_logicalSourceInfo;
 }

@@ -110,8 +110,7 @@ std::string fill_in_template(const std::string &template_str,
                              const std::vector<std::string> &split_header,
                              const std::string &term_type = "") {
   std::vector<std::string> query_strings = extract_substrings(template_str);
-  std::vector<std::string> query_strings_in_braces =
-      enclose_in_braces(query_strings);
+  std::vector<std::string> query_strings_in_braces = enclose_in_braces(query_strings);
 
   std::string filled_template_str = template_str;
   std::string generated_value_last;
@@ -825,8 +824,7 @@ std::string generate_graph_logic(const std::string &graph_termType,
     std::cout << "Generating graph based on template..." << std::endl;
 #endif
 
-    std::string current_graph = fill_in_template(graph_template, split_data,
-                                                 split_header, IRI_TERM_TYPE);
+    std::string current_graph = fill_in_template(graph_template, split_data, split_header, IRI_TERM_TYPE);
 
     if (current_graph.empty()) {
       return "";
@@ -888,7 +886,7 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
 
   // Check if term type is supported on subject -> only blank node and IRI
   if (subjectMapInfo.termType != IRI_TERM_TYPE &&
-      subjectMapInfo.termType != "http://www.w3.org/ns/r2rml#BlankNode") {
+      subjectMapInfo.termType != BLANKNODE_TERM_TYPE) {
     throw std::runtime_error("Runtime error occurred.\ntermType 'literal' is not supported in subject position.");
   }
 
@@ -898,8 +896,8 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
 #ifdef DEBUG
     std::cout << "Generating subject based on template..." << std::endl;
 #endif
-    current_generated_subject = fill_in_template(
-        subjectMapInfo.template_str, split_data, split_header, IRI_TERM_TYPE);
+    current_generated_subject = fill_in_template(subjectMapInfo.template_str, split_data, split_header, IRI_TERM_TYPE);
+
     // If result is empty string -> no value available -> return
     if (current_generated_subject == "") {
       return "";
@@ -911,8 +909,7 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
       if (current_generated_subject.substr(0, 7) != "http://" &&
           current_generated_subject.substr(0, 8) != "https://") {
         // Generate uri using base
-        current_generated_subject =
-            subjectMapInfo.base_uri + current_generated_subject;
+        current_generated_subject = subjectMapInfo.base_uri + current_generated_subject;
       }
     }
   }
@@ -943,7 +940,6 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
 #endif
     current_generated_subject = subjectMapInfo.constant;
   }
-
   // Hanlde term type
   return handle_term_type(subjectMapInfo.termType, current_generated_subject);
 }
@@ -1012,8 +1008,7 @@ std::string generate_object_with_nested_loop_join(
     std::cout << "Generating object based on template..." << std::endl;
 #endif
 
-    generated_object = fill_in_template(objectMapInfo.template_str,
-                                        split_data_child, split_header_child);
+    generated_object = fill_in_template(objectMapInfo.template_str, split_data_child, split_header_child);
 
     // Reset file
     reader_parent.reset();
@@ -1128,8 +1123,7 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
       std::vector<std::string> split_data_parent =
           split_csv_line(next_element, ',');
       if (split_data_parent[index_parent] == split_data_child[index_child]) {
-        result = fill_in_template(objectMapInfo.template_str, split_data_parent,
-                                  split_header_parent);
+        result = fill_in_template(objectMapInfo.template_str, split_data_parent, split_header_parent);
         if (!result.empty()) {
           generated_objects.push_back(result);
         }
@@ -1223,8 +1217,7 @@ std::string generate_object_with_hash_join(
   std::cout << "Generating object based on template..." << std::endl;
 #endif
 
-  generated_object =
-      fill_in_template(objectMapInfo.template_str, split_data, split_header);
+  generated_object = fill_in_template(objectMapInfo.template_str, split_data, split_header);
 
   // GENERATE VALUE
   uint index_old = 0;
@@ -1551,6 +1544,9 @@ void generate_quads(
 
 void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
                       Flags &flags) {
+#ifdef DEBUG
+  std::cout << "Mapping file in single threaded mode..." << std::endl;
+#endif
   // Set Flags
   bool remove_duplicates = flags.check_duplicates;
   bool adaptive_hash_selection = flags.adaptive_hash_selection;
@@ -2244,6 +2240,9 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
 
 void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                                 Flags &flags) {
+#ifdef DEBUG
+  std::cout << "Mapping file in multi threaded mode..." << std::endl;
+#endif
   bool remove_duplicates = flags.check_duplicates;
   bool adaptive_hash_selection = flags.adaptive_hash_selection;
   uint8_t num_threads = flags.thread_count;
