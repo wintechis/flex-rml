@@ -1,5 +1,7 @@
 #include "json_handling.h"
 
+#include "definitions.h"
+
 bool initialize = true;
 
 std::string get_next_word(std::ifstream& file, bool reset = false) {

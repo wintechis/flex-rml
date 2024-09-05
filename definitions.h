@@ -5,6 +5,8 @@
 #include <unordered_set>
 #include <vector>
 
+#define DEBUG
+
 // Struct to hold the subjectMap information
 struct SubjectMapInfo {
   std::string name_triplesMap_node;  // Name of parent triplesMap

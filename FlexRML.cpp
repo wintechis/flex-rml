@@ -1009,7 +1009,7 @@ std::string generate_object_with_nested_loop_join(
   if (objectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    std::cout << "Generating object based on template..." << st::endl;
+    std::cout << "Generating object based on template..." << std::endl;
 #endif
 
     generated_object = fill_in_template(objectMapInfo.template_str,
@@ -1291,7 +1291,7 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
   if (objectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    std::cout << "Generating object based on template..." << std::endlF;
+    std::cout << "Generating object based on template..." << std::endl;
 #endif
     generated_object =
         fill_in_template(objectMapInfo.template_str, split_data, split_header);
@@ -1304,7 +1304,7 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
   else if (objectMapInfo.constant != "") {
 // Set constant value as subject
 #ifdef DEBUG
-    std::cout << "Generating object based on constant..." std::endl;
+    std::cout << "Generating object based on constant..." << std::endl;
 #endif
     generated_object = objectMapInfo.constant;
   }
