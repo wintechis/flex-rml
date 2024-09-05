@@ -24,7 +24,7 @@ SerdStatus RDFParser::static_capture_prefix(void* handle, const SerdNode* name, 
   return ((RDFParser*)handle)->capture_prefix(name, uri);
 }
 
-SerdStatus RDFParser::static_handle_triple(void* handle, flag_data_type flags, const SerdNode* graph, const SerdNode* subject, const SerdNode* predicate, const SerdNode* object, const SerdNode* datatype, const SerdNode* lang) {
+SerdStatus RDFParser::static_handle_triple(void* handle, unsigned int flags, const SerdNode* graph, const SerdNode* subject, const SerdNode* predicate, const SerdNode* object, const SerdNode* datatype, const SerdNode* lang) {
   return ((RDFParser*)handle)->handle_triple(handle, flags, graph, subject, predicate, object, datatype, lang);
 }
 
@@ -96,7 +96,7 @@ SerdNode RDFParser::expand_node(const SerdNode* node) {
 
 SerdStatus RDFParser::handle_triple(
     void* handle,
-    flag_data_type flags,
+    unsigned int flags,
     const SerdNode* graph,
     const SerdNode* subject,
     const SerdNode* predicate,

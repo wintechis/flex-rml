@@ -35,7 +35,7 @@ apt install build-essential
 1. Clone or download the repository.
 2. Navigate to the project directory.
 3. Run the makefile using the command: `make`.
-4. After compilation, the executable `FlexRML` will be available in the directory.
+4. After compilation, the executable `flexrml` will be available in the directory.
 
 ## Getting Started
 
@@ -45,7 +45,7 @@ Depending on the use case and environment FlexRML is executed, different configu
 
 The method prioritizes faster execution speed at the expense of increased memory usage. It uses a 128-bit hash function to identify duplicates and bypasses the result size estimation step to achieve faster performance. To use this mode, run the following command:
 ```bash
-./FlexRML -m [path] -d -t
+./flexrml -m [path] -d -t
 ```
 
 
@@ -53,7 +53,7 @@ The method prioritizes faster execution speed at the expense of increased memory
 
 This mode is optimized for minimal memory usage by using a result size estimator to approximate the number of N-Quads generated. Although this process takes more time due to the additional computation, it conserves memory, in particular when the estimated number of N-Quads is less than 135,835,773. This approach is beneficial in memory-constrained environments. To enable this mode, use the following command:
 ```bash
-./FlexRML -m [path] -d -t -a
+./flexrml -m [path] -d -t -a
 ```
 
 More informatioin about available flags can be found on the [wiki](https://github.com/wintechis/flex-rml/wiki/How-To-Use%3F).
@@ -73,7 +73,7 @@ The sensor_values.csv contains:
 If you are in the example folder and run:
 
 ```bash
-./FlexRML -m ./mapping.ttl -o output_file.nq -d
+./flexrml -m ./mapping.ttl -o output_file.nq -d
 ```
 
 The resulting RDF graph can be found in output_file.nq.
