@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "custom_io.h"
+#include "city.h"
 #include "definitions.h"
 #include "file_reader/csv_reader.h"
 #include "file_reader/file_reader.h"
@@ -19,17 +19,6 @@
 #include "rml_uris.h"
 #include "string_helper.h"
 #include "termtype_helper.h"
-
-// For writing to files only available on PC
-#include <condition_variable>
-#include <fstream>
-#include <functional>
-#include <mutex>
-#include <queue>
-#include <random>
-#include <thread>
-
-#include "city.h"
 
 // Number used when expanding maps
 constexpr uint initial_blank_node_nr = 18914;

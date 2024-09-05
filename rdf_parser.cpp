@@ -1,6 +1,6 @@
 #include "rdf_parser.h"
 
-#include "custom_io.h"
+#include <sstream>
 
 // Constructor definition
 RDFParser::RDFParser()
@@ -38,7 +38,6 @@ SerdStatus RDFParser::static_handle_triple(void* handle, unsigned int flags, con
  * @return {std::string} - The extracted base URI, or an empty string if not found.
  */
 std::string RDFParser::extract_base_URI(const std::string& str) {
-   
   std::istringstream stream(str);  // Convert the string to a stream for line-by-line processing
   std::string line;
 
@@ -68,25 +67,22 @@ std::string RDFParser::extract_base_URI(const std::string& str) {
 
 // Error handling function for Serd
 SerdStatus RDFParser::handle_error(void* handle, const SerdError* error) {
-   
   (void)handle;
 
-  log("Error: ");
-  logln(error->status);
+  std::string error_message = "Runtime error occurred.\n" + error->status;
+  throw std::runtime_error(error_message);
 
   return SERD_FAILURE;
 }
 
 // Function to add prefix to envionment
 SerdStatus RDFParser::capture_prefix(const SerdNode* name, const SerdNode* uri) {
-   
   // Set the prefix in the environment
   return serd_env_set_prefix(env, name, uri);
 }
 
 // Function to expand a serd curie to an uri
 SerdNode RDFParser::expand_node(const SerdNode* node) {
-   
   SerdNode expanded = serd_env_expand_node(env, node);
   if (expanded.buf) {
     return expanded;
@@ -103,7 +99,6 @@ SerdStatus RDFParser::handle_triple(
     const SerdNode* object,
     const SerdNode* datatype,
     const SerdNode* lang) {
-       
   // Unused parameters
   (void)handle;
   (void)flags;
@@ -130,7 +125,6 @@ SerdStatus RDFParser::handle_triple(
 }
 
 void RDFParser::handle_rdf_parsing(const std::string& rdf_data) {
-   
   std::vector<NTriple> rml_triples;
 
   // Parse RML Rule
@@ -150,7 +144,7 @@ void RDFParser::handle_rdf_parsing(const std::string& rdf_data) {
       nullptr,                // Base sink
       static_capture_prefix,  // Prefix sink
       static_handle_triple,   // Statement sink
-      nullptr);               // End sink (optional, used for streaming)
+      nullptr);               // End sink
 
   // Set the error handling function for the reader
   serd_reader_set_error_sink(reader, static_handle_error, this);
@@ -158,7 +152,7 @@ void RDFParser::handle_rdf_parsing(const std::string& rdf_data) {
   // Parse the data
   SerdStatus status = serd_reader_read_string(reader, (const uint8_t*)rdf_data.c_str());
   if (status) {
-    throw_error("Error reading RML rule.");
+    throw std::runtime_error("Runtime error occurred reading RML rule.");
   }
 
   // Free memory from Serd

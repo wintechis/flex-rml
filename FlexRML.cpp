@@ -1,5 +1,15 @@
 #include "FlexRML.h"
 
+#include <condition_variable>
+#include <exception>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <mutex>
+#include <queue>
+#include <random>
+#include <thread>
+
 #define BATCH_SIZE 200
 
 float gloabl_sampling_probability = 0.05;
@@ -109,9 +119,8 @@ std::string fill_in_template(const std::string &template_str,
   for (size_t i = 0; i < query_strings.size(); ++i) {
     uint index = 0;
     if (!get_index_of_element(split_header, query_strings[i], index)) {
-      log("Error: Element '");
-      log(query_strings[i].c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\n" + query_strings[i] + " not found in input.";
+      throw std::runtime_error(error_message);
     }
 
     generated_value_last = split_data[index];
@@ -270,9 +279,8 @@ int estimate_join_size(const std::string &source_file_path,
   // Get index of element in header
   uint index = 0;
   if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
-    log("Error: Element '");
-    log(objectMapInfo.parent.c_str());
-    throw_error("' not found in input.");
+    std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.parent + " not found in input.";
+    throw std::runtime_error(error_message);
   }
 
   std::unordered_map<std::string, std::streampos> parent_file_index;
@@ -291,9 +299,8 @@ int estimate_join_size(const std::string &source_file_path,
     for (size_t i = 0; i < query_strings.size(); ++i) {
       uint index = 0;
       if (!get_index_of_element(split_header_parent, query_strings[i], index)) {
-        log("Error: Element '");
-        log(query_strings[i].c_str());
-        throw_error("' not found in input.");
+        std::string error_message = "Runtime error occurred.\nElement " + query_strings[i] + " not found in input.";
+        throw std::runtime_error(error_message);
       }
       split_header_index.push_back(query_strings[i]);
       element_index.push_back(index);
@@ -311,9 +318,8 @@ int estimate_join_size(const std::string &source_file_path,
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      log("Error: Element '");
-      log(element.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      throw std::runtime_error(error_message);
     }
     indices_subject.push_back(index);
   }
@@ -327,9 +333,8 @@ int estimate_join_size(const std::string &source_file_path,
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      log("Error: Element '");
-      log(element.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      throw std::runtime_error(error_message);
     }
     indices_predicates.push_back(index);
   }
@@ -446,7 +451,7 @@ int estimate_unique_elements_in_file(const float &p, const std::string &source,
       return static_cast<int>(U_hat);
     }
   } else {
-    throw_error("Error: Found unsupported data encoding!");
+    throw std::runtime_error("Runtime error occurred.\nFound unsupported data encoding!");
     return 0;
   }
 }
@@ -506,9 +511,8 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      log("Error: Element '");
-      log(element.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      throw std::runtime_error(error_message);
     }
     indices_subject.push_back(index);
   }
@@ -522,9 +526,8 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      log("Error: Element '");
-      log(element.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      throw std::runtime_error(error_message);
     }
     indices_predicates.push_back(index);
   }
@@ -536,9 +539,8 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      log("Error: Element '");
-      log(element.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      throw std::runtime_error(error_message);
     }
     indices_objects.push_back(index);
   }
@@ -634,8 +636,7 @@ int estimate_generated_triple(
   // Counter for estimated result size
   int result = 0;
 
-  log("Using a sampling probability of: ");
-  logln(std::to_string(gloabl_sampling_probability).substr(0, 5).c_str());
+  std::cout << "Using a sampling probability of: " << std::to_string(gloabl_sampling_probability).substr(0, 5) << std::endl;
 
   // Store generated elements with join
   std::unordered_set<uint64_t> seen_elements_triple_map;
@@ -765,11 +766,9 @@ uint8 detect_hash_method(
   int duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
           .count();
-  log("Estimation took: ");
-  log(duration);
-  logln(" milliseconds");
-  log("Estimated number of unique elements: ");
-  logln(res);
+
+  std::cout << "Estimation took: " << duration << " milliseconds\n"
+            << "Estimated number of unique elements: " << res << std::endl;
 
   // Decide on Hash method
   // 0 -> 32bit, 1 -> 64bit, 2 -> 128bit
@@ -814,15 +813,17 @@ std::string generate_graph_logic(const std::string &graph_termType,
                                  const std::vector<std::string> &split_header) {
   // Ensure the provided termType is supported (only 'IRI' is supported).
   if (graph_termType != IRI_TERM_TYPE) {
-    log("Error: Unsupported graph termType - termType of graph can only be "
-        "'IRI'. Used termType was: ");
-    throw_error(graph_termType.c_str());
+    std::string error_message =
+        "Runtime error occurred.\nUnsupported graph termType - termType of graph can only be 'IRI'. Used termType was: " + graph_termType;
+    throw std::runtime_error(error_message);
   }
 
   // If a graph template is provided, process and return the graph based on the
   // template.
   if (!graph_template.empty()) {
-    logln_debug("Generating graph based on template...");
+#ifdef DEBUG
+    std::cout << "Generating graph based on template..." << std::endl;
+#endif
 
     std::string current_graph = fill_in_template(graph_template, split_data,
                                                  split_header, IRI_TERM_TYPE);
@@ -836,7 +837,9 @@ std::string generate_graph_logic(const std::string &graph_termType,
     if (graph_constant == DEFAULT_GRAPH) {
       return NO_GRAPH;
     }
-    logln_debug("Generating graph based on constant...");
+#ifdef DEBUG
+    std::cout << "Generating graph based on constant..." << std::endl;
+#endif
     return handle_term_type(IRI_TERM_TYPE, graph_constant);
   }
 
@@ -886,14 +889,15 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   // Check if term type is supported on subject -> only blank node and IRI
   if (subjectMapInfo.termType != IRI_TERM_TYPE &&
       subjectMapInfo.termType != "http://www.w3.org/ns/r2rml#BlankNode") {
-    throw_error(
-        "Error: termType 'literal' is not supported in subject position.");
+    throw std::runtime_error("Runtime error occurred.\ntermType 'literal' is not supported in subject position.");
   }
 
   // Check if template is available
   if (subjectMapInfo.template_str != "") {
-    // Fill in template and store it the generate value
-    logln_debug("Generating subject based on template...");
+// Fill in template and store it the generate value
+#ifdef DEBUG
+    std::cout << "Generating subject based on template..." << std::endl;
+#endif
     current_generated_subject = fill_in_template(
         subjectMapInfo.template_str, split_data, split_header, IRI_TERM_TYPE);
     // If result is empty string -> no value available -> return
@@ -914,7 +918,9 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   }
   // Check if reference value is available
   else if (subjectMapInfo.reference != "") {
-    logln_debug("Generating subject based on reference...");
+#ifdef DEBUG
+    std::cout << "Generating subject based on reference..." << std::endl;
+#endif
     std::string temp_template = "{" + subjectMapInfo.reference + "}";
     current_generated_subject =
         fill_in_template(temp_template, split_data, split_header);
@@ -931,8 +937,10 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   }
   // Check if constant value is available
   else if (subjectMapInfo.constant != "") {
-    // Set constant value as subject
-    logln_debug("Generating subject based on constant...");
+// Set constant value as subject
+#ifdef DEBUG
+    std::cout << "Generating subject based on constant..." << std::endl;
+#endif
     current_generated_subject = subjectMapInfo.constant;
   }
 
@@ -962,8 +970,10 @@ std::string generate_predicate(const PredicateMapInfo &predicateMapInfo,
   std::string current_predicate = "";
   // Check if template is available
   if (predicateMapInfo.template_str != "") {
-    // Fill in template and store it the generate value
-    logln_debug("Generating predicate based on template...");
+// Fill in template and store it the generate value
+#ifdef DEBUG
+    std::cout << "Generating predicate based on template..." << std::endl;
+#endif
     current_predicate = fill_in_template(predicateMapInfo.template_str,
                                          split_data, split_header);
     // If result is empty string -> no value available -> return
@@ -973,8 +983,10 @@ std::string generate_predicate(const PredicateMapInfo &predicateMapInfo,
   }
   // Check if constant value is available
   else if (predicateMapInfo.constant != "") {
-    // Set constant value as subject
-    logln_debug("Generating predicate based on constant...");
+// Set constant value as subject
+#ifdef DEBUG
+    std::cout << "Generating predicate based on constant..." << std::endl;
+#endif
     current_predicate = predicateMapInfo.constant;
   }
   // TODO: Handle reference -> And find out if needed?
@@ -995,8 +1007,10 @@ std::string generate_object_with_nested_loop_join(
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
-    // Fill in template and store it the generate value
-    logln_debug("Generating object based on template...");
+// Fill in template and store it the generate value
+#ifdef DEBUG
+    std::cout << "Generating object based on template..." << st::endl;
+#endif
 
     generated_object = fill_in_template(objectMapInfo.template_str,
                                         split_data_child, split_header_child);
@@ -1016,18 +1030,16 @@ std::string generate_object_with_nested_loop_join(
     uint index = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent,
                               index)) {
-      log("Error: Element '");
-      log(objectMapInfo.parent.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.parent + " not found in input.";
+      throw std::runtime_error(error_message);
     }
 
     // Generate value
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      log("Error: Element '");
-      log(objectMapInfo.child.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+      throw std::runtime_error(error_message);
     }
 
     std::string next_element;
@@ -1080,9 +1092,8 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      log("Error: Element '");
-      log(objectMapInfo.child.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+      throw std::runtime_error(error_message);
     }
 
     std::string child_value = split_data_child[index_child];
@@ -1106,9 +1117,8 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
     uint index_parent = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent,
                               index_parent)) {
-      log("Error: Element '");
-      log(objectMapInfo.parent.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.parent + " not found in input.";
+      throw std::runtime_error(error_message);
     }
 
     std::string result;
@@ -1158,9 +1168,8 @@ std::vector<std::string> generate_object_with_hash_join_full(
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      log("Error: Element '");
-      log(objectMapInfo.child.c_str());
-      throw_error("' not found in input.");
+      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+      throw std::runtime_error(error_message);
     }
 
     std::string child_value = split_data_child[index_child];
@@ -1209,8 +1218,10 @@ std::string generate_object_with_hash_join(
     const std::unordered_map<std::string, std::streampos> &parent_file_index) {
   std::string generated_object = "";
 
-  // Fill in template and store it the generate value
-  logln_debug("Generating object based on template...");
+// Fill in template and store it the generate value
+#ifdef DEBUG
+  std::cout << "Generating object based on template..." << std::endl;
+#endif
 
   generated_object =
       fill_in_template(objectMapInfo.template_str, split_data, split_header);
@@ -1218,9 +1229,8 @@ std::string generate_object_with_hash_join(
   // GENERATE VALUE
   uint index_old = 0;
   if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
-    log("Error: Element '");
-    log(objectMapInfo.child.c_str());
-    throw_error("' not found in input.");
+    std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+    throw std::runtime_error(error_message);
   }
 
   std::string childValue = split_data[index_old];
@@ -1229,7 +1239,7 @@ std::string generate_object_with_hash_join(
     try {
       rowPosition = parent_file_index.at(childValue);
     } catch (const std::out_of_range &) {
-      return ""; // Element not found
+      return "";  // Element not found
     }
     reader.seekg(rowPosition);
 
@@ -1237,7 +1247,7 @@ std::string generate_object_with_hash_join(
     reader.readNext(next_element);
     std::vector<std::string> split_data_ref = split_csv_line(next_element, ',');
   } else {
-    return ""; // Element not found
+    return "";  // Element not found
   }
 
   // If result is empty string -> no value available -> return
@@ -1279,8 +1289,10 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
-    // Fill in template and store it the generate value
-    logln_debug("Generating object based on template...");
+// Fill in template and store it the generate value
+#ifdef DEBUG
+    std::cout << "Generating object based on template..." << std::endlF;
+#endif
     generated_object =
         fill_in_template(objectMapInfo.template_str, split_data, split_header);
     // If result is empty string -> no value available -> return
@@ -1290,13 +1302,17 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
   }
   // Check if constant value is available
   else if (objectMapInfo.constant != "") {
-    // Set constant value as subject
-    logln_debug("Generating object based on constant...");
+// Set constant value as subject
+#ifdef DEBUG
+    std::cout << "Generating object based on constant..." std::endl;
+#endif
     generated_object = objectMapInfo.constant;
   }
   // Check if reference is available
   else if (objectMapInfo.reference != "") {
-    logln_debug("Generating object based on reference...");
+#ifdef DEBUG
+    std::cout << "Generating object based on reference..." << std::endl;
+#endif
     std::string temp_template = "{" + objectMapInfo.reference + "}";
     generated_object =
         fill_in_template(temp_template, split_data, split_header);
@@ -1457,7 +1473,7 @@ void generate_quads(
     // Set predicate which is constant
     temp_quad.predicate = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
     // Set object which is the class
-    temp_quad.object = "<" + subject_class + ">"; // Class is always IRI
+    temp_quad.object = "<" + subject_class + ">";  // Class is always IRI
     // Set graph to generated graph
     temp_quad.graph = current_graph;
 
@@ -1573,8 +1589,9 @@ map_data(std::string &rml_rule,
   predicateMapInfo_of_tripleMaps.shrink_to_fit();
   objectMapInfo_of_tripleMaps.shrink_to_fit();
   predicateObjectMapInfo_of_tripleMaps.shrink_to_fit();
-
-  logln_debug("Finished parsing RML rules.");
+#ifdef DEBUG
+  std::cout << "Finished parsing RML rules." << std::endl;
+#endif
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1629,7 +1646,7 @@ map_data(std::string &rml_rule,
             parent_file_indices_full, new_split_header_indices, input_data);
       }
     } else {
-      throw_error("Error: Found unsupported data encoding!");
+      throw std::runtime_error("Runtime error occurred.\nFound unsupported data encoding!");
     }
   }
 
@@ -1712,7 +1729,9 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
   objectMapInfo_of_tripleMaps.shrink_to_fit();
   predicateObjectMapInfo_of_tripleMaps.shrink_to_fit();
 
-  logln_debug("Finished parsing RML rules.");
+#ifdef DEBUG
+  std::cout << "Finished parsing RML rules." << std::endl;
+#endif
 
   // Decide on hash size
   uint8 hash_method;
@@ -1739,15 +1758,16 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
         objectMapInfo_of_tripleMaps);
   }
 
-  log("Using a ");
+  int bit_width = 0;
   if (hash_method == 0) {
-    log(32);
+    bit_width = 32;
   } else if (hash_method == 1) {
-    log(64);
+    bit_width = 64;
   } else if (hash_method == 2) {
-    log(128);
+    bit_width = 128;
   }
-  logln(" bit hash function.");
+
+  std::cout << "Using a " << std::to_string(bit_width) << " bit hash function." << std::endl;
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1802,9 +1822,8 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
         // Get index of element in header
         uint index = 0;
         if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-          log("Error: Element '");
-          log(objectMap.parent.c_str());
-          throw_error("' not found in input.");
+          std::string error_message = "Runtime error occurred.\nElement " + objectMap.parent + " not found in input.";
+          throw std::runtime_error(error_message);
         }
 
         // Create Index for full join
@@ -1820,9 +1839,8 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
             uint index = 0;
             if (!get_index_of_element(split_header_ref, query_strings[i],
                                       index)) {
-              log("Error: Element '");
-              log(query_strings[i].c_str());
-              throw_error("' not found in input.");
+              std::string error_message = "Runtime error occurred.\nElement " + query_strings[i] + " not found in input.";
+              throw std::runtime_error(error_message);
             }
             element_index.push_back(index);
             new_split_header.push_back(query_strings[i]);
@@ -1905,7 +1923,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               out_file << quad.graph << " .\n";
-            } else { // Case NQuad without graph or NTriple
+            } else {  // Case NQuad without graph or NTriple
               out_file << ".\n";
             }
 
@@ -1997,7 +2015,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               out_file << quad.graph << " .\n";
-            } else { // Case NQuad without graph or NTriple
+            } else {  // Case NQuad without graph or NTriple
               out_file << ".\n";
             }
 
@@ -2010,28 +2028,27 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
       }
 
     } else {
-      throw_error("Error: Found unsupported data encoding!");
+      throw std::runtime_error("Runtime error occurred.\nFound unsupported data encoding!");
     }
   }
 
-  // Log number of generated elements
-  log("Number of generated triples: ");
-  logln(std::to_string(triple_counter).c_str());
+  std::cout << "Number of generated triples: " << std::to_string(triple_counter) << std::endl;
 }
 
 /////////////////////////////////////////////
 //// MAP DATA TO FILE - MULTIPLE THREAD ////
 ///////////////////////////////////////////
 
-template <typename T> class ThreadSafeQueue {
-private:
+template <typename T>
+class ThreadSafeQueue {
+ private:
   std::queue<T> queue;
   std::mutex mtx;
   std::condition_variable not_empty_cv;
   bool done = false;
   size_t max_size;
 
-public:
+ public:
   explicit ThreadSafeQueue(size_t max_size = 0) : max_size(max_size) {}
 
   void push(const std::vector<T> &items) {
@@ -2039,7 +2056,7 @@ public:
     for (const auto &item : items) {
       queue.push(item);
     }
-    not_empty_cv.notify_one(); // Notify one waiting thread
+    not_empty_cv.notify_one();  // Notify one waiting thread
   }
 
   size_t pop(std::vector<T> &items, size_t max_items_to_pop) {
@@ -2130,9 +2147,8 @@ void process_triple_map(
       // Get index of element in header
       uint index = 0;
       if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-        log("Error: Element '");
-        log(objectMap.parent.c_str());
-        throw_error("' not found in input.");
+        std::string error_message = "Runtime error occurred.\nElement " + objectMap.parent + " not found in input.";
+        throw std::runtime_error(error_message);
       }
 
       // Create Index for full join
@@ -2148,9 +2164,8 @@ void process_triple_map(
           uint index = 0;
           if (!get_index_of_element(split_header_ref, query_strings[i],
                                     index)) {
-            log("Error: Element '");
-            log(query_strings[i].c_str());
-            throw_error("' not found in input.");
+            std::string error_message = "Runtime error occurred.\nElement " + query_strings[i] + " not found in input.";
+            throw std::runtime_error(error_message);
           }
           element_index.push_back(index);
           new_split_header.push_back(query_strings[i]);
@@ -2201,7 +2216,7 @@ void process_triple_map(
     }
     reader.close();
   } else {
-    throw_error("Error: Found unsupported data encoding!");
+    throw std::runtime_error("Runtime error occurred.\nFound unsupported data encoding!");
   }
 }
 
@@ -2231,7 +2246,7 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
     }
 
     if (remove_duplicates) {
-      if (hash_method == 2) { // 128 bit hash
+      if (hash_method == 2) {  // 128 bit hash
         for (const NQuad &quad : quad_batch) {
           bool add_data = true;
           uint128 hash_of_quad = performCity128Hash(quad);
@@ -2257,7 +2272,7 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               outStream << quad.graph << " .\n";
-            } else { // Case NQuad without graph or NTriple
+            } else {  // Case NQuad without graph or NTriple
               outStream << ".\n";
             }
             // Increase triple counter
@@ -2286,7 +2301,7 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               outStream << quad.graph << " .\n";
-            } else { // Case NQuad without graph or NTriple
+            } else {  // Case NQuad without graph or NTriple
               outStream << ".\n";
             }
             // Increase triple counter
@@ -2315,7 +2330,7 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
             // Case NQuad with graph
             if (format == "nquad" && quad.graph != "") {
               outStream << quad.graph << " .\n";
-            } else { // Case NQuad without graph or NTriple
+            } else {  // Case NQuad without graph or NTriple
               outStream << ".\n";
             }
             // Increase triple counter
@@ -2329,12 +2344,11 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
 
     // Write the buffered data to the file
     out_file << outStream.str();
-    outStream.str(""); // Clear the buffer
-    outStream.clear(); // Clear any error flags
+    outStream.str("");  // Clear the buffer
+    outStream.clear();  // Clear any error flags
   }
 
-  log("Number of generated triples: ");
-  logln(std::to_string(triple_counter++).c_str());
+  std::cout << "Number of generated triples: " << std::to_string(triple_counter++) << std::endl;
 }
 
 void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
@@ -2395,9 +2409,9 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                   logicalSourceInfo_of_tripleMaps, subjectMapInfo_of_tripleMaps,
                   predicateMapInfo_of_tripleMaps, objectMapInfo_of_tripleMaps,
                   predicateObjectMapInfo_of_tripleMaps);
-
-  logln_debug("Finished parsing RML rules.");
-
+#ifdef DEBUG
+  std::cout << "Finished parsing RML rules." << std::endl;
+#endif
   // Decide on hash size
   uint8 hash_method;
 
@@ -2422,15 +2436,15 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
         objectMapInfo_of_tripleMaps);
   }
 
-  log("Using a ");
+  int bit_width = 0;
   if (hash_method == 0) {
-    log(32);
+    bit_width = 32;
   } else if (hash_method == 1) {
-    log(64);
+    bit_width = 64;
   } else if (hash_method == 2) {
-    log(128);
+    bit_width = 128;
   }
-  logln(" bit hash function.");
+  std::cout << "Using a " << std::to_string(bit_width) << " bit hash function." << std::endl;
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -2440,9 +2454,10 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
   const size_t numThreads = (num_threads == 0)
                                 ? std::thread::hardware_concurrency()
                                 : static_cast<size_t>(num_threads);
-  log_debug("Using ");
-  log_debug(numThreads);
-  logln_debug(" threads.");
+#ifdef DEBUG
+  std::cout << "Using " << numThreads << " threads." << std::endl;
+#endif
+
   std::vector<std::thread> threads;
 
   ThreadSafeQueue<NQuad> quad_queue(1000);

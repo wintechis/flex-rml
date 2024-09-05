@@ -10,8 +10,7 @@ JsonReader::JsonReader(const std::string& source, std::string& json_path,
   if (isFile) {
     fileStream.open(source);
     if (!fileStream.is_open()) {
-      log("Error: Failed to open file");
-      throw_error(source.c_str());
+      throw std::runtime_error("Runtime error occurred.\nFailed to open file");
     }
   } else {
     stringStream.str(source);

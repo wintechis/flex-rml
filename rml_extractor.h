@@ -5,7 +5,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "custom_io.h"
 #include "definitions.h"
 #include "rdf_vector_helper.h"
 

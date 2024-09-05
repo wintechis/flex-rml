@@ -125,22 +125,22 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
 
                   // Check if the value is within the specified range
                   if (parsed_value <= 0.0f || parsed_value >= 1.0f) {
-                    throw_error("Invalid sampling probability! - Only values in the range 0 < sampling_probability < 1 are allowed.");
+                    throw std::invalid_argument("Invalid sampling probability! - Only values in the range 0 < sampling_probability < 1 are allowed.");
                   }
 
                   flags.sampling_probability = parsed_value;
                 } catch (const std::invalid_argument &e) {
-                  throw_error("Invalid sampling probability! - The provided value is not a valid floating-point number.");
+                  throw std::invalid_argument("Invalid sampling probability! - The provided value is not a valid floating-point number.");
                 } catch (const std::out_of_range &e) {
-                  throw_error("Invalid sampling probability! - The number is out of range for a float.");
+                  throw std::invalid_argument("Invalid sampling probability! - The number is out of range for a float.");
                 }
               } else if (key == "number_of_threads") {
                 try {
                   flags.thread_count = std::stoi(value);
                 } catch (const std::invalid_argument &e) {
-                  throw_error("Invalid thread count! - Only integers are allowed.");
+                  throw std::invalid_argument("Invalid thread count! - Only integers are allowed.");
                 } catch (const std::out_of_range &e) {
-                  throw_error("Invalid thread count! - The number is out of range for an integer.");
+                  throw std::invalid_argument("Invalid thread count! - The number is out of range for an integer.");
                 }
               } else if (key == "fixed_bit_size") {
                 try {
@@ -151,14 +151,14 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
                   // Check if the value is within allowed values
                   bool is_allowed = std::find(std::begin(allowed_values), std::end(allowed_values), parsed_value) != std::end(allowed_values);
                   if (!is_allowed) {
-                    throw_error("Invalid bit size! - Only values 32, 64, 128 are allowed.");
+                    throw std::invalid_argument("Invalid bit size! - Only values 32, 64, 128 are allowed.");
                   }
 
                   flags.fixed_bit_size = parsed_value;
                 } catch (const std::invalid_argument &e) {
-                  throw_error("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
+                  throw std::invalid_argument("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
                 } catch (const std::out_of_range &e) {
-                  throw_error("Invalid bit size! - The number is out of range for an integer.");
+                  throw std::invalid_argument("Invalid bit size! - The number is out of range for an integer.");
                 }
               } else if (key == "tokens_to_remove") {
                 std::unordered_set<std::string> tokens_set = split_to_set(value, ',');
@@ -171,7 +171,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
                   flags.output_serialization = value;
                 } else {
                   // Value is not in allowed values, log to console
-                  throw_error("Invalid output_format! - Must be one of [ntriple, nquad].");
+                  throw std::invalid_argument("Invalid output_format! - Must be one of [ntriple, nquad].");
                 }
               } else {
                 std::cerr << "Unknown flag: " << flag << "\n";
@@ -224,7 +224,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
           flags.output_serialization = value;
         } else {
           // Value is not in allowed values, log to console
-          throw_error("Invalid output format! - Must be one of [ntriple, nquad].");
+          throw std::invalid_argument("Invalid output format! - Must be one of [ntriple, nquad].");
         }
       } else {
         std::cerr << flag << " requires an argument.\n";
@@ -268,14 +268,14 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
 
           // Check if the value is within the specified range
           if (parsed_value <= 0.0f || parsed_value >= 1.0f) {
-            throw_error("Invalid sampling probability! - Only values in the range 0 < sampling_probability < 1 are allowed.");
+            throw std::invalid_argument("Invalid sampling probability! - Only values in the range 0 < sampling_probability < 1 are allowed.");
           }
 
           flags.sampling_probability = parsed_value;
         } catch (const std::invalid_argument &e) {
-          throw_error("Invalid sampling probability! - The provided value is not a valid floating-point number.");
+          throw std::invalid_argument("Invalid sampling probability! - The provided value is not a valid floating-point number.");
         } catch (const std::out_of_range &e) {
-          throw_error("Invalid sampling probability! - The number is out of range for a float.");
+          throw std::invalid_argument("Invalid sampling probability! - The number is out of range for a float.");
         }
       } else {
         std::cerr << flag << " requires an argument.\n";
@@ -294,14 +294,14 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
           // Check if the value is within allowed values
           bool is_allowed = std::find(std::begin(allowed_values), std::end(allowed_values), parsed_value) != std::end(allowed_values);
           if (!is_allowed) {
-            throw_error("Invalid bit size! - Only values 32, 64, 128 are allowed.");
+            throw std::invalid_argument("Invalid bit size! - Only values 32, 64, 128 are allowed.");
           }
 
           flags.fixed_bit_size = parsed_value;
         } catch (const std::invalid_argument &e) {
-          throw_error("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
+          throw std::invalid_argument("Invalid bit size! - Only integers 32, 64, 128 are allowed.");
         } catch (const std::out_of_range &e) {
-          throw_error("Invalid bit size! - The number is out of range for an integer.");
+          throw std::invalid_argument("Invalid bit size! - The number is out of range for an integer.");
         }
       } else {
         std::cerr << flag << " requires an argument.\n";
@@ -315,9 +315,9 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
         try {
           flags.thread_count = std::stoi(value);
         } catch (const std::invalid_argument &e) {
-          throw_error("Invalid thread count! - Only integers are allowed.");
+          throw std::invalid_argument("Invalid thread count! - Only integers are allowed.");
         } catch (const std::out_of_range &e) {
-          throw_error("Invalid thread count! - The number is out of range for an integer.");
+          throw std::invalid_argument("Invalid thread count! - The number is out of range for an integer.");
         }
       } else {
         std::cerr << flag << " requires an argument.\n";

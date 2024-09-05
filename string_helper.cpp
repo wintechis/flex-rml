@@ -1,5 +1,7 @@
 #include "string_helper.h"
 
+#include <stdexcept>
+
 ////////////////////////////////
 /// String Helper Functions ///
 ///////////////////////////////
@@ -131,7 +133,7 @@ std::vector<std::string> split_csv_line(const std::string &str, char separator) 
   }
 
   if (insideQuotes) {
-    throw_error("Malformed CSV: unmatched quote");
+    throw std::runtime_error("Runtime error occurred.\nMalformed CSV: unmatched quote.");
   }
 
   if (hasControlChar) {

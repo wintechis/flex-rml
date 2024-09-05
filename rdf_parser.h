@@ -1,12 +1,10 @@
 #ifndef RML_PARSER_H
 #define RML_PARSER_H
 
-#include <sstream>
 #include <string>
 #include <vector>
 
 #include "definitions.h"
-  
 #include "rdf_parser/serd/serd.h"
 
 class RDFParser {

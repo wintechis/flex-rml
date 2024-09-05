@@ -5,8 +5,8 @@ CsvReader::CsvReader(const std::string& source, bool isFile)
   if (isFile) {
     fileStream.open(source);
     if (!fileStream.is_open()) {
-      log("Error: Failed to open file ");
-      throw_error(source.c_str());
+      std::string error_message = "Runtime error occurred.\nFailed to open file " + source;
+      throw std::runtime_error(error_message);
     }
   } else {
     stringStream.str(source);

@@ -76,7 +76,7 @@ void move_using_json_path(std::ifstream& file,
   int max = json_path_tokens.size();
 
   if (json_path_tokens[cnt] != "$") {
-    throw_error("JsonPath is not supported!");
+    throw std::runtime_error("Runtime error occurred.\nJsonPath is not supported!");
   }
   cnt++;
   std::string current_token;
@@ -96,13 +96,15 @@ void move_using_json_path(std::ifstream& file,
     res = get_next_word(file);
     // If empty file is empty
     if (res == "") {
-      throw_error("JsonPath not found!");
+      throw std::runtime_error("Runtime error occurred.\nJsonPath not found!");
       break;
     }
 
     // If it matches the whole string
     if (res == current_token) {
-      logln_debug("Found 1");
+#ifdef DEBUG
+      std::cout << "Found 1" << std::endl;
+#endif
       cnt++;
       if (cnt < max) {
         current_token = json_path_tokens[cnt];
@@ -114,7 +116,9 @@ void move_using_json_path(std::ifstream& file,
 
     // If it matches the [
     if (res[0] == '[' && current_token[0] == '[') {
-      logln_debug("Found 2");
+#ifdef DEBUG
+      std::cout << "Found 2" << std::endl;
+#endif
       array_stack.push('[');
       cnt++;
       if (cnt < max) {
@@ -163,7 +167,9 @@ std::string get_next_element(std::ifstream& file,
     }
     // If stack is empty -> not more data can be found
     if (array_stack.empty()) {
-      logln_debug("stack empty.");
+#ifdef DEBUG
+      std::cout << "stack empty." << std::endl;
+#endif
       return "";
     }
 
@@ -231,7 +237,7 @@ void json_to_csv_helper(JsonVariant variant, std::vector<std::string>& headers,
         } else if (keyValue.value().isNull()) {
           values.push_back("");
         } else {
-          throw_error("Error: Unsupported json data type.");
+          throw std::runtime_error("Runtime error occurred.\nUnsupported json data type.");
         }
       }
     }
@@ -273,7 +279,9 @@ std::string json_to_csv(const std::string& jsonString) {
 }
 
 void reinit_json(std::ifstream& file) {
-  logln_debug("Reset JSON parsing...");
+#ifdef DEBUG
+  std::cout << "Reset JSON parsing..." << std::endl;
+#endif
   initialize = true;
   std::string res = get_next_word(file, true);
 }
@@ -286,7 +294,8 @@ std::string get_next_element_csv(std::ifstream& file, std::vector<std::string>& 
     return "";
   }
 
-  log_debug("Final generated json element: ");
-  logln_debug(val.c_str());
+#ifdef DEBUG
+  std::cout << "Final generated json element: " << val << std::endl;
+#endif
   return json_to_csv(val);
 }

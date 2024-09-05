@@ -1,5 +1,10 @@
 #include "termtype_helper.h"
 
+#include <iostream>
+#include <unordered_set>
+
+#include "rml_uris.h"
+
 /**
  * @brief Encodes a URL by replacing special characters with their respective percent-encoded values.
  *
@@ -111,9 +116,7 @@ std::string handle_term_type_IRI(const std::string& node) {
 
   // Check if IRI is valid; if not, skip it
   if (node.find_first_of(error_chars) != std::string::npos) {
-    log("Invalid IRI detected: ");
-    log(node.c_str());
-    logln(" - Skipped!");
+    std::cout << "Invalid IRI detected: " << node << " - Skipped!" << std::endl;
     return "";
   }
 
@@ -167,7 +170,7 @@ std::string handle_term_type(const std::string& term_type, const std::string& no
   } else if (term_type == LITERAL_TERM_TYPE) {
     return handle_term_type_Literal(node);
   } else {
-    throw_error("Error occured handling term type! - Unknown term type found.");
+    throw std::runtime_error("Runtime error occurred handling term type.\nUnknown term type found.");
     return "";
   }
 }
