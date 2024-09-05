@@ -12,7 +12,6 @@ std::unordered_set<std::string> global_tokens_to_remove;
 //////////////////////////////////////
 ///// HASH FUNCTIONS /////////////////
 //////////////////////////////////////
-#ifndef ARDUINO
 struct uint128Hash {
   std::size_t operator()(const uint64_t &value) const {
     return std::hash<uint64_t>()(value);
@@ -72,7 +71,6 @@ uint32_t performCity32Hash(const NQuad &quad) {
 
   return result;
 }
-#endif
 
 bool get_index_of_element(const std::vector<std::string> &vec,
                           const std::string &value, uint &index) {
@@ -146,7 +144,6 @@ std::string fill_in_template(const std::string &template_str,
 /////////////////////////////////
 /////// INDEX GENERATION ///////
 /////////////////////////////////
-#ifndef ARDUINO
 /**
  * @brief Creates an index map where each key is a value from the specified
  * column in a CSV file and the corresponding value is the stream position of
@@ -792,7 +789,6 @@ uint8 detect_hash_method(
 
   return hash_method;
 }
-#endif
 //////////////////////////////////////
 ///// GRAPH GENERATOR FUNCTIONS /////
 /////////////////////////////////////
@@ -1641,7 +1637,6 @@ map_data(std::string &rml_rule,
 }
 
 // Map directly to file -> only available on PC
-#ifndef ARDUINO
 ///////////////////////////////////////////
 //// MAP DATA TO FILE - SINGLE THREAD ////
 /////////////////////////////////////////
@@ -2476,5 +2471,3 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
 
   writer.join();
 }
-
-#endif
