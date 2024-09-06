@@ -244,7 +244,46 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       if (temp_result.size() != 1) {
         throw std::runtime_error("Runtime error occurred.\nMore than one logical source; Can not expand!");
       }
-      std::string parentTriplesMap_source = temp_result[0];
+      std::string parentTriplesMap_source_node = temp_result[0];
+
+      /// Get source path
+      // Get type
+      temp_result = find_matching_object(triples, parentTriplesMap_source_node, RDF_TYPE);
+      if (temp_result.empty()) {
+        throw std::runtime_error("Runtime error occurred.\nNo type found!");
+      } else if (temp_result.size() > 1) {
+        throw std::runtime_error(
+            "Runtime error occurred.\nMore than one type found!");
+      }
+      std::string rml_path_type = temp_result[0];
+
+      // Get root
+      temp_result = find_matching_object(triples, parentTriplesMap_source_node, RML_ROOT);
+      if (temp_result.empty()) {
+        throw std::runtime_error("Runtime error occurred.\nNo root found!");
+      } else if (temp_result.size() > 1) {
+        throw std::runtime_error(
+            "Runtime error occurred.\nMore than one root found!");
+      }
+      std::string rml_root_uri = temp_result[0];
+
+      // Get path
+      temp_result = find_matching_object(triples, parentTriplesMap_source_node, RML_PATH);
+      if (temp_result.empty()) {
+        throw std::runtime_error("Runtime error occurred.\nNo path found!");
+      } else if (temp_result.size() > 1) {
+        throw std::runtime_error(
+            "Runtime error occurred.\nMore than one path found!");
+      }
+      std::string rml_path_uri = temp_result[0];
+
+      std::string parentTriplesMap_source;
+      // Build path
+      if (rml_path_type == "http://w3id.org/rml/RelativePathSource") {
+        if (rml_root_uri == "http://w3id.org/rml/MappingDirectory") {
+          parentTriplesMap_source = "./" + rml_path_uri;
+        }
+      }
 
       // Get reference formulation
       temp_result = find_matching_object(triples, parentTriplesMap_logicalSource_node, RML_REFERENCE_FORMULATION);

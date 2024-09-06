@@ -67,9 +67,11 @@ SubjectMapInfo extract_rml_info_of_subjectMap(
   temp_result =
       find_matching_object(rml_triples, tripleMap_node, RML_SUBJECT_MAP);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nError: No subjectMap blank node found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nError: No subjectMap blank node found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one subjectMap blank node found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one subjectMap blank node found!");
   } else {
     // Assign the found source to source
     node_uri = temp_result[0];
@@ -170,9 +172,12 @@ PredicateMapInfo extract_rml_info_of_predicateMap(
   temp_result = find_matching_object(rml_triples, predicateObjectMap_uri,
                                      RML_PREDICATE_MAP);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo predicateMap uri/blank node found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nNo predicateMap uri/blank node found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one predicateMap uri/blank node found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one predicateMap uri/blank node "
+        "found!");
   } else {
     // Assign the found source to source
     node_uri = temp_result[0];
@@ -285,9 +290,12 @@ ObjectMapInfo extract_rml_info_of_objectMap(
   temp_result =
       find_matching_object(rml_triples, objectObjectMap_uri, RML_OBJECT_MAP);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo objectMap uri/blank node found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nNo objectMap uri/blank node found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one objectMap uri/blank node found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one objectMap uri/blank node "
+        "found!");
   } else {
     // Assign the found source to source
     node_uri = temp_result[0];
@@ -315,8 +323,7 @@ ObjectMapInfo extract_rml_info_of_objectMap(
   temp_result = find_matching_object(rml_triples, node_uri, PARENT_SOURCE);
   if (temp_result.size() == 1) {
     //  Check if source is a blanknode
-    std::vector<std::string> temp_result2 =
-        find_matching_object(rml_triples, temp_result[0], SD_NAME);
+    std::vector<std::string> temp_result2 = find_matching_object(rml_triples, temp_result[0], SD_NAME);
     if (temp_result2.empty()) {
       // Assign the found source to source
       objectMapInfo.parentSource = temp_result[0];
@@ -382,7 +389,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(
       // Check if value is supported
       if (valid_language_subtags.find(lang_tag) ==
           valid_language_subtags.end()) {
-        throw std::runtime_error("Runtime error occurred.\nLanguage tag is not supported!");
+        throw std::runtime_error(
+            "Runtime error occurred.\nLanguage tag is not supported!");
       }
 
       objectMapInfo.language = lang_tag;
@@ -455,7 +463,8 @@ std::string extract_file_path(const std::string& input) {
     return input.substr(prefix.size(),
                         input.size() - prefix.size() - suffix.size());
   } else {
-    throw std::runtime_error("Runtime error occurred.\nString has unsupported format.");
+    throw std::runtime_error(
+        "Runtime error occurred.\nString has unsupported format.");
     return "";
   }
 }
@@ -463,7 +472,8 @@ std::string extract_file_path(const std::string& input) {
 LogicalSourceInfo extract_rml_info_of_source_data(
     const std::vector<NTriple>& rml_triples,
     const std::string& tripleMap_node) {
-  std::vector<std::string> temp_result;  // Temporary vector to store intermediate results
+  std::vector<std::string>
+      temp_result;  // Temporary vector to store intermediate results
 
   LogicalSourceInfo temp_logicalSourceInfo;  // Store gained information
 
@@ -472,20 +482,25 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   std::string reference_formulation;
 
   // Find matching object for logical source
-  temp_result = find_matching_object(rml_triples, tripleMap_node, RML_LOGICAL_SOURCE);
+  temp_result =
+      find_matching_object(rml_triples, tripleMap_node, RML_LOGICAL_SOURCE);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo logical source found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nNo logical source found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one logical source found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one logical source found!");
   }
   logicalSource_uri = temp_result[0];
 
   // Find matching object for source
-  temp_result = find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
+  temp_result =
+      find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
   if (temp_result.empty()) {
     throw std::runtime_error("Runtime error occurred.\nNo source specified!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one source definition found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one source definition found!");
   }
   std::string rml_source_object_node = temp_result[0];
 
@@ -494,7 +509,8 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   if (temp_result.empty()) {
     throw std::runtime_error("Runtime error occurred.\nNo type found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one type found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one type found!");
   }
   std::string rml_path_type = temp_result[0];
 
@@ -503,7 +519,8 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   if (temp_result.empty()) {
     throw std::runtime_error("Runtime error occurred.\nNo root found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one root found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one root found!");
   }
   std::string rml_root_uri = temp_result[0];
 
@@ -512,7 +529,8 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   if (temp_result.empty()) {
     throw std::runtime_error("Runtime error occurred.\nNo path found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one path found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one path found!");
   }
   std::string rml_path_uri = temp_result[0];
 
@@ -527,9 +545,11 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   temp_result = find_matching_object(rml_triples, logicalSource_uri,
                                      RML_REFERENCE_FORMULATION);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo reference_formulation found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nNo reference_formulation found!");
   } else if (temp_result.size() > 1) {
-    throw std::runtime_error("Runtime error occurred.\nMore than one reference_formulation found!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nMore than one reference_formulation found!");
 
   } else {
     temp_logicalSourceInfo.reference_formulation = temp_result[0];
