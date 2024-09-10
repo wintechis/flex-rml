@@ -92,6 +92,7 @@ struct Flags {
   std::unordered_set<std::string> tokens_to_remove;  // Hash set of tokens when encountered triple should be skipped
   bool in_memory_mapping = false;                    // Map data completely in memory
   std::string output_serialization = "nquad";        // Output RDF serialization
+  std::string base_uri = "";                         // Initialize base uri to resolve relative uris
 };
 
 // Starting Number when generating blank nodes

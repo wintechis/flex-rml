@@ -114,9 +114,10 @@ std::string url_encode(const std::string& node) {
 std::string handle_term_type_IRI(const std::string& node) {
   static const std::string error_chars = " !\"'(),[]";
 
-  // Check if IRI is valid; if not, skip it
+  // Check if IRI is valid; if not, throw error
   if (node.find_first_of(error_chars) != std::string::npos) {
-    std::cout << "Invalid IRI detected: " << node << " - Skipped!" << std::endl;
+    std::string message = "Runtime error occurred handling IRI. Invalid IRI detected for node: " + node;
+    throw std::runtime_error(message);
     return "";
   }
 
@@ -171,7 +172,7 @@ std::string handle_term_type(const std::string& term_type, const std::string& no
   } else if (term_type == LITERAL_TERM_TYPE) {
     return handle_term_type_Literal(node);
   } else {
-    throw std::runtime_error("Runtime error occurred handling term type.\nUnknown term type found.");
+    throw std::runtime_error("Runtime error occurred handling term type. Unknown term type found.");
     return "";
   }
 }

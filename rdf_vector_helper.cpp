@@ -159,7 +159,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       std::vector<std::string> temp_result = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
       // Only size 1 is supported
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one objectMap; Can not expand!");
+        throw std::runtime_error("Runtime error occurred. More than one objectMap; Can not expand!");
       }
 
       std::string objectMap_bn = temp_result[0];
@@ -169,7 +169,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       if (temp_result.size() == 0) {
         continue;
       } else if (temp_result.size() > 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one parentTriplesMap specified!");
+        throw std::runtime_error("Runtime error occurred. More than one parentTriplesMap specified!");
       }
 
       std::string parentTriplesMap_node = temp_result[0];
@@ -186,7 +186,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Get child
       temp_result = find_matching_object(triples, join_condition_bn, RML_CHILD);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one child in joinCondition specified!");
+        throw std::runtime_error("Runtime error occurred. More than one child in joinCondition specified!");
       }
 
       std::string child = temp_result[0];
@@ -194,7 +194,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Get parent
       temp_result = find_matching_object(triples, join_condition_bn, RML_PARENT);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one parent in joinCondition specified!");
+        throw std::runtime_error("Runtime error occurred. More than one parent in joinCondition specified!");
       }
 
       std::string parent = temp_result[0];
@@ -204,7 +204,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Get subjectMap node of referenced TriplesMap
       temp_result = find_matching_object(triples, parentTriplesMap_node, RML_SUBJECT_MAP);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one subjectMap; Can not expand!");
+        throw std::runtime_error("Runtime error occurred. More than one subjectMap; Can not expand!");
       }
       std::string subjectMap_node = temp_result[0];
 
@@ -235,14 +235,14 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Get logical source node
       temp_result = find_matching_object(triples, parentTriplesMap_node, RML_LOGICAL_SOURCE);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one source; Can not expand!");
+        throw std::runtime_error("Runtime error occurred. More than one source; Can not expand!");
       }
       std::string parentTriplesMap_logicalSource_node = temp_result[0];
 
       // Get path of logical source
       temp_result = find_matching_object(triples, parentTriplesMap_logicalSource_node, RML_SOURCE);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one logical source; Can not expand!");
+        throw std::runtime_error("Runtime error occurred. More than one logical source; Can not expand!");
       }
       std::string parentTriplesMap_source_node = temp_result[0];
 
@@ -250,30 +250,30 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Get type
       temp_result = find_matching_object(triples, parentTriplesMap_source_node, RDF_TYPE);
       if (temp_result.empty()) {
-        throw std::runtime_error("Runtime error occurred.\nNo type found!");
+        throw std::runtime_error("Runtime error occurred. No type found!");
       } else if (temp_result.size() > 1) {
         throw std::runtime_error(
-            "Runtime error occurred.\nMore than one type found!");
+            "Runtime error occurred. More than one type found!");
       }
       std::string rml_path_type = temp_result[0];
 
       // Get root
       temp_result = find_matching_object(triples, parentTriplesMap_source_node, RML_ROOT);
       if (temp_result.empty()) {
-        throw std::runtime_error("Runtime error occurred.\nNo root found!");
+        throw std::runtime_error("Runtime error occurred. No root found!");
       } else if (temp_result.size() > 1) {
         throw std::runtime_error(
-            "Runtime error occurred.\nMore than one root found!");
+            "Runtime error occurred. More than one root found!");
       }
       std::string rml_root_uri = temp_result[0];
 
       // Get path
       temp_result = find_matching_object(triples, parentTriplesMap_source_node, RML_PATH);
       if (temp_result.empty()) {
-        throw std::runtime_error("Runtime error occurred.\nNo path found!");
+        throw std::runtime_error("Runtime error occurred. No path found!");
       } else if (temp_result.size() > 1) {
         throw std::runtime_error(
-            "Runtime error occurred.\nMore than one path found!");
+            "Runtime error occurred. More than one path found!");
       }
       std::string rml_path_uri = temp_result[0];
 
@@ -288,7 +288,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Get reference formulation
       temp_result = find_matching_object(triples, parentTriplesMap_logicalSource_node, RML_REFERENCE_FORMULATION);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one reference formulation; Can not expand!");
+        throw std::runtime_error("Runtime error occurred. More than one reference formulation; Can not expand!");
       }
       std::string parentTriplesMap_referenceFormulation = temp_result[0];
 
@@ -391,7 +391,7 @@ void expand_local_tripleMaps(std::vector<NTriple>& triples) {
       std::vector<std::string> temp_result = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
       // Only size 1 is supported
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one objectMap; Can not expand!");
+        throw std::runtime_error("Runtime error occurred. More than one objectMap; Can not expand!");
       }
 
       std::string objectMap_bn = temp_result[0];
@@ -401,7 +401,7 @@ void expand_local_tripleMaps(std::vector<NTriple>& triples) {
       if (temp_result.size() == 0) {
         continue;
       } else if (temp_result.size() > 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one parentTriplesMap specified!");
+        throw std::runtime_error("Runtime error occurred. More than one parentTriplesMap specified!");
       }
       std::string parentTriplesMap_node = temp_result[0];
 
@@ -415,7 +415,7 @@ void expand_local_tripleMaps(std::vector<NTriple>& triples) {
       // Get subjectMap node of reference TriplesMap
       temp_result = find_matching_object(triples, parentTriplesMap_node, RML_SUBJECT_MAP);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred.\nMore than one subjectMap; Can not expand!");
+        throw std::runtime_error("Runtime error occurred. More than one subjectMap; Can not expand!");
       }
       std::string subjectMap_node = temp_result[0];
 
@@ -602,7 +602,7 @@ void expand_multiple_objects(std::vector<NTriple>& triples) {
         // get all predicate uris / bnodes -> should max be 1 at this point
         std::vector<std::string> predicate_bns = find_matching_object(triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
         if (predicate_bns.size() != 1) {
-          throw std::runtime_error("Runtime error occurred.\nMore than one predicate map found; Not supported at this point!");
+          throw std::runtime_error("Runtime error occurred. More than one predicate map found; Not supported at this point!");
         }
 
         // Add new triple

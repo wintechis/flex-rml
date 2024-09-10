@@ -118,7 +118,7 @@ std::string fill_in_template(const std::string &template_str,
   for (size_t i = 0; i < query_strings.size(); ++i) {
     uint index = 0;
     if (!get_index_of_element(split_header, query_strings[i], index)) {
-      std::string error_message = "Runtime error occurred.\n" + query_strings[i] + " not found in input.";
+      std::string error_message = "Runtime error occurred. " + query_strings[i] + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -278,7 +278,7 @@ int estimate_join_size(const std::string &source_file_path,
   // Get index of element in header
   uint index = 0;
   if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
-    std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.parent + " not found in input.";
+    std::string error_message = "Runtime error occurred. Element " + objectMapInfo.parent + " not found in input.";
     throw std::runtime_error(error_message);
   }
 
@@ -298,7 +298,7 @@ int estimate_join_size(const std::string &source_file_path,
     for (size_t i = 0; i < query_strings.size(); ++i) {
       uint index = 0;
       if (!get_index_of_element(split_header_parent, query_strings[i], index)) {
-        std::string error_message = "Runtime error occurred.\nElement " + query_strings[i] + " not found in input.";
+        std::string error_message = "Runtime error occurred. Element " + query_strings[i] + " not found in input.";
         throw std::runtime_error(error_message);
       }
       split_header_index.push_back(query_strings[i]);
@@ -317,7 +317,7 @@ int estimate_join_size(const std::string &source_file_path,
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_subject.push_back(index);
@@ -332,7 +332,7 @@ int estimate_join_size(const std::string &source_file_path,
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_predicates.push_back(index);
@@ -450,7 +450,7 @@ int estimate_unique_elements_in_file(const float &p, const std::string &source,
       return static_cast<int>(U_hat);
     }
   } else {
-    throw std::runtime_error("Runtime error occurred.\nFound unsupported data encoding!");
+    throw std::runtime_error("Runtime error occurred. Found unsupported data encoding!");
     return 0;
   }
 }
@@ -510,7 +510,7 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_subject.push_back(index);
@@ -525,7 +525,7 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_predicates.push_back(index);
@@ -538,7 +538,7 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      std::string error_message = "Runtime error occurred.\nElement " + element + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_objects.push_back(index);
@@ -813,7 +813,7 @@ std::string generate_graph_logic(const std::string &graph_termType,
   // Ensure the provided termType is supported (only 'IRI' is supported).
   if (graph_termType != IRI_TERM_TYPE) {
     std::string error_message =
-        "Runtime error occurred.\nUnsupported graph termType - termType of graph can only be 'IRI'. Used termType was: " + graph_termType;
+        "Runtime error occurred. Unsupported graph termType - termType of graph can only be 'IRI'. Used termType was: " + graph_termType;
     throw std::runtime_error(error_message);
   }
 
@@ -887,7 +887,7 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   // Check if term type is supported on subject -> only blank node and IRI
   if (subjectMapInfo.termType != IRI_TERM_TYPE &&
       subjectMapInfo.termType != BLANKNODE_TERM_TYPE) {
-    throw std::runtime_error("Runtime error occurred.\ntermType 'literal' is not supported in subject position.");
+    throw std::runtime_error("Runtime error occurred. termType 'literal' is not supported in subject position.");
   }
 
   // Check if template is available
@@ -1025,7 +1025,7 @@ std::string generate_object_with_nested_loop_join(
     uint index = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent,
                               index)) {
-      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.parent + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.parent + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1033,7 +1033,7 @@ std::string generate_object_with_nested_loop_join(
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1087,7 +1087,7 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1112,7 +1112,7 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
     uint index_parent = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent,
                               index_parent)) {
-      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.parent + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.parent + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1162,7 +1162,7 @@ std::vector<std::string> generate_object_with_hash_join_full(
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1222,7 +1222,7 @@ std::string generate_object_with_hash_join(
   // GENERATE VALUE
   uint index_old = 0;
   if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
-    std::string error_message = "Runtime error occurred.\nElement " + objectMapInfo.child + " not found in input.";
+    std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
     throw std::runtime_error(error_message);
   }
 
@@ -1572,6 +1572,11 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
 
+  // if @base is not annotated in mapping, use cli input.
+  if (base_uri.empty()) {
+    base_uri = flags.base_uri;
+  }
+
   // Create data structures to store hashes
   // Used to store 128 bit hashes
   std::unordered_map<uint64_t, uint128, uint128Hash> nquad_hashes_128;
@@ -1709,7 +1714,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
         // Get index of element in header
         uint index = 0;
         if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-          std::string error_message = "Runtime error occurred.\nElement " + objectMap.parent + " not found in input.";
+          std::string error_message = "Runtime error occurred. Element " + objectMap.parent + " not found in input.";
           throw std::runtime_error(error_message);
         }
 
@@ -1726,7 +1731,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
             uint index = 0;
             if (!get_index_of_element(split_header_ref, query_strings[i],
                                       index)) {
-              std::string error_message = "Runtime error occurred.\nElement " + query_strings[i] + " not found in input.";
+              std::string error_message = "Runtime error occurred. Element " + query_strings[i] + " not found in input.";
               throw std::runtime_error(error_message);
             }
             element_index.push_back(index);
@@ -1915,7 +1920,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
       }
 
     } else {
-      throw std::runtime_error("Runtime error occurred.\nFound unsupported data encoding!");
+      throw std::runtime_error("Runtime error occurred. Found unsupported data encoding!");
     }
   }
 
@@ -2034,7 +2039,7 @@ void process_triple_map(
       // Get index of element in header
       uint index = 0;
       if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-        std::string error_message = "Runtime error occurred.\nElement " + objectMap.parent + " not found in input.";
+        std::string error_message = "Runtime error occurred. Element " + objectMap.parent + " not found in input.";
         throw std::runtime_error(error_message);
       }
 
@@ -2051,7 +2056,7 @@ void process_triple_map(
           uint index = 0;
           if (!get_index_of_element(split_header_ref, query_strings[i],
                                     index)) {
-            std::string error_message = "Runtime error occurred.\nElement " + query_strings[i] + " not found in input.";
+            std::string error_message = "Runtime error occurred. Element " + query_strings[i] + " not found in input.";
             throw std::runtime_error(error_message);
           }
           element_index.push_back(index);
@@ -2103,7 +2108,7 @@ void process_triple_map(
     }
     reader.close();
   } else {
-    throw std::runtime_error("Runtime error occurred.\nFound unsupported data encoding!");
+    throw std::runtime_error("Runtime error occurred. Found unsupported data encoding!");
   }
 }
 
@@ -2265,6 +2270,11 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
   std::vector<NTriple> rml_triple;
   std::string base_uri;
   read_and_prepare_rml_triple(rml_rule, rml_triple, base_uri);
+
+  // if @base is not annotated in mapping, use cli input.
+  if (base_uri.empty()) {
+    base_uri = flags.base_uri;
+  }
 
   /////////////////////////////////
   //// STEP 2: Parse RML rules ////

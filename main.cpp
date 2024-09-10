@@ -70,7 +70,8 @@ void display_help() {
             << "-a Use adaptive Result Size Estimation and adaptive hash size selection.\n"
             << "-p [float] Set sampling probability used for Result Size Estimation. Higher probabities produce better estimates but need more time.\n"
             << "-c [path] Use config file instead of command line arguments.\n"
-            << "-b [integer] Use a fixed hash size, value which must be one of [32, 64, 128]\n"
+            << "-b [integer] Use a fixed hash size, value which must be one of [32, 64, 128].\n"
+            << "-base [URI] The URI used to resolve relative URIs.\n"
             << "\n"
             << "Notes:\n"
             << "When a config file is specified using the '-c' flag, all other command-line arguments are ignored, and settings are exclusively loaded from the config file.\n"
@@ -173,6 +174,9 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
                   // Value is not in allowed values, log to console
                   throw std::invalid_argument("Invalid output_format! - Must be one of [ntriple, nquad].");
                 }
+              } else if (key == "base") {
+                flags.base_uri = value;
+
               } else {
                 std::cerr << "Unknown flag: " << flag << "\n";
               }
@@ -319,6 +323,16 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
         } catch (const std::out_of_range &e) {
           throw std::invalid_argument("Invalid thread count! - The number is out of range for an integer.");
         }
+      } else {
+        std::cerr << flag << " requires an argument.\n";
+      }
+    }
+
+    // Set base uri
+    else if (flag == "-base") {
+      if (i + 1 < argc) {
+        std::string value = argv[++i];
+        flags.base_uri = value;
       } else {
         std::cerr << flag << " requires an argument.\n";
       }

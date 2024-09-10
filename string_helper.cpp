@@ -133,7 +133,7 @@ std::vector<std::string> split_csv_line(const std::string &str, char separator) 
   }
 
   if (insideQuotes) {
-    throw std::runtime_error("Runtime error occurred.\nMalformed CSV: unmatched quote.");
+    throw std::runtime_error("Runtime error occurred. Malformed CSV: unmatched quote.");
   }
 
   if (hasControlChar) {

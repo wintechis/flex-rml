@@ -68,10 +68,10 @@ SubjectMapInfo extract_rml_info_of_subjectMap(
       find_matching_object(rml_triples, tripleMap_node, RML_SUBJECT_MAP);
   if (temp_result.empty()) {
     throw std::runtime_error(
-        "Runtime error occurred.\nError: No subjectMap blank node found!");
+        "Runtime error occurred. Error: No subjectMap blank node found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one subjectMap blank node found!");
+        "Runtime error occurred. More than one subjectMap blank node found!");
   } else {
     // Assign the found source to source
     node_uri = temp_result[0];
@@ -173,10 +173,10 @@ PredicateMapInfo extract_rml_info_of_predicateMap(
                                      RML_PREDICATE_MAP);
   if (temp_result.empty()) {
     throw std::runtime_error(
-        "Runtime error occurred.\nNo predicateMap uri/blank node found!");
+        "Runtime error occurred. No predicateMap uri/blank node found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one predicateMap uri/blank node "
+        "Runtime error occurred. More than one predicateMap uri/blank node "
         "found!");
   } else {
     // Assign the found source to source
@@ -291,10 +291,10 @@ ObjectMapInfo extract_rml_info_of_objectMap(
       find_matching_object(rml_triples, objectObjectMap_uri, RML_OBJECT_MAP);
   if (temp_result.empty()) {
     throw std::runtime_error(
-        "Runtime error occurred.\nNo objectMap uri/blank node found!");
+        "Runtime error occurred. No objectMap uri/blank node found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one objectMap uri/blank node "
+        "Runtime error occurred. More than one objectMap uri/blank node "
         "found!");
   } else {
     // Assign the found source to source
@@ -390,7 +390,7 @@ ObjectMapInfo extract_rml_info_of_objectMap(
       if (valid_language_subtags.find(lang_tag) ==
           valid_language_subtags.end()) {
         throw std::runtime_error(
-            "Runtime error occurred.\nLanguage tag is not supported!");
+            "Runtime error occurred. Language tag is not supported!");
       }
 
       objectMapInfo.language = lang_tag;
@@ -464,7 +464,7 @@ std::string extract_file_path(const std::string& input) {
                         input.size() - prefix.size() - suffix.size());
   } else {
     throw std::runtime_error(
-        "Runtime error occurred.\nString has unsupported format.");
+        "Runtime error occurred. String has unsupported format.");
     return "";
   }
 }
@@ -486,10 +486,10 @@ LogicalSourceInfo extract_rml_info_of_source_data(
       find_matching_object(rml_triples, tripleMap_node, RML_LOGICAL_SOURCE);
   if (temp_result.empty()) {
     throw std::runtime_error(
-        "Runtime error occurred.\nNo logical source found!");
+        "Runtime error occurred. No logical source found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one logical source found!");
+        "Runtime error occurred. More than one logical source found!");
   }
   logicalSource_uri = temp_result[0];
 
@@ -497,40 +497,40 @@ LogicalSourceInfo extract_rml_info_of_source_data(
   temp_result =
       find_matching_object(rml_triples, logicalSource_uri, RML_SOURCE);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo source specified!");
+    throw std::runtime_error("Runtime error occurred. No source specified!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one source definition found!");
+        "Runtime error occurred. More than one source definition found!");
   }
   std::string rml_source_object_node = temp_result[0];
 
   // Get type
   temp_result = find_matching_object(rml_triples, rml_source_object_node, RDF_TYPE);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo type found!");
+    throw std::runtime_error("Runtime error occurred. No type found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one type found!");
+        "Runtime error occurred. More than one type found!");
   }
   std::string rml_path_type = temp_result[0];
 
   // Get root
   temp_result = find_matching_object(rml_triples, rml_source_object_node, RML_ROOT);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo root found!");
+    throw std::runtime_error("Runtime error occurred. No root found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one root found!");
+        "Runtime error occurred. More than one root found!");
   }
   std::string rml_root_uri = temp_result[0];
 
   // Get path
   temp_result = find_matching_object(rml_triples, rml_source_object_node, RML_PATH);
   if (temp_result.empty()) {
-    throw std::runtime_error("Runtime error occurred.\nNo path found!");
+    throw std::runtime_error("Runtime error occurred. No path found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one path found!");
+        "Runtime error occurred. More than one path found!");
   }
   std::string rml_path_uri = temp_result[0];
 
@@ -546,10 +546,10 @@ LogicalSourceInfo extract_rml_info_of_source_data(
                                      RML_REFERENCE_FORMULATION);
   if (temp_result.empty()) {
     throw std::runtime_error(
-        "Runtime error occurred.\nNo reference_formulation found!");
+        "Runtime error occurred. No reference_formulation found!");
   } else if (temp_result.size() > 1) {
     throw std::runtime_error(
-        "Runtime error occurred.\nMore than one reference_formulation found!");
+        "Runtime error occurred. More than one reference_formulation found!");
 
   } else {
     temp_logicalSourceInfo.reference_formulation = temp_result[0];

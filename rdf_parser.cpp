@@ -69,7 +69,7 @@ std::string RDFParser::extract_base_URI(const std::string& str) {
 SerdStatus RDFParser::handle_error(void* handle, const SerdError* error) {
   (void)handle;
 
-  std::string error_message = "Runtime error occurred.\n" + error->status;
+  std::string error_message = "Runtime error occurred. " + error->status;
   throw std::runtime_error(error_message);
 
   return SERD_FAILURE;
