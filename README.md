@@ -81,8 +81,19 @@ The graph looks like this:
 ![Resulting_Graph](https://github.com/FreuMi/FlexRML/blob/main/example/output_graph.png)
 
 ## Conformance
-FlexRML is validated against the latest applicable [RML test cases](https://github.com/kg-construct/rml-test-cases) to ensure conformance with the specification. Currently only CSV related test cases are applicable.
-The results can be found in the [wiki](https://github.com/wintechis/flex-rml/wiki/Conformence-to-Test-Cases).
+
+## Conformance
+
+FlexRML is validated against applicable RML test cases to ensure conformance with the specification. <br>
+Currently, only **CSV-related** test cases are applicable.
+
+| Specification                                                                 | Coverage               |
+|------------------------------------------------------------------------------|------------------------|
+| [RML-Core](https://github.com/kg-construct/rml-core/tree/main/test-cases)    | 100% Coverage          |
+| [RML-IO](https://github.com/kg-construct/rml-io/tree/main/test-cases)        | Work in Progress |
+| [RML-CC](https://github.com/kg-construct/rml-cc/tree/main/test-cases)        | Work in Progress  |
+
+
 
 ## Planned Features for FlexRML
 We are constantly working to improve FlexRML and expand its capabilities. Here's what we have planned for the future development of FlexRML:
