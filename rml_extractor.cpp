@@ -261,8 +261,6 @@ PredicateObjectMapInfo extract_rml_info_of_predicateObjectMap(
  * be matched.
  * @return PredicateMapInfo struct containing all found information.
  *
- * @note This function will enter an infinite loop if any inconsistencies are
- * found.
  */
 ObjectMapInfo extract_rml_info_of_objectMap(
     const std::vector<NTriple>& rml_triples,
@@ -283,6 +281,8 @@ ObjectMapInfo extract_rml_info_of_objectMap(
   objectMapInfo.parent = "";
   objectMapInfo.child = "";
   objectMapInfo.dataType = "";
+  objectMapInfo.dataType_template = "";
+  objectMapInfo.dataType_child = "";  // TODO: Extract child datatype
   objectMapInfo.join_reference_condition_available = "";
 
   // Get Uri of objectMap
@@ -364,11 +364,17 @@ ObjectMapInfo extract_rml_info_of_objectMap(
   // Get objectMap data type
   temp_result = find_matching_object(rml_triples, node_uri, RML_DATA_TYPE_MAP);
   if (temp_result.size() == 1) {
-    // Query for constant -> temp_result changes here!
-    temp_result =
-        find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
-    if (temp_result.size() == 1) {
-      objectMapInfo.dataType = temp_result[0];
+    std::vector<std::string> query_result;
+    // Get constant
+    query_result = find_matching_object(rml_triples, temp_result[0], RML_CONSTANT);
+    if (query_result.size() == 1) {
+      objectMapInfo.dataType = query_result[0];
+    } else {
+      // Get Template
+      query_result = find_matching_object(rml_triples, temp_result[0], RML_TEMPLATE);
+      if (query_result.size() == 1) {
+        objectMapInfo.dataType_template = query_result[0];
+      }
     }
   }
 
@@ -631,6 +637,7 @@ void parse_rml_rules(
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
       ObjectMapInfo objectMapInfo =
           extract_rml_info_of_objectMap(rml_triple, predicateObjectMap_uri);
+      objectMapInfo.base_uri = base_uri;  // base_uri
       objectMapInfos.push_back(objectMapInfo);
     }
     // Add generated vector of objectMaps in current tripleMap to vector outside

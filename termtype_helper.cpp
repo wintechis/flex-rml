@@ -167,7 +167,6 @@ std::string handle_term_type(const std::string& term_type, const std::string& no
   if (term_type == IRI_TERM_TYPE) {
     return handle_term_type_IRI(node);
   } else if (term_type == BLANKNODE_TERM_TYPE) {
-    std::cout << "current_generated_subject" << node << std::endl;
     return handle_term_type_BlankNode(node);
   } else if (term_type == LITERAL_TERM_TYPE) {
     return handle_term_type_Literal(node);

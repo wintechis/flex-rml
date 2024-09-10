@@ -1160,8 +1160,7 @@ std::vector<std::string> generate_object_with_hash_join_full(
   std::vector<std::string> generated_objects;
   if (!objectMapInfo.template_str.empty()) {
     uint index_child = 0;
-    if (!get_index_of_element(split_header_child, objectMapInfo.child,
-                              index_child)) {
+    if (!get_index_of_element(split_header_child, objectMapInfo.child, index_child)) {
       std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
       throw std::runtime_error(error_message);
     }
@@ -1172,13 +1171,17 @@ std::vector<std::string> generate_object_with_hash_join_full(
       return generated_objects;
     }
 
+    std::string child_datatype = objectMapInfo.dataType_child;
+    // Default value is IRI
+    if (child_datatype.empty()) {
+      child_datatype = IRI_TERM_TYPE;
+    }
+
     std::string result;
     result.reserve(1000);
-    if (parent_file_index_full.find(child_value) !=
-        parent_file_index_full.end()) {
+    if (parent_file_index_full.find(child_value) != parent_file_index_full.end()) {
       for (const auto &data_row : parent_file_index_full.at(child_value)) {
-        result = fill_in_template(objectMapInfo.template_str, data_row,
-                                  split_header_parent);
+        result = fill_in_template(objectMapInfo.template_str, data_row, split_header_parent, child_datatype);
         if (!result.empty()) {
           generated_objects.push_back(result);
         }
@@ -1211,7 +1214,6 @@ std::string generate_object_with_hash_join(
     const std::vector<std::string> &split_header, CsvReader &reader,
     const std::unordered_map<std::string, std::streampos> &parent_file_index) {
   std::string generated_object = "";
-
 // Fill in template and store it the generate value
 #ifdef DEBUG
   std::cout << "Generating object based on template..." << std::endl;
@@ -1276,9 +1278,7 @@ std::string generate_object_with_hash_join(
  *
  */
 std::string
-generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
-                        const std::vector<std::string> &split_data,
-                        const std::vector<std::string> &split_header) {
+generate_object_wo_join(const ObjectMapInfo &objectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
@@ -1310,7 +1310,7 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
     generated_object =
         fill_in_template(temp_template, split_data, split_header);
     // If result is empty string -> no value available -> return
-    if (generated_object == "") {
+    if (generated_object.empty()) {
       return "";
     }
   }
@@ -1318,14 +1318,27 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo,
   generated_object = handle_term_type(objectMapInfo.termType, generated_object);
 
   //// NOTE: Datatype is more important than language!!! ////
-  if (objectMapInfo.dataType == "") {
+  if (objectMapInfo.dataType.empty() && objectMapInfo.dataType_template.empty()) {
     // Handle language info
     if (objectMapInfo.language != "" &&
         objectMapInfo.termType == LITERAL_TERM_TYPE) {
       generated_object = generated_object + "@" + objectMapInfo.language;
     }
   } else {
-    generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
+    if (!objectMapInfo.dataType.empty()) {
+      generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
+    } else if (!objectMapInfo.dataType_template.empty()) {
+      // Fill in template -> Always IRI
+      std::string data_type = fill_in_template(objectMapInfo.dataType_template, split_data, split_header, IRI_TERM_TYPE);
+      // Check if it is valie iri
+      if (data_type.substr(0, 7) != "http://" &&
+          data_type.substr(0, 8) != "https://") {
+        // Generate uri using base
+        data_type = objectMapInfo.base_uri + data_type;
+      }
+
+      generated_object = generated_object + "^^<" + data_type + ">";
+    }
   }
 
   return generated_object;
@@ -1337,29 +1350,32 @@ std::vector<std::string> generate_object(
     const ObjectMapInfo &objectMapInfo,
     const std::vector<std::string> &split_data_child,
     const std::vector<std::string> &split_header_child,
-    const std::unordered_map<std::string,
-                             std::unordered_map<std::string, std::streampos>>
-        &parent_file_index,
-    const std::unordered_map<
-        std::string,
-        std::unordered_map<std::string, std::vector<std::vector<std::string>>>>
-        &parent_file_index_full,
-    const std::unordered_map<std::string, std::vector<std::string>>
-        &new_split_header_indices,
+    const std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> &parent_file_index,
+    const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::vector<std::string>>>> &parent_file_index_full,
+    const std::unordered_map<std::string, std::vector<std::string>> &new_split_header_indices,
     std::map<std::string, std::string> &input_data) {
   // Check if a join is required
   if (objectMapInfo.parentSource != "") {
+#ifdef DEBUG
+    std::cout << "Join required..." << std::endl;
+#endif
     std::vector<std::string> res;
     CsvReader reader_parent(objectMapInfo.parentSource);
 
     // Check type of join
     if (objectMapInfo.join_reference_condition_available == "true") {
+#ifdef DEBUG
+      std::cout << "Using reference condition to generate object..." << std::endl;
+#endif
       std::string result = generate_object_with_hash_join(
           objectMapInfo, split_data_child, split_header_child, reader_parent,
           parent_file_index.at(objectMapInfo.parentSource));
 
       res.push_back(result);
     } else {
+#ifdef DEBUG
+      std::cout << "Using full join to generate object..." << std::endl;
+#endif
       // Perform normal join
       res = generate_object_with_hash_join_full(
           objectMapInfo, split_data_child, split_header_child,
@@ -1521,11 +1537,9 @@ void generate_quads(
 
       // Check if graph is available inside of predicateObjectMap -> If so add
       // another triple
-      if (predicateObjectMapInfo_vec[k].graph_constant != "" ||
-          predicateObjectMapInfo_vec[k].graph_template != "") {
+      if (predicateObjectMapInfo_vec[k].graph_constant != "" || predicateObjectMapInfo_vec[k].graph_template != "") {
         // add graph if available -> else use subject graph
-        temp_quad.graph = generate_graph(predicateObjectMapInfo_vec[k],
-                                         split_data, split_header);
+        temp_quad.graph = generate_graph(predicateObjectMapInfo_vec[k], split_data, split_header);
         // If current_graph is NO_GRAPH -> no graph has been generated -> set to
         // ""
         if (temp_quad.graph == NO_GRAPH) {

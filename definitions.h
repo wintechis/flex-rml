@@ -5,7 +5,8 @@
 #include <unordered_set>
 #include <vector>
 
-#define DEBUG
+// Uncomment to enable debug output
+// #define DEBUG
 
 // Struct to hold the subjectMap information
 struct SubjectMapInfo {
@@ -31,6 +32,7 @@ struct PredicateMapInfo {
 // Struct to hold the objectMap information
 struct ObjectMapInfo {
   std::string constant;                            // constant value of objectMap
+  std::string base_uri;                            // base_uri
   std::string template_str;                        // template of objectMap
   std::string termType;                            // termType of objectMap
   std::string reference;                           // reference of objectMap
@@ -41,7 +43,9 @@ struct ObjectMapInfo {
   std::string parent;                              // Store parent key
   std::string child;                               // Store child key
   std::string dataType;                            // Stores specified dataType
+  std::string dataType_child;                      // Stores specified dataType of child
   std::string join_reference_condition_available;  // Stores if join can be performed using reference condition
+  std::string dataType_template;                   // Template for datatype
 };
 
 // Struct to hold the objectMap information
