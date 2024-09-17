@@ -117,8 +117,6 @@ The graph looks like this:
 
 ## Conformance
 
-## Conformance
-
 FlexRML is validated against applicable RML test cases to ensure conformance with the specification. <br>
 Currently, only **CSV-related** test cases are applicable.
 
@@ -165,7 +163,3 @@ This project uses external libraries:
 - [Serd](https://github.com/drobilla/serd) is licensed under the ISC License.
 - [CityHash](https://github.com/google/cityhash/) is licensed under the MIT License.
 - [AdrduinoJson](https://github.com/bblanchon/ArduinoJson) is licensed under the MIT License.
-
-### Notice
-
-While this project is licensed under AGPLv3, it incorporates components under different licenses (ISC and MIT). We adhere to the terms of these licenses for the respective components and include their full license texts as stated above.
