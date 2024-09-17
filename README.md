@@ -35,16 +35,16 @@ Additionally, ensure that you have `vcpkg` installed as it will be used for mana
 
 1. Clone or download the repository.
    Clone or download the repository from GitHub and navigate to the project directory.
-   ```bash
-   git clone https://github.com/yourusername/flexrml.git
-    cd flexrml
-    ```
+```bash
+git clone https://github.com/yourusername/flexrml.git
+cd flexrml
+```
 2. Install `vcpkg` as package manager.
    If you haven't installed `vcpkg`, clone it from GitHub and bootstrap it:
-   ```bash
-   git clone https://github.com/microsoft/vcpkg.git
-   ./vcpkg/bootstrap-vcpkg.sh  # For Linux/macOS
-   ```
+```bash
+git clone https://github.com/microsoft/vcpkg.git
+./vcpkg/bootstrap-vcpkg.sh  # For Linux/macOS
+```
 3. Install required dependencies using `vcpkg`
    Use vcpkg to install the necessary dependencies (serd, cityhash, etc.):
 ```bash
@@ -52,11 +52,11 @@ TODO
 ```
 4. Configure the project with CMake
    Use CMake to configure the project, specifying the vcpkg toolchain file and the paths to dependencies if necessary:
-   ```bash
-   cmake -B build -S . \
-  -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake \
-  -Dserd_DIR=./vcpkg/installed/x64-linux/share/serd \
-  -Dcityhash_DIR=./vcpkg/installed/x64-linux/share/cityhash
+```bash
+cmake -B build -S . \
+-DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake \
+-Dserd_DIR=./vcpkg/installed/x64-linux/share/serd \
+-Dcityhash_DIR=./vcpkg/installed/x64-linux/share/cityhash
 ```
 5. Compile the project
 ```bash
