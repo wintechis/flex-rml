@@ -2,3 +2,5 @@
 *.o
 flexrml
 /validation/
+/build/
+/vcpkg/

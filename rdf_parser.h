@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "definitions.h"
-#include "rdf_parser/serd/serd.h"
+#include "serd/serd.h"
 
 class RDFParser {
  private:
