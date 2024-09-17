@@ -27,7 +27,7 @@ Before compilation, set up a build environment on your system.
 On Debian-based systems, this can be done using:
 
 ```bash
-apt install build-essential cmake git
+apt install build-essential cmake git curl zip unzip tar
 ```
 Additionally, ensure that you have `vcpkg` installed as it will be used for managing dependencies.
 
@@ -36,7 +36,7 @@ Additionally, ensure that you have `vcpkg` installed as it will be used for mana
 1. Clone or download the repository.
    Clone or download the repository from GitHub and navigate to the project directory.
 ```bash
-git clone https://github.com/yourusername/flexrml.git
+git clone git@github.com:wintechis/flex-rml.git
 cd flexrml
 ```
 2. Install `vcpkg` as package manager.
