@@ -1,38 +1,38 @@
-# Set the minimum CMake version required
 cmake_minimum_required(VERSION 3.15)
 
-# Project name and language standard
+# Project name
 project(flexrml VERSION 1.0 LANGUAGES CXX)
 
-# Specify the C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Find the serd package, which you installed via vcpkg
+# Find packages from vcpkg
 find_package(serd CONFIG REQUIRED)
+find_package(cityhash CONFIG REQUIRED)
 
-# Compiler and flags (similar to CFLAGS)
+# Compiler and flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always -pedantic -Wall -Wextra -O3")
 
-# Include directories (similar to INCLUDES)
+# Include directories
 include_directories(
     .
     ./parser
 )
 
-# Gather all source files (similar to SOURCES)
+# Gather all source files
 file(GLOB SOURCES
     "*.cpp"
     "rdf_parser/*.cpp"
     "file_reader/*.cpp"
 )
 
-# Add the executable target
+# executable target
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# Include directories for the target
+# Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/parser)
 
-# Link the serd library to the executable target
+# Link the libraries to the executable target
 target_link_libraries(${PROJECT_NAME} PRIVATE serd::serd)
+target_link_libraries(${PROJECT_NAME} PRIVATE cityhash)
