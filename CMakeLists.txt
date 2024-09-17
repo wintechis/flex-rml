@@ -23,7 +23,6 @@ include_directories(
 # Gather all source files
 file(GLOB SOURCES
     "*.cpp"
-    "rdf_parser/*.cpp"
     "file_reader/*.cpp"
 )
 

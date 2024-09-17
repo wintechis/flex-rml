@@ -27,15 +27,50 @@ Before compilation, set up a build environment on your system.
 On Debian-based systems, this can be done using:
 
 ```bash
-apt install build-essential
+apt install build-essential cmake git
 ```
+Additionally, ensure that you have `vcpkg` installed as it will be used for managing dependencies.
 
 **Compilation Process:**
 
 1. Clone or download the repository.
-2. Navigate to the project directory.
-3. Run the makefile using the command: `make`.
-4. After compilation, the executable `flexrml` will be available in the directory.
+   Clone or download the repository from GitHub and navigate to the project directory.
+   ```bash
+   git clone https://github.com/yourusername/flexrml.git
+    cd flexrml
+    ```
+2. Install `vcpkg` as package manager.
+   If you haven't installed `vcpkg`, clone it from GitHub and bootstrap it:
+   ```bash
+   git clone https://github.com/microsoft/vcpkg.git
+   ./vcpkg/bootstrap-vcpkg.sh  # For Linux/macOS
+   ```
+3. Install required dependencies using `vcpkg`
+   Use vcpkg to install the necessary dependencies (serd, cityhash, etc.):
+```bash
+TODO
+```
+4. Configure the project with CMake
+   Use CMake to configure the project, specifying the vcpkg toolchain file and the paths to dependencies if necessary:
+   ```bash
+   cmake -B build -S . \
+  -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake \
+  -Dserd_DIR=./vcpkg/installed/x64-linux/share/serd \
+  -Dcityhash_DIR=./vcpkg/installed/x64-linux/share/cityhash
+```
+5. Compile the project
+```bash
+cmake --build build
+```
+6. After compilation, the executable `flexrml` will be available in the `build` directory. You can run it using:
+
+**Troubleshooting**
+- If you encounter errors during the CMake configuration, ensure the paths to serd and cityhash are correctly specified.
+- Make sure your system has the correct C++ compiler installed (GCC or Clang).
+- Clean the build directory if you face repeated configuration issues:
+```bash
+rm -rf build/*
+```
 
 ## Getting Started
 
@@ -130,8 +165,6 @@ This project uses external libraries:
 - [Serd](https://github.com/drobilla/serd) is licensed under the ISC License.
 - [CityHash](https://github.com/google/cityhash/) is licensed under the MIT License.
 - [AdrduinoJson](https://github.com/bblanchon/ArduinoJson) is licensed under the MIT License.
-
-The full texts of these licenses are included in the `LICENSE-ISC.txt` and `LICENSE-MIT.txt` files in this repository.
 
 ### Notice
 
