@@ -40,23 +40,16 @@ git clone git@github.com:wintechis/flex-rml.git
 cd flexrml
 ```
 2. Install `vcpkg` as package manager.
-   If you haven't installed `vcpkg`, clone it from GitHub and bootstrap it:
+   If you haven't installed `vcpkg`, clone it from GitHub and bootstrap it.
 ```bash
 git clone https://github.com/microsoft/vcpkg.git
 ./vcpkg/bootstrap-vcpkg.sh  # For Linux/macOS
 ```
-3. Install required dependencies using `vcpkg`
-   Use vcpkg to install the necessary dependencies (serd, cityhash, etc.):
-```bash
-TODO
-```
 4. Configure the project with CMake
-   Use CMake to configure the project, specifying the vcpkg toolchain file and the paths to dependencies if necessary:
+   Use CMake to configure the project, specifying the vcpkg toolchain file and the paths to dependencies if necessary.
+   Note: You need to adjust the path to vcpkg.
 ```bash
-cmake -B build -S . \
--DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake \
--Dserd_DIR=./vcpkg/installed/x64-linux/share/serd \
--Dcityhash_DIR=./vcpkg/installed/x64-linux/share/cityhash
+cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
 ```
 5. Compile the project
 ```bash
