@@ -362,7 +362,7 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
   }
 }
 
-void expand_local_tripleMaps(std::vector<NTriple>& triples) {
+void expand_referencing_tripleMaps(std::vector<NTriple>& triples) {
   /*
   If an input like this is found:
     bn1 objectMap bn2
@@ -913,14 +913,11 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
   // Print all the triples if in debug mode
   std::cout << "===================" << std::endl;
   std::cout << "Parsed RML Triple:" << std::endl;
-  for (const NTriple& trip : rml_triple) {
-    std::cout << trip.subject << "   " << trip.predicate << "   " << trip.object << " ." << std::endl;
-  }
+  printTriple(rml_triple);
   std::cout << "===================" << std::endl;
 #endif
   // Add types to triples map
   expand_classes(rml_triple, bn_cnt);
-  std::cout << "===================" << std::endl;
 
   // Expand the constants contained in rml_triples
   expand_constants(rml_triple, bn_cnt);
@@ -932,7 +929,7 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
   expand_multiple_objects(rml_triple);
 
   // Expand nodes which reference as parent triple map a local one
-  expand_local_tripleMaps(rml_triple);
+  expand_referencing_tripleMaps(rml_triple);
 
   expand_join_tripleMaps(rml_triple);
 
@@ -940,9 +937,7 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
   // Print all the triples if in debug mode
   std::cout << "===================" << std::endl;
   std::cout << "Prepared RML Triple:" << std::endl;
-  for (const NTriple& trip : rml_triple) {
-    std::cout << trip.subject << "   " << trip.predicate << "   " << trip.object << " ." << std::endl;
-  }
+  printTriple(rml_triple);
   std::cout << "===================" << std::endl;
 #endif
 }
