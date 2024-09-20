@@ -18,7 +18,6 @@ struct SubjectMapInfo {
   std::string graph_template;        // Used to store subjectMap graph template
   std::string graph_constant;        // Used to store subjectMap graph constant value
   std::string graph_termType;        // Used to store subjectMap graph termType
-  std::vector<std::string> classes;  // used to store class the subject map is in
   std::string base_uri;              // Store the base uri
 };
 

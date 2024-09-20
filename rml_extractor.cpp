@@ -102,12 +102,6 @@ SubjectMapInfo extract_rml_info_of_subjectMap(
     subjectMapInfo.termType = temp_result[0];
   }
 
-  // Get subjectMap classes
-  temp_result = find_matching_object(rml_triples, node_uri, RML_CLASS);
-  if (!temp_result.empty()) {
-    subjectMapInfo.classes = temp_result;
-  }
-
   // Get subjectMap graphMap
   // Can contain rr:constant, rr:template anbd rr:termType
 

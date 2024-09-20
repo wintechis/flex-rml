@@ -655,16 +655,6 @@ int estimate_generated_triple(
     // Generate sample to estimate duplicate rate:
     float p = gloabl_sampling_probability;
 
-    ////// Handle classes //////
-    // If data is constant -> nr of classes * 1, since subject stays the same
-    if (subjectMapInfo_of_tripleMaps[i].constant != "") {
-      result += subjectMapInfo_of_tripleMaps[i].classes.size() * 1;
-    } else {
-      // Count number of elements in source
-      int element_count =
-          estimate_unique_elements_in_file(p, source, referenceFormulation);
-      result += subjectMapInfo_of_tripleMaps[i].classes.size() * element_count;
-    }
     ////// Handle Subject Information //////
     // Get queries or iterators of subject
     auto [subjectNames, template_string_ext_subject] =
@@ -1470,24 +1460,6 @@ void generate_quads(
   if (current_generated_subject == "") {
     // Generatin finished
     return;
-  }
-
-  // Add all available classes
-  for (const std::string &subject_class : subjectMapInfo.classes) {
-    // Generate quad for subject_class
-    NQuad temp_quad;
-
-    // Set subject to generated subject
-    temp_quad.subject = current_generated_subject;
-    // Set predicate which is constant
-    temp_quad.predicate = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
-    // Set object which is the class
-    temp_quad.object = "<" + subject_class + ">";  // Class is always IRI
-    // Set graph to generated graph
-    temp_quad.graph = current_graph;
-
-    // Add generated quad to result
-    generated_quads.insert(temp_quad);
   }
 
   // Iterate over all predicateObjectMaps

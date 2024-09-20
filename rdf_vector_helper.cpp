@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <regex>
 #include <vector>
 
 #include "definitions.h"
@@ -650,23 +651,58 @@ void expand_multiple_objects(std::vector<NTriple>& triples) {
   }
 }
 
-void expand_classes(std::vector<NTriple>& triples) {
-  // Query for logical source subject
-  std::vector<std::string> triple_maps_subjects = find_matching_subject(triples, RML_LOGICAL_SOURCE, "");
-  std::vector<std::string> triple_maps_subjects_with_classes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
+void expand_classes(std::vector<NTriple>& rml_triple, int& bn_counter) {
+  std::vector<NTriple> new_rml_triple;
 
-  for (const auto& triple_map_subject : triple_maps_subjects) {
-    // Check if triple_map_subject is already in triple_maps_subjects_with_classes
-    if (std::find(triple_maps_subjects_with_classes.begin(), triple_maps_subjects_with_classes.end(), triple_map_subject) != triple_maps_subjects_with_classes.end()) {
+  for (auto triple : rml_triple) {
+    if (triple.predicate == RML_CLASS) {
+      // increase blank node counter
+      bn_counter++;
+
+      std::string rml_class_subject_node = triple.subject;
+      std::string rml_class_object_node = triple.object;
+
+      // bn of rml:class must be object of subjectMap
+      std::string rml_subject_map_node = "";
+      for (auto triple1 : rml_triple) {
+        if (triple1.object != triple.subject) {
+          continue;
+        }
+        // get subject of triple
+        rml_subject_map_node = triple1.subject;
+        break;
+      }
+
+      // Create new predicateObjectMap for class
+      NTriple new_triple1;
+      new_triple1.subject = rml_subject_map_node;
+      new_triple1.predicate = RML_PREDICATE_OBJECT_MAP;
+      new_triple1.object = "b" + std::to_string(bn_counter);
+
+      // Create triple for predicate rdf:type
+      NTriple new_triple2;
+      new_triple2.subject = "b" + std::to_string(bn_counter);
+      new_triple2.predicate = RML_PREDICATE;
+      new_triple2.object = RDF_TYPE;
+
+      // Create triple for object CLASS
+      NTriple new_triple3;
+      new_triple3.subject = "b" + std::to_string(bn_counter);
+      new_triple3.predicate = RML_OBJECT;
+      new_triple3.object = rml_class_object_node;
+
+      // Add triple
+      new_rml_triple.push_back(new_triple1);
+      new_rml_triple.push_back(new_triple2);
+      new_rml_triple.push_back(new_triple3);
+
       continue;
     }
 
-    NTriple temp_triple;
-    temp_triple.subject = triple_map_subject;
-    temp_triple.predicate = RDF_TYPE;
-    temp_triple.object = TRIPLES_MAP;
-    triples.push_back(temp_triple);
+    new_rml_triple.push_back(triple);
   }
+
+  rml_triple = new_rml_triple;
 }
 
 /**
@@ -751,16 +787,62 @@ void expand_constants(std::vector<NTriple>& triples) {
   }
 }
 
+bool isBlankNode(const std::string& str) {
+  std::regex pattern("^b[0-9]+$");
+  return std::regex_match(str, pattern);
+}
+
+bool isURI(const std::string& str) {
+  std::regex pattern(R"(^(http://|https://)[^\s/$.?#].[^\s]*$)");
+  return std::regex_match(str, pattern);
+}
+
+void printTriple(std::vector<NTriple>& rml_triple) {
+  for (auto triple : rml_triple) {
+    std::string subject;
+    std::string predicate;
+    std::string object;
+
+    // Identify subject type (Blank Node & URI)
+    if (isURI(triple.subject)) {
+      // Subject is URI
+      subject = "<" + triple.subject + ">";
+    } else {
+      // Subject is Blank Node
+      subject = "_:" + triple.subject;
+    }
+
+    // Predicate (URI)
+    predicate = "<" + triple.predicate + ">";
+
+    // Identify object type (Blank Node, URI, or Literal)
+    if (isBlankNode(triple.object)) {
+      // Object is Blank Node
+      object = "_:" + triple.object;
+    } else if (isURI(triple.object)) {
+      // Object is URI
+      object = "<" + triple.object + ">";
+    } else {
+      // Object is Literal
+      object = "\"" + triple.object + "\"";
+    }
+
+    std::cout << subject << "   " << predicate << "   " << object << " ." << std::endl;
+  }
+}
+
 //////////////////////////////////////////////////////
 ///// Main function to prepare rml triple vector /////
 //////////////////////////////////////////////////////
 
 void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTriple>& rml_triple, std::string& base_uri) {
   // Parse rml in own scope
+  int bn_cnt;
   {
     RDFParser parser;
     rml_triple = parser.parse(rml_rule);
     base_uri = parser.extracted_base_uri;
+    bn_cnt = parser.blank_node_id;
   }
 
 #ifdef DEBUG
@@ -772,10 +854,12 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
   }
   std::cout << "===================" << std::endl;
 #endif
-
+  printTriple(rml_triple);
   // Add types to triples map
-  expand_classes(rml_triple);
+  expand_classes(rml_triple, bn_cnt);
+  std::cout << "===================" << std::endl;
 
+  printTriple(rml_triple);
   // Expand the constants contained in rml_triples
   expand_constants(rml_triple);
 

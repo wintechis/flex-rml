@@ -1,5 +1,6 @@
 #include "rdf_parser.h"
 
+#include <algorithm>
 #include <sstream>
 
 // Constructor definition
@@ -13,6 +14,10 @@ RDFParser::~RDFParser() {
 
 std::vector<NTriple> RDFParser::parse(const std::string& rml_rule) {
   handle_rdf_parsing(rml_rule);
+
+  // Extract Blank Node ID
+  blank_node_id = getHighestBlankNodeID(rml_triples);
+
   return rml_triples;
 }
 
@@ -26,6 +31,40 @@ SerdStatus RDFParser::static_capture_prefix(void* handle, const SerdNode* name, 
 
 SerdStatus RDFParser::static_handle_triple(void* handle, unsigned int flags, const SerdNode* graph, const SerdNode* subject, const SerdNode* predicate, const SerdNode* object, const SerdNode* datatype, const SerdNode* lang) {
   return ((RDFParser*)handle)->handle_triple(handle, flags, graph, subject, predicate, object, datatype, lang);
+}
+
+// Function to extract the number from a string starting with 'b'
+int RDFParser::extractNumber(const std::string& str) {
+  // Check if the string starts with 'b' and has at least one number following it
+  if (str.size() > 1 && str[0] == 'b') {
+    for (size_t i = 1; i < str.size(); ++i) {
+      // If any character is not a digit, return -1
+      if (!std::isdigit(str[i])) {
+        return -1;
+      }
+    }
+    return std::stoi(str.substr(1));
+  }
+  return -1;
+}
+
+// Function to find the highest blank node id number from NTriple vectors
+int RDFParser::getHighestBlankNodeID(const std::vector<NTriple>& triples) {
+  int maxNumber = -1;
+
+  for (const auto& triple : triples) {
+    // Extract numbers from subject and object
+    int numSubject = extractNumber(triple.subject);
+    int numObject = extractNumber(triple.object);
+
+    maxNumber = std::max({maxNumber, numSubject, numObject});
+  }
+
+  if (maxNumber == -1) {
+    return 0;
+  }
+
+  return maxNumber;
 }
 
 /**

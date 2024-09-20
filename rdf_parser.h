@@ -13,6 +13,8 @@ class RDFParser {
   SerdEnv* env;
 
   std::string extract_base_URI(const std::string& str);
+  int extractNumber(const std::string& str);
+  int getHighestBlankNodeID(const std::vector<NTriple>& triples);
   SerdStatus handle_error(void* handle, const SerdError* error);
   SerdStatus capture_prefix(const SerdNode* name, const SerdNode* uri);
   static SerdStatus static_handle_error(void* handle, const SerdError* error);
@@ -29,6 +31,8 @@ class RDFParser {
   std::vector<NTriple> parse(const std::string& rml_rule);
 
   std::string extracted_base_uri;
+
+  int blank_node_id;
 };
 
 #endif
