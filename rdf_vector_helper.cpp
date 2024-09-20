@@ -714,77 +714,141 @@ void expand_classes(std::vector<NTriple>& rml_triple, int& bn_counter) {
  *
  * @param triples A reference to a vector of NTriples that will be expanded.
  */
-void expand_constants(std::vector<NTriple>& triples) {
-  // Define all possible short handles for constants
-  const std::array<std::string, 6> constant_predicates = {
-      RML_SUBJECT,
-      RML_PREDICATE,
-      RML_OBJECT,
-      RML_GRAPH,
-      RML_DATA_TYPE,
-      RML_LANGUAGE};
+void expand_constants(std::vector<NTriple>& rml_triple, int& bn_counter) {
+  std::vector<NTriple> new_rml_triple;
+  for (auto triple : rml_triple) {
+    // Handle rml:subject
+    if (triple.predicate == RML_SUBJECT) {
+      bn_counter++;
+      // Create first triple
+      NTriple new_triple1;
+      new_triple1.subject = triple.subject;
+      new_triple1.predicate = RML_SUBJECT_MAP;
+      new_triple1.object = "b" + std::to_string(bn_counter);
 
-  // Define all possible map types
-  const std::array<std::string, 6> constant_map_types = {
-      RML_SUBJECT_MAP,
-      RML_PREDICATE_MAP,
-      RML_OBJECT_MAP,
-      RML_GRAPH_MAP,
-      RML_DATA_TYPE_MAP,
-      RML_LANGUAGE_MAP};
+      // Create second triple
+      NTriple new_triple2;
+      new_triple2.subject = "b" + std::to_string(bn_counter);
+      new_triple2.predicate = RML_CONSTANT;
+      new_triple2.object = triple.object;
 
-  // Temporary storage for query results
-  std::vector<std::string> temp_query_results;
+      // Add to new vector
+      new_rml_triple.push_back(new_triple1);
+      new_rml_triple.push_back(new_triple2);
 
-  // Iterate over each constant predicate
-  for (size_t i = 0; i < constant_predicates.size(); i++) {
-    // Initialize current constant predicate and map type
-    const std::string current_constant_predicate = constant_predicates[i];
-    const std::string current_map_type = constant_map_types[i];
-
-    // Find all subjects that have the current constant predicate
-    std::vector<std::string> searched_map_nodes = find_matching_subject(triples, current_constant_predicate, "");
-
-    // Expand each found node
-    for (const auto& searched_map_node : searched_map_nodes) {
-      // Retrieve all values of the objects associated with the current constant predicate
-      temp_query_results = find_matching_object(triples, searched_map_node, current_constant_predicate);
-
-      // If results are found, replace each occurrence
-      if (!temp_query_results.empty()) {
-        for (const auto& temp_query_result : temp_query_results) {
-          std::string object_position_value = temp_query_result;
-          std::string predicate_position_value = current_constant_predicate;
-
-          // Find and replace the triple
-          // TODO: Optimize or use remove_triple function?
-          auto it = std::find_if(triples.begin(), triples.end(),
-                                 [predicate_position_value, object_position_value](const NTriple& triple) {
-                                   return triple.predicate == predicate_position_value && triple.object == object_position_value;
-                                 });
-
-          // If the triple is found, remove and replace it with expanded triples
-          if (it != triples.end()) {
-            triples.erase(it);
-
-            NTriple temp_triple;
-
-            std::string blank_node = "b" + std::to_string(blank_node_counter++);
-
-            temp_triple.subject = searched_map_node;
-            temp_triple.predicate = current_map_type;
-            temp_triple.object = blank_node;
-            triples.push_back(temp_triple);
-
-            temp_triple.subject = blank_node;
-            temp_triple.predicate = RML_CONSTANT;
-            temp_triple.object = object_position_value;
-            triples.push_back(temp_triple);
-          }
-        }
-      }
+      continue;
     }
+    // Handle rml:predicate
+    if (triple.predicate == RML_PREDICATE) {
+      bn_counter++;
+      // Create first triple
+      NTriple new_triple1;
+      new_triple1.subject = triple.subject;
+      new_triple1.predicate = RML_PREDICATE_MAP;
+      new_triple1.object = "b" + std::to_string(bn_counter);
+
+      // Create second triple
+      NTriple new_triple2;
+      new_triple2.subject = "b" + std::to_string(bn_counter);
+      new_triple2.predicate = RML_CONSTANT;
+      new_triple2.object = triple.object;
+
+      // Add to new vector
+      new_rml_triple.push_back(new_triple1);
+      new_rml_triple.push_back(new_triple2);
+
+      continue;
+    }
+    // Handle rml:object
+    if (triple.predicate == RML_OBJECT) {
+      bn_counter++;
+      // Create first triple
+      NTriple new_triple1;
+      new_triple1.subject = triple.subject;
+      new_triple1.predicate = RML_OBJECT_MAP;
+      new_triple1.object = "b" + std::to_string(bn_counter);
+
+      // Create second triple
+      NTriple new_triple2;
+      new_triple2.subject = "b" + std::to_string(bn_counter);
+      new_triple2.predicate = RML_CONSTANT;
+      new_triple2.object = triple.object;
+
+      // Add to new vector
+      new_rml_triple.push_back(new_triple1);
+      new_rml_triple.push_back(new_triple2);
+
+      continue;
+    }
+    // Handle rml:graph
+    if (triple.predicate == RML_GRAPH) {
+      bn_counter++;
+      // Create first triple
+      NTriple new_triple1;
+      new_triple1.subject = triple.subject;
+      new_triple1.predicate = RML_GRAPH_MAP;
+      new_triple1.object = "b" + std::to_string(bn_counter);
+
+      // Create second triple
+      NTriple new_triple2;
+      new_triple2.subject = "b" + std::to_string(bn_counter);
+      new_triple2.predicate = RML_CONSTANT;
+      new_triple2.object = triple.object;
+
+      // Add to new vector
+      new_rml_triple.push_back(new_triple1);
+      new_rml_triple.push_back(new_triple2);
+
+      continue;
+    }
+    // Handle rml:datatypeMap
+    if (triple.predicate == RML_DATA_TYPE) {
+      bn_counter++;
+      // Create first triple
+      NTriple new_triple1;
+      new_triple1.subject = triple.subject;
+      new_triple1.predicate = RML_DATA_TYPE_MAP;
+      new_triple1.object = "b" + std::to_string(bn_counter);
+
+      // Create second triple
+      NTriple new_triple2;
+      new_triple2.subject = "b" + std::to_string(bn_counter);
+      new_triple2.predicate = RML_CONSTANT;
+      new_triple2.object = triple.object;
+
+      // Add to new vector
+      new_rml_triple.push_back(new_triple1);
+      new_rml_triple.push_back(new_triple2);
+
+      continue;
+    }
+    // Handle rml:language
+    if (triple.predicate == RML_LANGUAGE) {
+      bn_counter++;
+      // Create first triple
+      NTriple new_triple1;
+      new_triple1.subject = triple.subject;
+      new_triple1.predicate = RML_LANGUAGE_MAP;
+      new_triple1.object = "b" + std::to_string(bn_counter);
+
+      // Create second triple
+      NTriple new_triple2;
+      new_triple2.subject = "b" + std::to_string(bn_counter);
+      new_triple2.predicate = RML_CONSTANT;
+      new_triple2.object = triple.object;
+
+      // Add to new vector
+      new_rml_triple.push_back(new_triple1);
+      new_rml_triple.push_back(new_triple2);
+
+      continue;
+    }
+
+    // If no chnage is needed, add triple
+    new_rml_triple.push_back(triple);
   }
+
+  rml_triple = new_rml_triple;
 }
 
 bool isBlankNode(const std::string& str) {
@@ -854,14 +918,12 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
   }
   std::cout << "===================" << std::endl;
 #endif
-  printTriple(rml_triple);
   // Add types to triples map
   expand_classes(rml_triple, bn_cnt);
   std::cout << "===================" << std::endl;
 
-  printTriple(rml_triple);
   // Expand the constants contained in rml_triples
-  expand_constants(rml_triple);
+  expand_constants(rml_triple, bn_cnt);
 
   // Expand multiple predicates
   expand_multiple_predicates(rml_triple);
