@@ -4,6 +4,6 @@
   "dependencies": [
     "serd",
     "cityhash",
-    "sord"
+    "fmt"
   ]
 }

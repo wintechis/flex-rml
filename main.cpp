@@ -1,11 +1,12 @@
 
 #include <chrono>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <string>
 
 #include "FlexRML.h"
+
+#include <fmt/core.h>
 
 /*
 static uint32_t s_AllocCount = 0;
@@ -21,7 +22,7 @@ bool readRmlFile(const std::string &filePath, std::string &rml_rule) {
 
   // Check if the file was opened successfully
   if (!file.is_open()) {
-    std::cerr << "Could not open RML file!" << std::endl;
+      fmt::print("Could not open RML file!");
     return false;
   }
 
@@ -59,29 +60,28 @@ std::unordered_set<std::string> split_to_set(const std::string &str, char delimi
 }
 
 void display_help() {
-  std::cout << "FlexRML is a flexible RML processor optimized for a wide range of devices.\n"
-            << "Usage: ./FlexRML [OPTIONS]\n"
-            << "-m [path] Specify the path to the mapping file.\n"
-            << "-o [name] Define the name for the output file. Default is 'output.nq' \n"
-            << "-f [format] Define the output serialization of the generated RDF data must be one of [ntriple, nquad]"
-            << "-d Remove duplicate entries before writing to the output file.\n"
-            << "-t Use threading, by default the maximum number of available threads are used.\n"
-            << "-tc [integer] Specify the number of threads that should be used.\n"
-            << "-a Use adaptive Result Size Estimation and adaptive hash size selection.\n"
-            << "-p [float] Set sampling probability used for Result Size Estimation. Higher probabities produce better estimates but need more time.\n"
-            << "-c [path] Use config file instead of command line arguments.\n"
-            << "-b [integer] Use a fixed hash size, value which must be one of [32, 64, 128].\n"
-            << "-base [URI] The URI used to resolve relative URIs.\n"
-            << "\n"
-            << "Notes:\n"
-            << "When a config file is specified using the '-c' flag, all other command-line arguments are ignored, and settings are exclusively loaded from the config file.\n"
-            << "Selecting a fixed hash size using the '-b' flag skips the adaptive Result Size Estimation. Be aware that if the manually chosen hash size is too small for the input data, hash collisions may occur. This can lead to missing N-Quads in the output.\n"
-            << "\n"
-            << "Configuration for fastest mapping:\n"
-            << "./FlexRML -m [path] -d -t\n"
-            << "Configuration for least memory usage during mapping:\n"
-            << "./FlexRML -m [path] -d -t -a\n"
-            << std::endl;
+  fmt::print("FlexRML is a flexible RML processor optimized for a wide range of devices.\n"
+             "Usage: ./FlexRML [OPTIONS]\n"
+             "-m [path] Specify the path to the mapping file.\n"
+             "-o [name] Define the name for the output file. Default is 'output.nq' \n"
+             "-f [format] Define the output serialization of the generated RDF data must be one of [ntriple, nquad]"
+             "-d Remove duplicate entries before writing to the output file.\n"
+             "-t Use threading, by default the maximum number of available threads are used.\n"
+             "-tc [integer] Specify the number of threads that should be used.\n"
+             "-a Use adaptive Result Size Estimation and adaptive hash size selection.\n"
+             "-p [float] Set sampling probability used for Result Size Estimation. Higher probabities produce better estimates but need more time.\n"
+             "-c [path] Use config file instead of command line arguments.\n"
+             "-b [integer] Use a fixed hash size, value which must be one of [32, 64, 128].\n"
+             "-base [URI] The URI used to resolve relative URIs.\n"
+             "\n"
+             "Notes:\n"
+             "When a config file is specified using the '-c' flag, all other command-line arguments are ignored, and settings are exclusively loaded from the config file.\n"
+             "Selecting a fixed hash size using the '-b' flag skips the adaptive Result Size Estimation. Be aware that if the manually chosen hash size is too small for the input data, hash collisions may occur. This can lead to missing N-Quads in the output.\n"
+             "\n"
+             "Configuration for fastest mapping:\n"
+             "./FlexRML -m [path] -d -t\n"
+             "Configuration for least memory usage during mapping:\n"
+             "./FlexRML -m [path] -d -t -a\n");
 }
 
 bool handle_flags(const int &argc, char *argv[], Flags &flags) {
@@ -178,18 +178,18 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
                 flags.base_uri = value;
 
               } else {
-                std::cerr << "Unknown flag: " << flag << "\n";
+                fmt::print("Unknown flag:  {}\n", flag);
               }
             }
           }
           config_file.close();
 
         } else {
-          std::cerr << "Unable to open config file: " << config_file_path << "\n";
+          fmt::print("Unable to open config file: {}\n", config_file_path);
           return false;
         }
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
         return false;
       }
       return true;
@@ -201,7 +201,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
         std::string value = argv[++i];
         flags.mapping_file = value;
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
@@ -211,7 +211,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
         std::string value = argv[++i];
         flags.output_file = value;
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
@@ -231,7 +231,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
           throw std::invalid_argument("Invalid output format! - Must be one of [ntriple, nquad].");
         }
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
@@ -259,7 +259,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
         flags.tokens_to_remove = tokens_set;
 
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
@@ -282,7 +282,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
           throw std::invalid_argument("Invalid sampling probability! - The number is out of range for a float.");
         }
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
@@ -308,7 +308,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
           throw std::invalid_argument("Invalid bit size! - The number is out of range for an integer.");
         }
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
@@ -324,7 +324,7 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
           throw std::invalid_argument("Invalid thread count! - The number is out of range for an integer.");
         }
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
@@ -334,19 +334,19 @@ bool handle_flags(const int &argc, char *argv[], Flags &flags) {
         std::string value = argv[++i];
         flags.base_uri = value;
       } else {
-        std::cerr << flag << " requires an argument.\n";
+        fmt::print("{}  requires an argument.\n", flag);
       }
     }
 
     else {
-      std::cerr << "Unknown command line flag: " << flag << "\n";
+      fmt::print("Unknown command line flag: {}\n", flag);
     }
   }
 
   // Error handling flags
   if (flags.mapping_file.empty()) {
-    std::cerr << "Missing mandatory -m flag with mapping file path.\n";
-    std::cerr << "Usage: " << argv[0] << " -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -a \"ADAPTIVE SELECTION OF HASH SIZE\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS\" -p \"SAMPLING PROBABILITY\" -c \"PATH TO CONFIG FILE\" -b \"FIXED BIT SIZE\"] -r \"ELEMENTS,TO,REMOVE\"]\n";
+    fmt::print("Missing mandatory -m flag with mapping file path.\n");
+    fmt::print("Usage: {} -m 'RML_FILE_PATH' [-o 'OUTPUT_FILE_PATH' -d \"REMOVE DUPLICATES\" -a \"ADAPTIVE SELECTION OF HASH SIZE\" -t \"USE THREADING\" -tc \"NUMBER OF THREADS\" -p \"SAMPLING PROBABILITY\" -c \"PATH TO CONFIG FILE\" -b \"FIXED BIT SIZE\"] -r \"ELEMENTS,TO,REMOVE\"]\n", argv[0]);
     return false;
   }
   return true;
@@ -368,9 +368,9 @@ int main(int argc, char *argv[]) {
   // Start timing
   auto start = std::chrono::high_resolution_clock::now();
 
-  std::cout << "Processing: " << flags.mapping_file << std::endl;
-  std::cout << "Output file: " << flags.output_file << std::endl;
-  std::cout << "Output format: " << flags.output_serialization << std::endl;
+  fmt::print("Processing: {}\n", flags.mapping_file);
+  fmt::print("Output file: {}\n", flags.output_file);
+  fmt::print("Output format: {}\n", flags.output_serialization);
 
   /////////////////////////////////
   //////// Prepare Mapping ////////
@@ -382,7 +382,7 @@ int main(int argc, char *argv[]) {
 
   // Check if the file is opened successfully
   if (!out_file.is_open()) {
-    std::cerr << "Failed to open the output file!" << std::endl;
+      fmt::print("Failed to open the output file!");
     return 1;
   }
 
@@ -403,7 +403,8 @@ int main(int argc, char *argv[]) {
   // Calculate the duration
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-  std::cout << "Mapping took " << duration << " milliseconds to execute." << std::endl;
+  fmt::print("Mapping took {} milliseconds to execute.\n", duration);
+
 
   // std::cout << "Number of Allocations: " << s_AllocCount << std::endl;
 

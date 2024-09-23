@@ -10,6 +10,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Find packages from vcpkg
 find_package(serd CONFIG REQUIRED)
 find_package(cityhash CONFIG REQUIRED)
+find_package(fmt CONFIG REQUIRED)
+
 
 # Compiler and flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always -pedantic -Wall -Wextra -O3")
@@ -35,3 +37,5 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_S
 # Link the libraries to the executable target
 target_link_libraries(${PROJECT_NAME} PRIVATE serd::serd)
 target_link_libraries(${PROJECT_NAME} PRIVATE cityhash)
+target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
+
