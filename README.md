@@ -144,6 +144,18 @@ For those working with ESP32, we have a dedicated version of this project. It's 
 ## JavaScript Compatible Version
 For those working with JavaScript, we have created a [Webassembly version of FlexRML](https://github.com/wintechis/flex-rml-node/). FlexRML-node is published on [npm](https://www.npmjs.com/package/flexrml-node).
 
+## Citation
+
+If you use this work in your research, please cite it as:
+
+```bibtex
+@article{Freund_FlexRML_A_Flexible_2024,
+  author = {Freund, Michael and Schmid, Sebastian and Dorsch, Rene and Harth, Andreas},
+  journal = {Extended Semantic Web Conference},
+  title = {{FlexRML: A Flexible and Memory Efficient Knowledge Graph Materializer}},
+  year = {2024}
+}
+```
 ## Licenses
 
 ### Project License
