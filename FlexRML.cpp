@@ -1,10 +1,11 @@
 #include "FlexRML.h"
 
+#include <fmt/core.h>
+
 #include <condition_variable>
 #include <exception>
 #include <fstream>
 #include <functional>
-#include <iostream>
 #include <mutex>
 #include <queue>
 #include <random>
@@ -110,7 +111,8 @@ std::string fill_in_template(const std::string &template_str,
                              const std::vector<std::string> &split_header,
                              const std::string &term_type = "") {
   std::vector<std::string> query_strings = extract_substrings(template_str);
-  std::vector<std::string> query_strings_in_braces = enclose_in_braces(query_strings);
+  std::vector<std::string> query_strings_in_braces =
+      enclose_in_braces(query_strings);
 
   std::string filled_template_str = template_str;
   std::string generated_value_last;
@@ -118,7 +120,8 @@ std::string fill_in_template(const std::string &template_str,
   for (size_t i = 0; i < query_strings.size(); ++i) {
     uint index = 0;
     if (!get_index_of_element(split_header, query_strings[i], index)) {
-      std::string error_message = "Runtime error occurred. " + query_strings[i] + " not found in input.";
+      std::string error_message = "Runtime error occurred. " +
+                                  query_strings[i] + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -164,8 +167,8 @@ std::string fill_in_template(const std::string &template_str,
  * @return Returns an unordered map with the values from the specified column as
  * keys and the corresponding stream positions as values.
  */
-std::unordered_map<std::string, std::streampos>
-create_index(const std::string &file_path, const uint &column_index) {
+std::unordered_map<std::string, std::streampos> create_index(
+    const std::string &file_path, const uint &column_index) {
   std::unordered_map<std::string, std::streampos> index_map;
   std::ifstream csv_file(file_path, std::ios::in | std::ios::binary);
 
@@ -210,9 +213,8 @@ create_index_full(const std::string &file_path, const uint &column_index,
   return indexMap;
 }
 
-std::unordered_map<std::string, std::streampos>
-createIndexFromCSVString(const std::string &csvString,
-                         const uint &columnIndex) {
+std::unordered_map<std::string, std::streampos> createIndexFromCSVString(
+    const std::string &csvString, const uint &columnIndex) {
   std::unordered_map<std::string, std::streampos> indexMap;
   std::istringstream csvStream(csvString);
 
@@ -278,7 +280,8 @@ int estimate_join_size(const std::string &source_file_path,
   // Get index of element in header
   uint index = 0;
   if (!get_index_of_element(split_header_parent, objectMapInfo.parent, index)) {
-    std::string error_message = "Runtime error occurred. Element " + objectMapInfo.parent + " not found in input.";
+    std::string error_message = "Runtime error occurred. Element " +
+                                objectMapInfo.parent + " not found in input.";
     throw std::runtime_error(error_message);
   }
 
@@ -298,7 +301,8 @@ int estimate_join_size(const std::string &source_file_path,
     for (size_t i = 0; i < query_strings.size(); ++i) {
       uint index = 0;
       if (!get_index_of_element(split_header_parent, query_strings[i], index)) {
-        std::string error_message = "Runtime error occurred. Element " + query_strings[i] + " not found in input.";
+        std::string error_message = "Runtime error occurred. Element " +
+                                    query_strings[i] + " not found in input.";
         throw std::runtime_error(error_message);
       }
       split_header_index.push_back(query_strings[i]);
@@ -317,7 +321,8 @@ int estimate_join_size(const std::string &source_file_path,
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
+      std::string error_message =
+          "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_subject.push_back(index);
@@ -332,7 +337,8 @@ int estimate_join_size(const std::string &source_file_path,
     }
     uint index;
     if (!get_index_of_element(split_header_child, element, index)) {
-      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
+      std::string error_message =
+          "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_predicates.push_back(index);
@@ -450,13 +456,14 @@ int estimate_unique_elements_in_file(const float &p, const std::string &source,
       return static_cast<int>(U_hat);
     }
   } else {
-    throw std::runtime_error("Runtime error occurred. Found unsupported data encoding!");
+    throw std::runtime_error(
+        "Runtime error occurred. Found unsupported data encoding!");
     return 0;
   }
 }
 
-std::pair<std::vector<std::string>, std::string>
-extractSubjectNamesAndTemplate(const SubjectMapInfo &subjectMapInfo) {
+std::pair<std::vector<std::string>, std::string> extractSubjectNamesAndTemplate(
+    const SubjectMapInfo &subjectMapInfo) {
   std::vector<std::string> names;
   std::string templateString;
 
@@ -510,7 +517,8 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
+      std::string error_message =
+          "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_subject.push_back(index);
@@ -525,7 +533,8 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
+      std::string error_message =
+          "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_predicates.push_back(index);
@@ -538,7 +547,8 @@ void estimateCSVData(
     }
     uint index;
     if (!get_index_of_element(split_header, element, index)) {
-      std::string error_message = "Runtime error occurred. Element " + element + " not found in input.";
+      std::string error_message =
+          "Runtime error occurred. Element " + element + " not found in input.";
       throw std::runtime_error(error_message);
     }
     indices_objects.push_back(index);
@@ -635,8 +645,8 @@ int estimate_generated_triple(
   // Counter for estimated result size
   int result = 0;
 
-  std::cout << "Using a sampling probability of: " << std::to_string(gloabl_sampling_probability).substr(0, 5) << std::endl;
-
+  fmt::print("Using a sampling probability of: {}\n",
+             std::to_string(gloabl_sampling_probability).substr(0, 5));
   // Store generated elements with join
   std::unordered_set<uint64_t> seen_elements_triple_map;
   // Store generated elements without join
@@ -756,21 +766,23 @@ uint8 detect_hash_method(
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
           .count();
 
-  std::cout << "Estimation took: " << duration << " milliseconds\n"
-            << "Estimated number of unique elements: " << res << std::endl;
+  fmt::print(
+      "Estimation took: {} milliseconds\nEstimated number of unique elements: {}", duration, res);
 
-  // Decide on Hash method
-  // 0 -> 32bit, 1 -> 64bit, 2 -> 128bit
-  // Threshold is estimated using birthday problem with a probability of 0.05%
-  // to get a collision
+      // Decide on Hash method
+      // 0 -> 32bit, 1 -> 64bit, 2 -> 128bit
+      // Threshold is estimated using birthday problem with a probability of
+      // 0.05% to get a collision
 
-  if (res < 2073) {
+      if (res < 2073) {
     // 32bit
     hash_method = 0;
-  } else if (res < 135835773) {
+  }
+  else if (res < 135835773) {
     // 64bit
     hash_method = 1;
-  } else {
+  }
+  else {
     // 128bit
     hash_method = 2;
   }
@@ -803,7 +815,9 @@ std::string generate_graph_logic(const std::string &graph_termType,
   // Ensure the provided termType is supported (only 'IRI' is supported).
   if (graph_termType != IRI_TERM_TYPE) {
     std::string error_message =
-        "Runtime error occurred. Unsupported graph termType - termType of graph can only be 'IRI'. Used termType was: " + graph_termType;
+        "Runtime error occurred. Unsupported graph termType - termType of "
+        "graph can only be 'IRI'. Used termType was: " +
+        graph_termType;
     throw std::runtime_error(error_message);
   }
 
@@ -811,10 +825,11 @@ std::string generate_graph_logic(const std::string &graph_termType,
   // template.
   if (!graph_template.empty()) {
 #ifdef DEBUG
-    std::cout << "Generating graph based on template..." << std::endl;
+    fmt::print("Generating graph based on template...");
 #endif
 
-    std::string current_graph = fill_in_template(graph_template, split_data, split_header, IRI_TERM_TYPE);
+    std::string current_graph = fill_in_template(graph_template, split_data,
+                                                 split_header, IRI_TERM_TYPE);
 
     if (current_graph.empty()) {
       return "";
@@ -826,7 +841,7 @@ std::string generate_graph_logic(const std::string &graph_termType,
       return NO_GRAPH;
     }
 #ifdef DEBUG
-    std::cout << "Generating graph based on constant..." << std::endl;
+    fmt::print("Generating graph based on constant...");
 #endif
     return handle_term_type(IRI_TERM_TYPE, graph_constant);
   }
@@ -877,16 +892,19 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   // Check if term type is supported on subject -> only blank node and IRI
   if (subjectMapInfo.termType != IRI_TERM_TYPE &&
       subjectMapInfo.termType != BLANKNODE_TERM_TYPE) {
-    throw std::runtime_error("Runtime error occurred. termType 'literal' is not supported in subject position.");
+    throw std::runtime_error(
+        "Runtime error occurred. termType 'literal' is not supported in "
+        "subject position.");
   }
 
   // Check if template is available
   if (subjectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    std::cout << "Generating subject based on template..." << std::endl;
+    fmt::print("Generating subject based on template...");
 #endif
-    current_generated_subject = fill_in_template(subjectMapInfo.template_str, split_data, split_header, IRI_TERM_TYPE);
+    current_generated_subject = fill_in_template(
+        subjectMapInfo.template_str, split_data, split_header, IRI_TERM_TYPE);
 
     // If result is empty string -> no value available -> return
     if (current_generated_subject == "") {
@@ -899,14 +917,15 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
       if (current_generated_subject.substr(0, 7) != "http://" &&
           current_generated_subject.substr(0, 8) != "https://") {
         // Generate uri using base
-        current_generated_subject = subjectMapInfo.base_uri + current_generated_subject;
+        current_generated_subject =
+            subjectMapInfo.base_uri + current_generated_subject;
       }
     }
   }
   // Check if reference value is available
   else if (subjectMapInfo.reference != "") {
 #ifdef DEBUG
-    std::cout << "Generating subject based on reference..." << std::endl;
+    fmt::print("Generating subject based on reference...");
 #endif
     std::string temp_template = "{" + subjectMapInfo.reference + "}";
     current_generated_subject =
@@ -926,7 +945,7 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   else if (subjectMapInfo.constant != "") {
 // Set constant value as subject
 #ifdef DEBUG
-    std::cout << "Generating subject based on constant..." << std::endl;
+    fmt::print("Generating subject based on constant...");
 #endif
     current_generated_subject = subjectMapInfo.constant;
   }
@@ -958,7 +977,7 @@ std::string generate_predicate(const PredicateMapInfo &predicateMapInfo,
   if (predicateMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    std::cout << "Generating predicate based on template..." << std::endl;
+    fmt::print("Generating predicate based on template...");
 #endif
     current_predicate = fill_in_template(predicateMapInfo.template_str,
                                          split_data, split_header);
@@ -971,7 +990,7 @@ std::string generate_predicate(const PredicateMapInfo &predicateMapInfo,
   else if (predicateMapInfo.constant != "") {
 // Set constant value as subject
 #ifdef DEBUG
-    std::cout << "Generating predicate based on constant..." << std::endl;
+    fmt::print("Generating predicate based on constant...");
 #endif
     current_predicate = predicateMapInfo.constant;
   }
@@ -995,10 +1014,11 @@ std::string generate_object_with_nested_loop_join(
   if (objectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    std::cout << "Generating object based on template..." << std::endl;
+    fmt::print("Generating object based on template...");
 #endif
 
-    generated_object = fill_in_template(objectMapInfo.template_str, split_data_child, split_header_child);
+    generated_object = fill_in_template(objectMapInfo.template_str,
+                                        split_data_child, split_header_child);
 
     // Reset file
     reader_parent.reset();
@@ -1015,7 +1035,8 @@ std::string generate_object_with_nested_loop_join(
     uint index = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent,
                               index)) {
-      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.parent + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " +
+                                  objectMapInfo.parent + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1023,7 +1044,8 @@ std::string generate_object_with_nested_loop_join(
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " +
+                                  objectMapInfo.child + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1077,7 +1099,8 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
     uint index_child = 0;
     if (!get_index_of_element(split_header_child, objectMapInfo.child,
                               index_child)) {
-      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " +
+                                  objectMapInfo.child + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1102,7 +1125,8 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
     uint index_parent = 0;
     if (!get_index_of_element(split_header_parent, objectMapInfo.parent,
                               index_parent)) {
-      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.parent + " not found in input.";
+      std::string error_message = "Runtime error occurred. Element " +
+                                  objectMapInfo.parent + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1113,7 +1137,8 @@ std::vector<std::string> generate_object_with_nested_loop_join_full(
       std::vector<std::string> split_data_parent =
           split_csv_line(next_element, ',');
       if (split_data_parent[index_parent] == split_data_child[index_child]) {
-        result = fill_in_template(objectMapInfo.template_str, split_data_parent, split_header_parent);
+        result = fill_in_template(objectMapInfo.template_str, split_data_parent,
+                                  split_header_parent);
         if (!result.empty()) {
           generated_objects.push_back(result);
         }
@@ -1150,8 +1175,10 @@ std::vector<std::string> generate_object_with_hash_join_full(
   std::vector<std::string> generated_objects;
   if (!objectMapInfo.template_str.empty()) {
     uint index_child = 0;
-    if (!get_index_of_element(split_header_child, objectMapInfo.child, index_child)) {
-      std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
+    if (!get_index_of_element(split_header_child, objectMapInfo.child,
+                              index_child)) {
+      std::string error_message = "Runtime error occurred. Element " +
+                                  objectMapInfo.child + " not found in input.";
       throw std::runtime_error(error_message);
     }
 
@@ -1169,9 +1196,11 @@ std::vector<std::string> generate_object_with_hash_join_full(
 
     std::string result;
     result.reserve(1000);
-    if (parent_file_index_full.find(child_value) != parent_file_index_full.end()) {
+    if (parent_file_index_full.find(child_value) !=
+        parent_file_index_full.end()) {
       for (const auto &data_row : parent_file_index_full.at(child_value)) {
-        result = fill_in_template(objectMapInfo.template_str, data_row, split_header_parent, child_datatype);
+        result = fill_in_template(objectMapInfo.template_str, data_row,
+                                  split_header_parent, child_datatype);
         if (!result.empty()) {
           generated_objects.push_back(result);
         }
@@ -1206,15 +1235,17 @@ std::string generate_object_with_hash_join(
   std::string generated_object = "";
 // Fill in template and store it the generate value
 #ifdef DEBUG
-  std::cout << "Generating object based on template..." << std::endl;
+  fmt::print("Generating object based on template...");
 #endif
 
-  generated_object = fill_in_template(objectMapInfo.template_str, split_data, split_header);
+  generated_object =
+      fill_in_template(objectMapInfo.template_str, split_data, split_header);
 
   // GENERATE VALUE
   uint index_old = 0;
   if (!get_index_of_element(split_header, objectMapInfo.child, index_old)) {
-    std::string error_message = "Runtime error occurred. Element " + objectMapInfo.child + " not found in input.";
+    std::string error_message = "Runtime error occurred. Element " +
+                                objectMapInfo.child + " not found in input.";
     throw std::runtime_error(error_message);
   }
 
@@ -1267,14 +1298,16 @@ std::string generate_object_with_hash_join(
  * @return std::string String containing the processed object.
  *
  */
-std::string
-generate_object_wo_join(const ObjectMapInfo &objectMapInfo, const std::vector<std::string> &split_data, const std::vector<std::string> &split_header) {
+std::string generate_object_wo_join(
+    const ObjectMapInfo &objectMapInfo,
+    const std::vector<std::string> &split_data,
+    const std::vector<std::string> &split_header) {
   std::string generated_object = "";
   // Check if template is available
   if (objectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    std::cout << "Generating object based on template..." << std::endl;
+    fmt::print("Generating object based on template...");
 #endif
     generated_object =
         fill_in_template(objectMapInfo.template_str, split_data, split_header);
@@ -1287,14 +1320,14 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo, const std::vector<st
   else if (objectMapInfo.constant != "") {
 // Set constant value as subject
 #ifdef DEBUG
-    std::cout << "Generating object based on constant..." << std::endl;
+    fmt::print("Generating object based on constant...");
 #endif
     generated_object = objectMapInfo.constant;
   }
   // Check if reference is available
   else if (objectMapInfo.reference != "") {
 #ifdef DEBUG
-    std::cout << "Generating object based on reference..." << std::endl;
+    fmt::print("Generating object based on reference...");
 #endif
     std::string temp_template = "{" + objectMapInfo.reference + "}";
     generated_object =
@@ -1308,7 +1341,8 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo, const std::vector<st
   generated_object = handle_term_type(objectMapInfo.termType, generated_object);
 
   //// NOTE: Datatype is more important than language!!! ////
-  if (objectMapInfo.dataType.empty() && objectMapInfo.dataType_template.empty()) {
+  if (objectMapInfo.dataType.empty() &&
+      objectMapInfo.dataType_template.empty()) {
     // Handle language info
     if (objectMapInfo.language != "" &&
         objectMapInfo.termType == LITERAL_TERM_TYPE) {
@@ -1316,10 +1350,13 @@ generate_object_wo_join(const ObjectMapInfo &objectMapInfo, const std::vector<st
     }
   } else {
     if (!objectMapInfo.dataType.empty()) {
-      generated_object = generated_object + "^^<" + objectMapInfo.dataType + ">";
+      generated_object =
+          generated_object + "^^<" + objectMapInfo.dataType + ">";
     } else if (!objectMapInfo.dataType_template.empty()) {
       // Fill in template -> Always IRI
-      std::string data_type = fill_in_template(objectMapInfo.dataType_template, split_data, split_header, IRI_TERM_TYPE);
+      std::string data_type =
+          fill_in_template(objectMapInfo.dataType_template, split_data,
+                           split_header, IRI_TERM_TYPE);
       // Check if it is valie iri
       if (data_type.substr(0, 7) != "http://" &&
           data_type.substr(0, 8) != "https://") {
@@ -1340,14 +1377,20 @@ std::vector<std::string> generate_object(
     const ObjectMapInfo &objectMapInfo,
     const std::vector<std::string> &split_data_child,
     const std::vector<std::string> &split_header_child,
-    const std::unordered_map<std::string, std::unordered_map<std::string, std::streampos>> &parent_file_index,
-    const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::vector<std::string>>>> &parent_file_index_full,
-    const std::unordered_map<std::string, std::vector<std::string>> &new_split_header_indices,
+    const std::unordered_map<std::string,
+                             std::unordered_map<std::string, std::streampos>>
+        &parent_file_index,
+    const std::unordered_map<
+        std::string,
+        std::unordered_map<std::string, std::vector<std::vector<std::string>>>>
+        &parent_file_index_full,
+    const std::unordered_map<std::string, std::vector<std::string>>
+        &new_split_header_indices,
     std::map<std::string, std::string> &input_data) {
   // Check if a join is required
   if (objectMapInfo.parentSource != "") {
 #ifdef DEBUG
-    std::cout << "Join required..." << std::endl;
+    fmt::print("Join required...");
 #endif
     std::vector<std::string> res;
     CsvReader reader_parent(objectMapInfo.parentSource);
@@ -1355,7 +1398,7 @@ std::vector<std::string> generate_object(
     // Check type of join
     if (objectMapInfo.join_reference_condition_available == "true") {
 #ifdef DEBUG
-      std::cout << "Using reference condition to generate object..." << std::endl;
+      fmt::print("Using reference condition to generate object...");
 #endif
       std::string result = generate_object_with_hash_join(
           objectMapInfo, split_data_child, split_header_child, reader_parent,
@@ -1364,7 +1407,7 @@ std::vector<std::string> generate_object(
       res.push_back(result);
     } else {
 #ifdef DEBUG
-      std::cout << "Using full join to generate object..." << std::endl;
+      fmt::print("Using full join to generate object...");
 #endif
       // Perform normal join
       res = generate_object_with_hash_join_full(
@@ -1509,9 +1552,11 @@ void generate_quads(
 
       // Check if graph is available inside of predicateObjectMap -> If so add
       // another triple
-      if (predicateObjectMapInfo_vec[k].graph_constant != "" || predicateObjectMapInfo_vec[k].graph_template != "") {
+      if (predicateObjectMapInfo_vec[k].graph_constant != "" ||
+          predicateObjectMapInfo_vec[k].graph_template != "") {
         // add graph if available -> else use subject graph
-        temp_quad.graph = generate_graph(predicateObjectMapInfo_vec[k], split_data, split_header);
+        temp_quad.graph = generate_graph(predicateObjectMapInfo_vec[k],
+                                         split_data, split_header);
         // If current_graph is NO_GRAPH -> no graph has been generated -> set to
         // ""
         if (temp_quad.graph == NO_GRAPH) {
@@ -1531,7 +1576,7 @@ void generate_quads(
 void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
                       Flags &flags) {
 #ifdef DEBUG
-  std::cout << "Mapping file in single threaded mode..." << std::endl;
+  fmt::print("Mapping file in single threaded mode...");
 #endif
   // Set Flags
   bool remove_duplicates = flags.check_duplicates;
@@ -1608,7 +1653,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
   predicateObjectMapInfo_of_tripleMaps.shrink_to_fit();
 
 #ifdef DEBUG
-  std::cout << "Finished parsing RML rules." << std::endl;
+  fmt::print("Finished parsing RML rules.");
 #endif
 
   // Decide on hash size
@@ -1645,7 +1690,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
     bit_width = 128;
   }
 
-  std::cout << "Using a " << std::to_string(bit_width) << " bit hash function." << std::endl;
+  fmt::print("Using a  {} bit hash function.", std::to_string(bit_width));
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1700,7 +1745,8 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
         // Get index of element in header
         uint index = 0;
         if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-          std::string error_message = "Runtime error occurred. Element " + objectMap.parent + " not found in input.";
+          std::string error_message = "Runtime error occurred. Element " +
+                                      objectMap.parent + " not found in input.";
           throw std::runtime_error(error_message);
         }
 
@@ -1717,7 +1763,9 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
             uint index = 0;
             if (!get_index_of_element(split_header_ref, query_strings[i],
                                       index)) {
-              std::string error_message = "Runtime error occurred. Element " + query_strings[i] + " not found in input.";
+              std::string error_message = "Runtime error occurred. Element " +
+                                          query_strings[i] +
+                                          " not found in input.";
               throw std::runtime_error(error_message);
             }
             element_index.push_back(index);
@@ -1906,11 +1954,13 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
       }
 
     } else {
-      throw std::runtime_error("Runtime error occurred. Found unsupported data encoding!");
+      throw std::runtime_error(
+          "Runtime error occurred. Found unsupported data encoding!");
     }
   }
 
-  std::cout << "Number of generated triples: " << std::to_string(triple_counter) << std::endl;
+  fmt::print("Number of generated triples: {}", std::to_string(triple_counter));
+  
 }
 
 /////////////////////////////////////////////
@@ -1942,8 +1992,7 @@ class ThreadSafeQueue {
     while (queue.empty() && !done) {
       not_empty_cv.wait(lock);
     }
-    if (queue.empty() && done)
-      return 0;
+    if (queue.empty() && done) return 0;
 
     size_t popped_count = 0;
     while (!queue.empty() && popped_count < max_items_to_pop) {
@@ -2025,7 +2074,8 @@ void process_triple_map(
       // Get index of element in header
       uint index = 0;
       if (!get_index_of_element(split_header_ref, objectMap.parent, index)) {
-        std::string error_message = "Runtime error occurred. Element " + objectMap.parent + " not found in input.";
+        std::string error_message = "Runtime error occurred. Element " +
+                                    objectMap.parent + " not found in input.";
         throw std::runtime_error(error_message);
       }
 
@@ -2042,7 +2092,9 @@ void process_triple_map(
           uint index = 0;
           if (!get_index_of_element(split_header_ref, query_strings[i],
                                     index)) {
-            std::string error_message = "Runtime error occurred. Element " + query_strings[i] + " not found in input.";
+            std::string error_message = "Runtime error occurred. Element " +
+                                        query_strings[i] +
+                                        " not found in input.";
             throw std::runtime_error(error_message);
           }
           element_index.push_back(index);
@@ -2094,7 +2146,8 @@ void process_triple_map(
     }
     reader.close();
   } else {
-    throw std::runtime_error("Runtime error occurred. Found unsupported data encoding!");
+    throw std::runtime_error(
+        "Runtime error occurred. Found unsupported data encoding!");
   }
 }
 
@@ -2226,13 +2279,14 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
     outStream.clear();  // Clear any error flags
   }
 
-  std::cout << "Number of generated triples: " << std::to_string(triple_counter++) << std::endl;
+  fmt::print("Number of generated triples: {}", std::to_string(triple_counter++));
+
 }
 
 void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                                 Flags &flags) {
 #ifdef DEBUG
-  std::cout << "Mapping file in multi threaded mode..." << std::endl;
+  fmt::print("Mapping file in multi threaded mode...");
 #endif
   bool remove_duplicates = flags.check_duplicates;
   bool adaptive_hash_selection = flags.adaptive_hash_selection;
@@ -2296,7 +2350,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                   predicateMapInfo_of_tripleMaps, objectMapInfo_of_tripleMaps,
                   predicateObjectMapInfo_of_tripleMaps);
 #ifdef DEBUG
-  std::cout << "Finished parsing RML rules." << std::endl;
+  fmt::print("Finished parsing RML rules.");
 #endif
   // Decide on hash size
   uint8 hash_method;
@@ -2330,7 +2384,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
   } else if (hash_method == 2) {
     bit_width = 128;
   }
-  std::cout << "Using a " << std::to_string(bit_width) << " bit hash function." << std::endl;
+  fmt::print("Using a {} bit hash function.", std::to_string(bit_width));
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -2341,7 +2395,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                                 ? std::thread::hardware_concurrency()
                                 : static_cast<size_t>(num_threads);
 #ifdef DEBUG
-  std::cout << "Using " << numThreads << " threads." << std::endl;
+  fmt::print("Using {} threads.", numThreads);
 #endif
 
   std::vector<std::thread> threads;
