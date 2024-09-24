@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <iostream>
 #include <regex>
 #include <vector>
 
@@ -10,6 +9,8 @@
 #include "rdf_parser.h"
 #include "rml_uris.h"
 #include "string_helper.h"
+
+#include <fmt/core.h>
 
 //////////////////////////////////////////
 ///// Triple Manipulation Functions /////
@@ -891,7 +892,7 @@ void printTriple(std::vector<NTriple>& rml_triple) {
       object = "\"" + triple.object + "\"";
     }
 
-    std::cout << subject << "   " << predicate << "   " << object << " ." << std::endl;
+    fmt::print("{}   {}   {} .", subject, predicate, object);
   }
 }
 
@@ -911,10 +912,7 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
 
 #ifdef DEBUG
   // Print all the triples if in debug mode
-  std::cout << "===================" << std::endl;
-  std::cout << "Parsed RML Triple:" << std::endl;
-  printTriple(rml_triple);
-  std::cout << "===================" << std::endl;
+  fmt::print("===================\nParsed RML Triple: {}\n===================", rml_triple);
 #endif
   // Add types to triples map
   expand_classes(rml_triple, bn_cnt);
@@ -935,9 +933,6 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
 
 #ifdef DEBUG
   // Print all the triples if in debug mode
-  std::cout << "===================" << std::endl;
-  std::cout << "Prepared RML Triple:" << std::endl;
-  printTriple(rml_triple);
-  std::cout << "===================" << std::endl;
+  fmt::print("===================\nParsed RML Triple: {}\n===================", printTriple(rml_triple));
 #endif
 }

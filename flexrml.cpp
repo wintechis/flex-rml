@@ -1,4 +1,4 @@
-#include "FlexRML.h"
+#include "flexrml.h"
 
 #include <fmt/core.h>
 
