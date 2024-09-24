@@ -22,7 +22,7 @@ bool readRmlFile(const std::string &filePath, std::string &rml_rule) {
 
   // Check if the file was opened successfully
   if (!file.is_open()) {
-      fmt::print("Could not open RML file!");
+      fmt::print("Could not open RML file!\n");
     return false;
   }
 
@@ -382,7 +382,7 @@ int main(int argc, char *argv[]) {
 
   // Check if the file is opened successfully
   if (!out_file.is_open()) {
-      fmt::print("Failed to open the output file!");
+      fmt::print("Failed to open the output file!\n");
     return 1;
   }
 

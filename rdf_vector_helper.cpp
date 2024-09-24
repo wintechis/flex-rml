@@ -1,5 +1,7 @@
 #include "rdf_vector_helper.h"
 
+#include <fmt/core.h>
+
 #include <algorithm>
 #include <array>
 #include <regex>
@@ -10,8 +12,6 @@
 #include "rml_uris.h"
 #include "string_helper.h"
 
-#include <fmt/core.h>
-
 //////////////////////////////////////////
 ///// Triple Manipulation Functions /////
 ////////////////////////////////////////
@@ -19,23 +19,31 @@
 /**
  * @brief Removes a specified triple from a vector of NTriples.
  *
- * This function searches for a triple in the vector that matches the given subject, predicate, and object.
- * If such a triple is found, it is efficiently removed by swapping it with the last element of the vector
- * and then calling pop_back, thus avoiding the need to shift elements. If the triple to be removed is already
- * the last element, it is simply removed without swapping. If the triple is not found, the function does nothing.
+ * This function searches for a triple in the vector that matches the given
+ * subject, predicate, and object. If such a triple is found, it is efficiently
+ * removed by swapping it with the last element of the vector and then calling
+ * pop_back, thus avoiding the need to shift elements. If the triple to be
+ * removed is already the last element, it is simply removed without swapping.
+ * If the triple is not found, the function does nothing.
  *
- * @param triples A reference to a vector of NTriples from which the specified triple will be removed.
+ * @param triples A reference to a vector of NTriples from which the specified
+ * triple will be removed.
  * @param subject The subject of the triple to be removed.
  * @param predicate The predicate of the triple to be removed.
  * @param object The object of the triple to be removed.
  */
-void remove_triple(std::vector<NTriple>& triples, const std::string& subject, const std::string& predicate, const std::string& object) {
+void remove_triple(std::vector<NTriple>& triples, const std::string& subject,
+                   const std::string& predicate, const std::string& object) {
   auto it = std::find_if(triples.begin(), triples.end(),
                          [subject, predicate, object](const NTriple& triple) {
-                           return triple.subject == subject && triple.predicate == predicate && triple.object == object;
+                           return triple.subject == subject &&
+                                  triple.predicate == predicate &&
+                                  triple.object == object;
                          });
   if (it != triples.end()) {
-    if (it != std::prev(triples.end())) {            // check if it is not already the last element
+    if (it !=
+        std::prev(
+            triples.end())) {  // check if it is not already the last element
       std::iter_swap(it, std::prev(triples.end()));  // swap with last element
     }
     triples.pop_back();  // remove last element
@@ -43,31 +51,37 @@ void remove_triple(std::vector<NTriple>& triples, const std::string& subject, co
 }
 
 /**
- * @brief Overload of remove_triple -> Removes all triples from a vector of NTriples which specified subject.
+ * @brief Overload of remove_triple -> Removes all triples from a vector of
+ * NTriples which specified subject.
  *
- * @param triples A reference to a vector of NTriples from which the specified triple will be removed.
+ * @param triples A reference to a vector of NTriples from which the specified
+ * triple will be removed.
  * @param subject The subject of the triple to be removed.
  * @param object The object of the triple to be removed.
  */
 void remove_triple(std::vector<NTriple>& triples, const std::string& subject) {
-  auto it = std::remove_if(triples.begin(), triples.end(),
-                           [subject](const NTriple& triple) {
-                             return triple.subject == subject;
-                           });
+  auto it = std::remove_if(
+      triples.begin(), triples.end(),
+      [subject](const NTriple& triple) { return triple.subject == subject; });
 
   triples.erase(it, triples.end());
 }
 
 /**
- * Queries the RDF data to find objects based on the provided subject and predicate.
+ * Queries the RDF data to find objects based on the provided subject and
+ * predicate.
  *
  * @param {std::vector<NTriple>&} triples - The triples to search in.
- * @param {std::string} subject - The subject to match against. If empty, this filter is ignored.
- * @param {std::string} predicate - The predicate to match against. If empty, this filter is ignored.
+ * @param {std::string} subject - The subject to match against. If empty, this
+ * filter is ignored.
+ * @param {std::string} predicate - The predicate to match against. If empty,
+ * this filter is ignored.
  *
  * @returns {std::vector<std::string>} The vector containing matched objects.
  */
-std::vector<std::string> find_matching_object(const std::vector<NTriple>& triples, const std::string& subject, const std::string& predicate) {
+std::vector<std::string> find_matching_object(
+    const std::vector<NTriple>& triples, const std::string& subject,
+    const std::string& predicate) {
   std::vector<std::string> results;
 
   for (const NTriple& triple : triples) {
@@ -89,17 +103,19 @@ std::vector<std::string> find_matching_object(const std::vector<NTriple>& triple
 }
 
 /**
- * Queries the list of triples to find subjects based on the provided predicate and optional object.
+ * Queries the list of triples to find subjects based on the provided predicate
+ * and optional object.
  *
  * @param triples - A vector containing the list of triples to be queried.
  * @param predicate - The predicate to match against.
- * @param object - (Optional) The object to match against. If empty, this filter is ignored.
+ * @param object - (Optional) The object to match against. If empty, this filter
+ * is ignored.
  *
  * @returns A vector containing matching subjects.
  */
-std::vector<std::string> find_matching_subject(const std::vector<NTriple>& triples,
-                                               const std::string& predicate,
-                                               const std::string& object) {
+std::vector<std::string> find_matching_subject(
+    const std::vector<NTriple>& triples, const std::string& predicate,
+    const std::string& object) {
   std::vector<std::string> results;
 
   for (const auto& triple : triples) {
@@ -147,37 +163,45 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
 
   // Check if some node has a parentTriplesMap
   // Get all tripleMaps
-  std::vector<std::string> tripleMap_nodes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
+  std::vector<std::string> tripleMap_nodes =
+      find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
 
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     std::string tripleMap_node = tripleMap_nodes[i];
 
     // Get all predicateObjectMap Uris  of current tripleMap_node
-    std::vector<std::string> predicateObjectMap_uris = find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
+    std::vector<std::string> predicateObjectMap_uris =
+        find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
 
     // Iterate over all found predicateObjectMap_uris and extract objectMap
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
       // Get objectMap uri / bnode
-      std::vector<std::string> temp_result = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
+      std::vector<std::string> temp_result =
+          find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
       // Only size 1 is supported
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one objectMap; Can not expand!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one objectMap; Can not expand!");
       }
 
       std::string objectMap_bn = temp_result[0];
 
       // Check if a parentTriplesMap is specified
-      temp_result = find_matching_object(triples, objectMap_bn, RML_PARENT_TRIPLES_MAP);
+      temp_result =
+          find_matching_object(triples, objectMap_bn, RML_PARENT_TRIPLES_MAP);
       if (temp_result.size() == 0) {
         continue;
       } else if (temp_result.size() > 1) {
-        throw std::runtime_error("Runtime error occurred. More than one parentTriplesMap specified!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one parentTriplesMap "
+            "specified!");
       }
 
       std::string parentTriplesMap_node = temp_result[0];
 
       // Check if object node has rr:joinCondition specified
-      temp_result = find_matching_object(triples, objectMap_bn, RML_JOIN_CONDITION);
+      temp_result =
+          find_matching_object(triples, objectMap_bn, RML_JOIN_CONDITION);
       // If a joinCondition is found this method can not be used
       if (temp_result.size() != 1) {
         continue;
@@ -188,15 +212,20 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       // Get child
       temp_result = find_matching_object(triples, join_condition_bn, RML_CHILD);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one child in joinCondition specified!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one child in joinCondition "
+            "specified!");
       }
 
       std::string child = temp_result[0];
 
       // Get parent
-      temp_result = find_matching_object(triples, join_condition_bn, RML_PARENT);
+      temp_result =
+          find_matching_object(triples, join_condition_bn, RML_PARENT);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one parent in joinCondition specified!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one parent in joinCondition "
+            "specified!");
       }
 
       std::string parent = temp_result[0];
@@ -204,9 +233,12 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       ////// Extract and modify data from parent subject //////
 
       // Get subjectMap node of referenced TriplesMap
-      temp_result = find_matching_object(triples, parentTriplesMap_node, RML_SUBJECT_MAP);
+      temp_result =
+          find_matching_object(triples, parentTriplesMap_node, RML_SUBJECT_MAP);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one subjectMap; Can not expand!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one subjectMap; Can not "
+            "expand!");
       }
       std::string subjectMap_node = temp_result[0];
 
@@ -215,7 +247,8 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
 
       std::string join_reference_condition_available = "false";
       // Query for template in subjectMap of parent
-      temp_result = find_matching_object(triples, subjectMap_node, RML_TEMPLATE);
+      temp_result =
+          find_matching_object(triples, subjectMap_node, RML_TEMPLATE);
       if (temp_result.size() != 0) {
         std::string current_template_parent = temp_result[0];
 
@@ -223,11 +256,14 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
         std::string temp_child = "{" + child + "}";
 
         // replace all entries of "parent" with "child"
-        new_template_of_parent = replace_substring(current_template_parent, temp_parent, temp_child);
+        new_template_of_parent =
+            replace_substring(current_template_parent, temp_parent, temp_child);
 
-        std::vector<std::string> query_string = extract_substrings(current_template_parent);
+        std::vector<std::string> query_string =
+            extract_substrings(current_template_parent);
 
-        // Reference Condition is working if parent key and string in template are the same
+        // Reference Condition is working if parent key and string in template
+        // are the same
         if (query_string[0] == parent) {
           join_reference_condition_available = "true";
         }
@@ -235,22 +271,28 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
 
       // -> Get source of parent triples map
       // Get logical source node
-      temp_result = find_matching_object(triples, parentTriplesMap_node, RML_LOGICAL_SOURCE);
+      temp_result = find_matching_object(triples, parentTriplesMap_node,
+                                         RML_LOGICAL_SOURCE);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one source; Can not expand!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one source; Can not expand!");
       }
       std::string parentTriplesMap_logicalSource_node = temp_result[0];
 
       // Get path of logical source
-      temp_result = find_matching_object(triples, parentTriplesMap_logicalSource_node, RML_SOURCE);
+      temp_result = find_matching_object(
+          triples, parentTriplesMap_logicalSource_node, RML_SOURCE);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one logical source; Can not expand!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one logical source; Can not "
+            "expand!");
       }
       std::string parentTriplesMap_source_node = temp_result[0];
 
       /// Get source path
       // Get type
-      temp_result = find_matching_object(triples, parentTriplesMap_source_node, RDF_TYPE);
+      temp_result =
+          find_matching_object(triples, parentTriplesMap_source_node, RDF_TYPE);
       if (temp_result.empty()) {
         throw std::runtime_error("Runtime error occurred. No type found!");
       } else if (temp_result.size() > 1) {
@@ -260,7 +302,8 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       std::string rml_path_type = temp_result[0];
 
       // Get root
-      temp_result = find_matching_object(triples, parentTriplesMap_source_node, RML_ROOT);
+      temp_result =
+          find_matching_object(triples, parentTriplesMap_source_node, RML_ROOT);
       if (temp_result.empty()) {
         throw std::runtime_error("Runtime error occurred. No root found!");
       } else if (temp_result.size() > 1) {
@@ -270,7 +313,8 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       std::string rml_root_uri = temp_result[0];
 
       // Get path
-      temp_result = find_matching_object(triples, parentTriplesMap_source_node, RML_PATH);
+      temp_result =
+          find_matching_object(triples, parentTriplesMap_source_node, RML_PATH);
       if (temp_result.empty()) {
         throw std::runtime_error("Runtime error occurred. No path found!");
       } else if (temp_result.size() > 1) {
@@ -288,9 +332,13 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
       }
 
       // Get reference formulation
-      temp_result = find_matching_object(triples, parentTriplesMap_logicalSource_node, RML_REFERENCE_FORMULATION);
+      temp_result =
+          find_matching_object(triples, parentTriplesMap_logicalSource_node,
+                               RML_REFERENCE_FORMULATION);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one reference formulation; Can not expand!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one reference formulation; Can "
+            "not expand!");
       }
       std::string parentTriplesMap_referenceFormulation = temp_result[0];
 
@@ -352,7 +400,8 @@ void expand_join_tripleMaps(std::vector<NTriple>& triples) {
 
       // Delete old nodes
       // Remove node referencing parent map
-      remove_triple(triples, predicateObjectMap_uri, RML_OBJECT_MAP, objectMap_bn);
+      remove_triple(triples, predicateObjectMap_uri, RML_OBJECT_MAP,
+                    objectMap_bn);
 
       // Remove all triple where the objectMap_bn is in subject position
       remove_triple(triples, objectMap_bn);
@@ -379,50 +428,62 @@ void expand_referencing_tripleMaps(std::vector<NTriple>& triples) {
 
   // Check if some node has a parentTriplesMap
   // Get all tripleMaps
-  std::vector<std::string> tripleMap_nodes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
+  std::vector<std::string> tripleMap_nodes =
+      find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
 
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     std::string tripleMap_node = tripleMap_nodes[i];
 
     // Get all predicateObjectMap Uris  of current tripleMap_node
-    std::vector<std::string> predicateObjectMap_uris = find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
+    std::vector<std::string> predicateObjectMap_uris =
+        find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
 
     // Iterate over all found predicateObjectMap_uris and extract objectMap
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
       // Get objectMap uri / bnode
-      std::vector<std::string> temp_result = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
+      std::vector<std::string> temp_result =
+          find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
       // Only size 1 is supported
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one objectMap; Can not expand!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one objectMap; Can not expand!");
       }
 
       std::string objectMap_bn = temp_result[0];
 
       // Check if a parentTriplesMap is specified
-      temp_result = find_matching_object(triples, objectMap_bn, RML_PARENT_TRIPLES_MAP);
+      temp_result =
+          find_matching_object(triples, objectMap_bn, RML_PARENT_TRIPLES_MAP);
       if (temp_result.size() == 0) {
         continue;
       } else if (temp_result.size() > 1) {
-        throw std::runtime_error("Runtime error occurred. More than one parentTriplesMap specified!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one parentTriplesMap "
+            "specified!");
       }
       std::string parentTriplesMap_node = temp_result[0];
 
       // Check if object node has rr:joinCondition specified
-      temp_result = find_matching_object(triples, objectMap_bn, RML_JOIN_CONDITION);
+      temp_result =
+          find_matching_object(triples, objectMap_bn, RML_JOIN_CONDITION);
       // If a joinCondition is found this method can not be used
       if (temp_result.size() != 0) {
         continue;
       }
 
       // Get subjectMap node of reference TriplesMap
-      temp_result = find_matching_object(triples, parentTriplesMap_node, RML_SUBJECT_MAP);
+      temp_result =
+          find_matching_object(triples, parentTriplesMap_node, RML_SUBJECT_MAP);
       if (temp_result.size() != 1) {
-        throw std::runtime_error("Runtime error occurred. More than one subjectMap; Can not expand!");
+        throw std::runtime_error(
+            "Runtime error occurred. More than one subjectMap; Can not "
+            "expand!");
       }
       std::string subjectMap_node = temp_result[0];
 
       // Remove node referencing parent map
-      remove_triple(triples, predicateObjectMap_uri, RML_OBJECT_MAP, objectMap_bn);
+      remove_triple(triples, predicateObjectMap_uri, RML_OBJECT_MAP,
+                    objectMap_bn);
 
       // Remove all triple where the objectMap_bn is in subject position
       remove_triple(triples, objectMap_bn);
@@ -442,7 +503,8 @@ void expand_referencing_tripleMaps(std::vector<NTriple>& triples) {
 }
 
 /**
- * @brief Expands redicateObjectMaps with more than one predicate in a given set of NTriples.
+ * @brief Expands redicateObjectMaps with more than one predicate in a given set
+ * of NTriples.
  *
  * @param triples A reference to a vector of NTriples that will be expanded.
  */
@@ -500,39 +562,46 @@ void expand_multiple_predicates(std::vector<NTriple>& triples) {
   */
 
   // Get all tripleMaps
-  std::vector<std::string> tripleMap_nodes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
+  std::vector<std::string> tripleMap_nodes =
+      find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
 
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     std::string tripleMap_node = tripleMap_nodes[i];
 
     // Get all predicateObjectMap Uris  of current tripleMap_node
-    std::vector<std::string> predicateObjectMap_uris = find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
+    std::vector<std::string> predicateObjectMap_uris =
+        find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
     // Iterate over all found predicateObjectMap_uris and extract predicate
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
       // get all predicate uris / bnodes
-      std::vector<std::string> predicate_bns = find_matching_object(triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
+      std::vector<std::string> predicate_bns = find_matching_object(
+          triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
 
       // If size greater than 1 -> Needs to be expanded
       if (predicate_bns.size() <= 1) {
         continue;
       }
       // Get objectMap uri / bnode
-      std::vector<std::string> objectMap_bns = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
+      std::vector<std::string> objectMap_bns =
+          find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
 
       for (const auto& objectMap_bn : objectMap_bns) {
         // remove old triples
         // triplesMap  predicateObjectMap  bn
-        remove_triple(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP, predicateObjectMap_uri);
+        remove_triple(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP,
+                      predicateObjectMap_uri);
 
         // remove old triples
         // bnode objectMap bnode
-        remove_triple(triples, predicateObjectMap_uri, RML_OBJECT_MAP, objectMap_bn);
+        remove_triple(triples, predicateObjectMap_uri, RML_OBJECT_MAP,
+                      objectMap_bn);
 
         // Expand each predicate
         for (size_t j = 0; j < predicate_bns.size(); j++) {
           std::string predicate_bn = predicate_bns[j];
 
-          remove_triple(triples, predicateObjectMap_uri, RML_PREDICATE_MAP, predicate_bn);
+          remove_triple(triples, predicateObjectMap_uri, RML_PREDICATE_MAP,
+                        predicate_bn);
 
           // Generate blanke node
           std::string blank_node = "b" + std::to_string(blank_node_counter++);
@@ -584,17 +653,20 @@ void expand_multiple_objects(std::vector<NTriple>& triples) {
   */
 
   // Get all tripleMaps
-  std::vector<std::string> tripleMap_nodes = find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
+  std::vector<std::string> tripleMap_nodes =
+      find_matching_subject(triples, RDF_TYPE, TRIPLES_MAP);
   for (size_t i = 0; i < tripleMap_nodes.size(); i++) {
     std::string tripleMap_node = tripleMap_nodes[i];
 
     // Get all predicateObjectMap Uris  of current tripleMap_node
-    std::vector<std::string> predicateObjectMap_uris = find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
+    std::vector<std::string> predicateObjectMap_uris =
+        find_matching_object(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP);
 
     // Iterate over all found predicateObjectMap_uris and extract predicate
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
       // get all object uris / bnodes
-      std::vector<std::string> objectMap_bns = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
+      std::vector<std::string> objectMap_bns =
+          find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
       //// If size is smaller than 1 -> No expansion is needed ////
       if (objectMap_bns.size() <= 1) {
         continue;
@@ -602,9 +674,12 @@ void expand_multiple_objects(std::vector<NTriple>& triples) {
       //// Otherwise expand ////
       for (const auto& objectMap_bn : objectMap_bns) {
         // get all predicate uris / bnodes -> should max be 1 at this point
-        std::vector<std::string> predicate_bns = find_matching_object(triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
+        std::vector<std::string> predicate_bns = find_matching_object(
+            triples, predicateObjectMap_uri, RML_PREDICATE_MAP);
         if (predicate_bns.size() != 1) {
-          throw std::runtime_error("Runtime error occurred. More than one predicate map found; Not supported at this point!");
+          throw std::runtime_error(
+              "Runtime error occurred. More than one predicate map found; Not "
+              "supported at this point!");
         }
 
         // Add new triple
@@ -638,13 +713,15 @@ void expand_multiple_objects(std::vector<NTriple>& triples) {
     // remove old triples
     for (const std::string& predicateObjectMap_uri : predicateObjectMap_uris) {
       // get all object uris / bnodes
-      std::vector<std::string> objectMap_bns = find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
+      std::vector<std::string> objectMap_bns =
+          find_matching_object(triples, predicateObjectMap_uri, RML_OBJECT_MAP);
       //// If size is smaller than 1 -> No expansion is needed ////
       if (objectMap_bns.size() <= 1) {
         continue;
       }
       // triplesMap  predicateObjectMap  bn
-      remove_triple(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP, predicateObjectMap_uri);
+      remove_triple(triples, tripleMap_node, RML_PREDICATE_OBJECT_MAP,
+                    predicateObjectMap_uri);
 
       // Remove all old triple with subject: predicateObjectMap_uri
       remove_triple(triples, predicateObjectMap_uri);
@@ -709,9 +786,10 @@ void expand_classes(std::vector<NTriple>& rml_triple, int& bn_counter) {
 /**
  * @brief Expands the constants in a given set of NTriples.
  *
- * This function takes a vector of NTriples and expands the constants found within
- * them, based on predefined constant predicates and map types. The function processes
- * each triple and replaces them with new triples that represent the expanded constants.
+ * This function takes a vector of NTriples and expands the constants found
+ * within them, based on predefined constant predicates and map types. The
+ * function processes each triple and replaces them with new triples that
+ * represent the expanded constants.
  *
  * @param triples A reference to a vector of NTriples that will be expanded.
  */
@@ -892,7 +970,7 @@ void printTriple(std::vector<NTriple>& rml_triple) {
       object = "\"" + triple.object + "\"";
     }
 
-    fmt::print("{}   {}   {} .", subject, predicate, object);
+    fmt::print("{}   {}   {} .\n", subject, predicate, object);
   }
 }
 
@@ -900,7 +978,9 @@ void printTriple(std::vector<NTriple>& rml_triple) {
 ///// Main function to prepare rml triple vector /////
 //////////////////////////////////////////////////////
 
-void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTriple>& rml_triple, std::string& base_uri) {
+void read_and_prepare_rml_triple(const std::string& rml_rule,
+                                 std::vector<NTriple>& rml_triple,
+                                 std::string& base_uri) {
   // Parse rml in own scope
   int bn_cnt;
   {
@@ -912,7 +992,9 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
 
 #ifdef DEBUG
   // Print all the triples if in debug mode
-  fmt::print("===================\nParsed RML Triple: {}\n===================", rml_triple);
+  fmt::print("===================\nParsed RML Triple:\n");
+  printTriple(rml_triple);
+  fmt::print("===================\n");
 #endif
   // Add types to triples map
   expand_classes(rml_triple, bn_cnt);
@@ -933,6 +1015,9 @@ void read_and_prepare_rml_triple(const std::string& rml_rule, std::vector<NTripl
 
 #ifdef DEBUG
   // Print all the triples if in debug mode
-  fmt::print("===================\nParsed RML Triple: {}\n===================", printTriple(rml_triple));
+  fmt::print("===================\nParsed RML Triple:\n");
+  printTriple(rml_triple);
+  fmt::print("===================\n");
+
 #endif
 }

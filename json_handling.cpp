@@ -1,6 +1,7 @@
 #include "json_handling.h"
 
 #include "definitions.h"
+#include <fmt/core.h>
 
 bool initialize = true;
 
@@ -78,7 +79,8 @@ void move_using_json_path(std::ifstream& file,
   int max = json_path_tokens.size();
 
   if (json_path_tokens[cnt] != "$") {
-    throw std::runtime_error("Runtime error occurred.\nJsonPath is not supported!");
+    throw std::runtime_error(
+        "Runtime error occurred.\nJsonPath is not supported!");
   }
   cnt++;
   std::string current_token;
@@ -105,7 +107,7 @@ void move_using_json_path(std::ifstream& file,
     // If it matches the whole string
     if (res == current_token) {
 #ifdef DEBUG
-      fmt::print("Found 1");
+      fmt::print("Found 1\n");
 #endif
       cnt++;
       if (cnt < max) {
@@ -119,7 +121,7 @@ void move_using_json_path(std::ifstream& file,
     // If it matches the [
     if (res[0] == '[' && current_token[0] == '[') {
 #ifdef DEBUG
-    fmt::print("Found 1");
+      fmt::print("Found 1\n");
 #endif
       array_stack.push('[');
       cnt++;
@@ -170,7 +172,7 @@ std::string get_next_element(std::ifstream& file,
     // If stack is empty -> not more data can be found
     if (array_stack.empty()) {
 #ifdef DEBUG
-      std::fmt("stack empty");
+      fmt::print("stack empty\n");
 #endif
       return "";
     }
@@ -239,7 +241,8 @@ void json_to_csv_helper(JsonVariant variant, std::vector<std::string>& headers,
         } else if (keyValue.value().isNull()) {
           values.push_back("");
         } else {
-          throw std::runtime_error("Runtime error occurred.\nUnsupported json data type.");
+          throw std::runtime_error(
+              "Runtime error occurred.\nUnsupported json data type.");
         }
       }
     }
@@ -282,14 +285,15 @@ std::string json_to_csv(const std::string& jsonString) {
 
 void reinit_json(std::ifstream& file) {
 #ifdef DEBUG
-    std::fmt("Reset JSON parsing...");
+  fmt::print("Reset JSON parsing...\n");
 
 #endif
   initialize = true;
   std::string res = get_next_word(file, true);
 }
 
-std::string get_next_element_csv(std::ifstream& file, std::vector<std::string>& json_path_tokens) {
+std::string get_next_element_csv(std::ifstream& file,
+                                 std::vector<std::string>& json_path_tokens) {
   std::string val = get_next_element(file, json_path_tokens, initialize);
   initialize = false;
 
@@ -298,7 +302,7 @@ std::string get_next_element_csv(std::ifstream& file, std::vector<std::string>& 
   }
 
 #ifdef DEBUG
-  std::fmt("Final generated json element: {}", val);
+  fmt::print("Final generated json element: {}\n", val);
 
 #endif
   return json_to_csv(val);

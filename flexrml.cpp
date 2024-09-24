@@ -767,22 +767,21 @@ uint8 detect_hash_method(
           .count();
 
   fmt::print(
-      "Estimation took: {} milliseconds\nEstimated number of unique elements: {}", duration, res);
+      "Estimation took: {} milliseconds\nEstimated number of unique elements: {}\n",
+      duration, res);
 
-      // Decide on Hash method
-      // 0 -> 32bit, 1 -> 64bit, 2 -> 128bit
-      // Threshold is estimated using birthday problem with a probability of
-      // 0.05% to get a collision
+  // Decide on Hash method
+  // 0 -> 32bit, 1 -> 64bit, 2 -> 128bit
+  // Threshold is estimated using birthday problem with a probability of
+  // 0.05% to get a collision
 
-      if (res < 2073) {
+  if (res < 2073) {
     // 32bit
     hash_method = 0;
-  }
-  else if (res < 135835773) {
+  } else if (res < 135835773) {
     // 64bit
     hash_method = 1;
-  }
-  else {
+  } else {
     // 128bit
     hash_method = 2;
   }
@@ -825,7 +824,7 @@ std::string generate_graph_logic(const std::string &graph_termType,
   // template.
   if (!graph_template.empty()) {
 #ifdef DEBUG
-    fmt::print("Generating graph based on template...");
+    fmt::print("Generating graph based on template...\n");
 #endif
 
     std::string current_graph = fill_in_template(graph_template, split_data,
@@ -841,7 +840,7 @@ std::string generate_graph_logic(const std::string &graph_termType,
       return NO_GRAPH;
     }
 #ifdef DEBUG
-    fmt::print("Generating graph based on constant...");
+    fmt::print("Generating graph based on constant...\n");
 #endif
     return handle_term_type(IRI_TERM_TYPE, graph_constant);
   }
@@ -901,7 +900,7 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   if (subjectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    fmt::print("Generating subject based on template...");
+    fmt::print("Generating subject based on template...\n");
 #endif
     current_generated_subject = fill_in_template(
         subjectMapInfo.template_str, split_data, split_header, IRI_TERM_TYPE);
@@ -925,7 +924,7 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   // Check if reference value is available
   else if (subjectMapInfo.reference != "") {
 #ifdef DEBUG
-    fmt::print("Generating subject based on reference...");
+    fmt::print("Generating subject based on reference...\n");
 #endif
     std::string temp_template = "{" + subjectMapInfo.reference + "}";
     current_generated_subject =
@@ -945,7 +944,7 @@ std::string generate_subject(const SubjectMapInfo &subjectMapInfo,
   else if (subjectMapInfo.constant != "") {
 // Set constant value as subject
 #ifdef DEBUG
-    fmt::print("Generating subject based on constant...");
+    fmt::print("Generating subject based on constant...\n");
 #endif
     current_generated_subject = subjectMapInfo.constant;
   }
@@ -977,7 +976,7 @@ std::string generate_predicate(const PredicateMapInfo &predicateMapInfo,
   if (predicateMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    fmt::print("Generating predicate based on template...");
+    fmt::print("Generating predicate based on template...\n");
 #endif
     current_predicate = fill_in_template(predicateMapInfo.template_str,
                                          split_data, split_header);
@@ -990,7 +989,7 @@ std::string generate_predicate(const PredicateMapInfo &predicateMapInfo,
   else if (predicateMapInfo.constant != "") {
 // Set constant value as subject
 #ifdef DEBUG
-    fmt::print("Generating predicate based on constant...");
+    fmt::print("Generating predicate based on constant...\n");
 #endif
     current_predicate = predicateMapInfo.constant;
   }
@@ -1014,7 +1013,7 @@ std::string generate_object_with_nested_loop_join(
   if (objectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    fmt::print("Generating object based on template...");
+    fmt::print("Generating object based on template...\n");
 #endif
 
     generated_object = fill_in_template(objectMapInfo.template_str,
@@ -1235,7 +1234,7 @@ std::string generate_object_with_hash_join(
   std::string generated_object = "";
 // Fill in template and store it the generate value
 #ifdef DEBUG
-  fmt::print("Generating object based on template...");
+  fmt::print("Generating object based on template...\n");
 #endif
 
   generated_object =
@@ -1307,7 +1306,7 @@ std::string generate_object_wo_join(
   if (objectMapInfo.template_str != "") {
 // Fill in template and store it the generate value
 #ifdef DEBUG
-    fmt::print("Generating object based on template...");
+    fmt::print("Generating object based on template...\n");
 #endif
     generated_object =
         fill_in_template(objectMapInfo.template_str, split_data, split_header);
@@ -1320,14 +1319,14 @@ std::string generate_object_wo_join(
   else if (objectMapInfo.constant != "") {
 // Set constant value as subject
 #ifdef DEBUG
-    fmt::print("Generating object based on constant...");
+    fmt::print("Generating object based on constant...\n");
 #endif
     generated_object = objectMapInfo.constant;
   }
   // Check if reference is available
   else if (objectMapInfo.reference != "") {
 #ifdef DEBUG
-    fmt::print("Generating object based on reference...");
+    fmt::print("Generating object based on reference...\n");
 #endif
     std::string temp_template = "{" + objectMapInfo.reference + "}";
     generated_object =
@@ -1390,7 +1389,7 @@ std::vector<std::string> generate_object(
   // Check if a join is required
   if (objectMapInfo.parentSource != "") {
 #ifdef DEBUG
-    fmt::print("Join required...");
+    fmt::print("Join required...\n");
 #endif
     std::vector<std::string> res;
     CsvReader reader_parent(objectMapInfo.parentSource);
@@ -1398,7 +1397,7 @@ std::vector<std::string> generate_object(
     // Check type of join
     if (objectMapInfo.join_reference_condition_available == "true") {
 #ifdef DEBUG
-      fmt::print("Using reference condition to generate object...");
+      fmt::print("Using reference condition to generate object...\n");
 #endif
       std::string result = generate_object_with_hash_join(
           objectMapInfo, split_data_child, split_header_child, reader_parent,
@@ -1407,7 +1406,7 @@ std::vector<std::string> generate_object(
       res.push_back(result);
     } else {
 #ifdef DEBUG
-      fmt::print("Using full join to generate object...");
+      fmt::print("Using full join to generate object...\n");
 #endif
       // Perform normal join
       res = generate_object_with_hash_join_full(
@@ -1576,7 +1575,7 @@ void generate_quads(
 void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
                       Flags &flags) {
 #ifdef DEBUG
-  fmt::print("Mapping file in single threaded mode...");
+  fmt::print("Mapping file in single threaded mode...\n");
 #endif
   // Set Flags
   bool remove_duplicates = flags.check_duplicates;
@@ -1653,7 +1652,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
   predicateObjectMapInfo_of_tripleMaps.shrink_to_fit();
 
 #ifdef DEBUG
-  fmt::print("Finished parsing RML rules.");
+  fmt::print("Finished parsing RML rules.\n");
 #endif
 
   // Decide on hash size
@@ -1690,7 +1689,7 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
     bit_width = 128;
   }
 
-  fmt::print("Using a  {} bit hash function.", std::to_string(bit_width));
+  fmt::print("Using a {} bit hash function.\n", std::to_string(bit_width));
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -1959,8 +1958,8 @@ void map_data_to_file(std::string &rml_rule, std::ofstream &out_file,
     }
   }
 
-  fmt::print("Number of generated triples: {}", std::to_string(triple_counter));
-  
+  fmt::print("Number of generated triples: {}.\n",
+             std::to_string(triple_counter));
 }
 
 /////////////////////////////////////////////
@@ -2279,14 +2278,14 @@ void writer_thread(std::ofstream &out_file, ThreadSafeQueue<NQuad> &quad_queue,
     outStream.clear();  // Clear any error flags
   }
 
-  fmt::print("Number of generated triples: {}", std::to_string(triple_counter++));
-
+  fmt::print("Number of generated triples: {}.\n",
+             std::to_string(triple_counter++));
 }
 
 void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                                 Flags &flags) {
 #ifdef DEBUG
-  fmt::print("Mapping file in multi threaded mode...");
+  fmt::print("Mapping file in multi threaded mode...\n");
 #endif
   bool remove_duplicates = flags.check_duplicates;
   bool adaptive_hash_selection = flags.adaptive_hash_selection;
@@ -2350,7 +2349,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                   predicateMapInfo_of_tripleMaps, objectMapInfo_of_tripleMaps,
                   predicateObjectMapInfo_of_tripleMaps);
 #ifdef DEBUG
-  fmt::print("Finished parsing RML rules.");
+  fmt::print("Finished parsing RML rules.\n");
 #endif
   // Decide on hash size
   uint8 hash_method;
@@ -2384,7 +2383,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
   } else if (hash_method == 2) {
     bit_width = 128;
   }
-  fmt::print("Using a {} bit hash function.", std::to_string(bit_width));
+  fmt::print("Using a {} bit hash function.\n", std::to_string(bit_width));
 
   ///////////////////////////////////////////////////////
   //// STEP 3: Generate Mapping based on RML rules ////
@@ -2395,7 +2394,7 @@ void map_data_to_file_threading(std::string &rml_rule, std::ofstream &out_file,
                                 ? std::thread::hardware_concurrency()
                                 : static_cast<size_t>(num_threads);
 #ifdef DEBUG
-  fmt::print("Using {} threads.", numThreads);
+  fmt::print("Using {} threads.\n", numThreads);
 #endif
 
   std::vector<std::thread> threads;
