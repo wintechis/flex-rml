@@ -4,7 +4,7 @@
 #include <sstream>
 #include <string>
 
-#include "FlexRML.h"
+#include "flexrml.h"
 
 #include <fmt/core.h>
 
@@ -406,7 +406,7 @@ int main(int argc, char *argv[]) {
   fmt::print("Mapping took {} milliseconds to execute.\n", duration);
 
 
-  // std::cout << "Number of Allocations: " << s_AllocCount << std::endl;
+  // fmt::print("Number of Allocations: {}", s_AllocCount);
 
   return 0;
 }

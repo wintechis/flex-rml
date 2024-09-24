@@ -105,7 +105,7 @@ void move_using_json_path(std::ifstream& file,
     // If it matches the whole string
     if (res == current_token) {
 #ifdef DEBUG
-      std::cout << "Found 1" << std::endl;
+      fmt::print("Found 1");
 #endif
       cnt++;
       if (cnt < max) {
@@ -119,7 +119,7 @@ void move_using_json_path(std::ifstream& file,
     // If it matches the [
     if (res[0] == '[' && current_token[0] == '[') {
 #ifdef DEBUG
-      std::cout << "Found 2" << std::endl;
+    fmt::print("Found 1");
 #endif
       array_stack.push('[');
       cnt++;
@@ -170,7 +170,7 @@ std::string get_next_element(std::ifstream& file,
     // If stack is empty -> not more data can be found
     if (array_stack.empty()) {
 #ifdef DEBUG
-      std::cout << "stack empty." << std::endl;
+      std::fmt("stack empty");
 #endif
       return "";
     }
@@ -282,7 +282,8 @@ std::string json_to_csv(const std::string& jsonString) {
 
 void reinit_json(std::ifstream& file) {
 #ifdef DEBUG
-  std::cout << "Reset JSON parsing..." << std::endl;
+    std::fmt("Reset JSON parsing...");
+
 #endif
   initialize = true;
   std::string res = get_next_word(file, true);
@@ -297,7 +298,8 @@ std::string get_next_element_csv(std::ifstream& file, std::vector<std::string>& 
   }
 
 #ifdef DEBUG
-  std::cout << "Final generated json element: " << val << std::endl;
+  std::fmt("Final generated json element: {}", val);
+
 #endif
   return json_to_csv(val);
 }

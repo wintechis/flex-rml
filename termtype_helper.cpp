@@ -1,7 +1,7 @@
 #include "termtype_helper.h"
 
-#include <iostream>
 #include <unordered_set>
+#include <stdexcept>
 
 #include "rml_uris.h"
 

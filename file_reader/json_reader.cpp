@@ -1,7 +1,5 @@
 #include "json_reader.h"
 
-#include <iostream>
-
 #include "../json_handling.h"
 
 JsonReader::JsonReader(const std::string& source, std::string& json_path,
