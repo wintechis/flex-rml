@@ -339,6 +339,8 @@ def constant_folding(ra_expressions):
                 constant_value = f"\"{element[0]}\""
                 if element[3] != "None":
                     constant_value += f"@{element[3]}"
+                elif element[4] != "None":
+                    constant_value += f"^^<{element[4]}>"
 
             if i == 0:
                 create_funciton_elements["s_content"] = f"{constant_value}===preformatted===xxx"
