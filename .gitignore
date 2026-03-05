@@ -2,15 +2,10 @@
 /venv/
 *.so*
 *.bin
-*.c
 *.nq
 *.csv
-frontend/rdf_parser/serd_lib/*.h
-frontend/rdf_parser/serd_lib/*.c
 *.ttl
 *pyc
-serd.h
-xxhash.*
 *.build
 *.dist
 *.onefile-build
