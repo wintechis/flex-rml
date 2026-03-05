@@ -16,13 +16,14 @@ class Configuration:
         self.threading_enabled = "true"
         self.materialize_constants = "true"
         self.heuristic_ordering = "true"
+        self.generate_plan = True
         self.version = "2.0.0"
         self.bn_number = 58932
-        self.show_output = True
-        self.lib_rml_parser = self.load_rml_parser()
-        self.lib_rml_io_normalizer = self.load_rml_io_normalizer()
-        self.lib_ra_converter = self.load_ra_converter()
-        self.lib_rml_functions = self.load_rml_functions()
+        self.show_output = False
+        self.lib_rml_parser = None
+        self.lib_rml_io_normalizer = None
+        self.lib_ra_converter = None
+        self.lib_rml_functions = None
 
     def load_rml_parser(self):
         base_path = os.path.dirname(__file__)
@@ -79,6 +80,9 @@ class Configuration:
 ####################################################################################################################
 
 def load_rml(file_path, config):
+    if config.lib_rml_parser == None:
+        config.lib_rml_parser = config.load_rml_parser()
+
     try:
         with open(file_path, "r") as f:
             raw_mapping = f.read()
@@ -104,6 +108,9 @@ def load_rml(file_path, config):
         sys.exit(1)
 
 def normalize_mapping(rml_str, config):
+    if config.lib_rml_io_normalizer == None:
+        config.lib_rml_io_normalizer = config.load_rml_io_normalizer()
+
     rml_str = rml_str.encode()
 
     lib = config.lib_rml_io_normalizer
@@ -126,6 +133,9 @@ def normalize_mapping(rml_str, config):
     return normalized_graphs
 
 def convert_to_ra(normalized_graphs_arr, iterators, config):
+    if config.lib_ra_converter == None:
+        config.lib_ra_converter = config.load_ra_converter()
+
     ra_expressions = []
     ra_expressions_iterators = []
     for i in range(len(normalized_graphs_arr)):
@@ -150,6 +160,9 @@ def convert_to_ra(normalized_graphs_arr, iterators, config):
 ####################################################################################################################
 ### Handle Functions
 def handle_functions(normalized_graphs_arr, config):
+    if config.lib_rml_functions == None:
+        config.lib_rml_functions = config.load_rml_functions()
+
     lib = config.lib_rml_functions
 
     input_str = "===".join(normalized_graphs_arr).encode("utf-8")
@@ -172,10 +185,12 @@ def handle_cli(config):
     parser.add_argument("-o", "--output", type=str, required=False, help="The path where the output RDF graph is stored.")
     parser.add_argument("-b", "--base", type=str, required=False, help="The base URI used to generate RDF terms.")
     parser.add_argument("-v", "--version", action='store_true', help="Displays the version of this FlexRML build.")
+    parser.add_argument("-gp", "--generate-plan", action='store_true', help="Return only plan.")
     parser.add_argument("--continue-on-error", action='store_true', help="Continues on error if the flag is set.")
     parser.add_argument("--no-threading", action='store_false', help="Disables multithreading during execution.")
     parser.add_argument("--no-const-folding", action='store_false', help="Disables constant folding optimization.")
     parser.add_argument("--no-ordering", action='store_false', help="Disables heuristic ordering optimization.")
+
 
 
     args = parser.parse_args()
@@ -214,6 +229,9 @@ def handle_cli(config):
 
     if args.no_ordering == False:
         config.heuristic_ordering = str(args.no_const_folding).lower()
+
+    if args.generate_plan == False:
+        config.generate_plan = False
 
 
 ####################################################################################################################
@@ -296,9 +314,13 @@ def main():
 
     if config.show_output:
         print("Frontend took:", time.time()-start_time)
-
-    run_converter(ra_str, config.output_file_path, config.base_uri, config.continue_on_error, config.threading_enabled, 
-                  config.materialize_constants, config.heuristic_ordering, ra_expressions_iterators)
+    
+    # just return the plan
+    if config.generate_plan:
+        print(ra_str)
+    else:
+        run_converter(ra_str, config.output_file_path, config.base_uri, config.continue_on_error, config.threading_enabled, 
+                    config.materialize_constants, config.heuristic_ordering, ra_expressions_iterators)
 
     
 if __name__ == "__main__":
