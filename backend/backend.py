@@ -322,6 +322,12 @@ def constant_folding(ra_expressions):
 
         for i in range(len(content)):
             element = content[i]
+            
+            # Handle templates that are actually constant
+            if element[1] == "template":
+                if "{" not in element[0]:
+                     element[1] = "constant"
+            
             if element[1] != "constant":
                 continue
 

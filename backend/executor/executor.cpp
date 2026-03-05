@@ -212,7 +212,7 @@ const char *execute_physical_plans(const char* information, const char* mode,
         buffer.reserve(1024 * 1024);
 
         for (const auto& triple : unique_triple) {
-          buffer += triple + "\n";  // data to buffer
+          buffer += triple;  // data to buffer
         }
 
         if (keep_in_memory){
@@ -271,7 +271,7 @@ const char *execute_physical_plans(const char* information, const char* mode,
           std::string buffer;
           buffer.reserve(1024 * 1024);
           for (const auto& triple : unique_triple) {
-            buffer += triple + "\n";
+            buffer += triple;
           }
           // Protect file writing using a mutex.
           {
