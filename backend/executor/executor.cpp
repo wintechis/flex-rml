@@ -236,14 +236,11 @@ const char *execute_physical_plans(const char* information, const char* mode,
       numThreads = 2;
     }
     ThreadPool pool(numThreads);
-    std::mutex file_mutex;
+    std::mutex output_mutex;
 
     // Enqueue each partition as a task.
     for (const auto& partition : partitions) {
-      // protects output_data_str and file writes
-      std::mutex out_mutex;
-
-      pool.enqueue([partition, &nr_generate_triple, &file_mutex, &ouput_file, keep_in_memory, &output_data_str, &out_mutex, &data_map]() {
+      pool.enqueue([partition, &nr_generate_triple, &output_mutex, &ouput_file, keep_in_memory, &output_data_str, &data_map]() {
         // CASE 1: Partition contains only one element.
         if (partition.size() == 1 && !keep_in_memory) {
           std::string plan_str = partition[0];
@@ -273,25 +270,21 @@ const char *execute_physical_plans(const char* information, const char* mode,
           for (const auto& triple : unique_triple) {
             buffer += triple;
           }
+      
           // Protect file writing using a mutex.
-          {
-            
-
-            if (keep_in_memory){
-              std::lock_guard<std::mutex> lock(out_mutex);
-              output_data_str += buffer;
-            } else {
-              std::lock_guard<std::mutex> lock(file_mutex);
-              std::ofstream outputFile(ouput_file, std::ios::app);
-              if (!outputFile) {
-                std::cout << "Error: Unable to open file for writing."
-                          << std::endl;
-                std::exit(1);
-              }
-              outputFile << buffer;
-              outputFile.close();
+          std::lock_guard<std::mutex> lock(output_mutex);
+          if (keep_in_memory){
+            output_data_str += buffer;
+          } else {
+            std::ofstream outputFile(ouput_file, std::ios::app);
+            if (!outputFile) {
+              std::cout << "Error: Unable to open file for writing." << std::endl;
+              std::exit(1);
             }
+            outputFile << buffer;
+            outputFile.close();
           }
+          
         }
       });
     }
