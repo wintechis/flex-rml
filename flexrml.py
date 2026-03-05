@@ -134,6 +134,81 @@ def convert_to_ra(normalized_graphs_arr, iterators, config):
     return ra_expressions, ra_expressions_iterators
 
 ####################################################################################################################
+### Handle Functions; TODO: Move the Cpp
+def handle_functions(normalized_graphs_arr):
+    from datetime import datetime
+
+    def get_local_now():
+        now_local = datetime.now().astimezone()
+        return str(now_local.isoformat())
+
+    new_normalized_graph_arr = []
+
+    for norm_graph in normalized_graphs_arr:
+        data = norm_graph.split("\n")
+
+        to_delete = []
+        new_triple = []
+
+        # First pass; try to find "http://semweb.mmlab.be/ns/fnml#functionValue"
+        function_value_source_node = None
+        function_value_target_node = None
+
+        for i in range(len(data)):
+            element = data[i]
+            x = element.split("|||")
+
+            if x[1] == "http://semweb.mmlab.be/ns/fnml#functionValue":
+                function_value_source_node = x[0]
+                function_value_target_node = x[2]
+                to_delete.append(x)
+
+                # Second pass; try to find "https://w3id.org/function/ontology#executes" to get function name
+                for j in range(len(data)):
+                    element2 = data[j]
+                    x2 = element2.split("|||")
+
+                    # try to find coresponding
+                    if x2[0] == function_value_target_node and x2[1] == "https://w3id.org/function/ontology#executes":
+                        function_name = x2[2]
+                        to_delete.append(x2)
+
+                        if function_name == "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now":
+                            value = get_local_now()
+                        else:
+                            print("Called function is not supported!")
+                            sys.exit(1)  
+                            
+                        new_triple.append([function_value_source_node, 'http://w3id.org/rml/constant', f'{value}'])
+
+        if len(new_triple) == 0:
+            # Nothing found, means no function in graph
+            new_normalized_graph_arr.append(norm_graph)
+            continue
+        
+        # Generate new subgraph
+        new_graph = []
+        for i in range(len(data)):
+            element = data[i]
+            x = element.split("|||")
+            if any(x[0] == entry[0] and x[1] == entry[1] and x[2] == entry[2] for entry in to_delete):
+                continue
+            new_graph.append(x)
+
+        for triple in new_triple:
+            new_graph.append(triple)
+
+        ### Transform back to String
+        result = ""
+        for triple in new_graph:
+            triple_str = f"{triple[0]}|||{triple[1]}|||{triple[2]}"
+            result += triple_str + "\n"
+
+        new_normalized_graph_arr.append(result)
+
+    return new_normalized_graph_arr
+
+####################################################################################################################
 
 def handle_cli(config):
     parser = argparse.ArgumentParser(description="flexrml: An experimental, really fast RML interpreter. Note: stability not guaranteed.")
@@ -221,10 +296,6 @@ def get_iterators(normalized_graphs_arr):
 
     return iterators
 
-
-def simpleRML():
-    pass
-
 def main():
     start_time = time.time()
 
@@ -239,9 +310,12 @@ def main():
     normalized_graphs_arr = normalize_mapping(rml_str, config)
     normalized_graphs_arr.sort()
 
+    ### STEP 3: Handle Functions
+    normalized_graphs_arr = handle_functions(normalized_graphs_arr)
+
     iterators = get_iterators(normalized_graphs_arr)
     
-    ### STEP 3: Logical plan generation ###
+    ### STEP 4: Logical plan generation ###
     ra_expressions, ra_expressions_iterators = convert_to_ra(normalized_graphs_arr, iterators, config)
 
     ra_str = to_ra_string(ra_expressions)
