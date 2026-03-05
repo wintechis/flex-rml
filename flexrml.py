@@ -18,10 +18,11 @@ class Configuration:
         self.heuristic_ordering = "true"
         self.version = "2.0.0"
         self.bn_number = 58932
-        self.show_output = False
+        self.show_output = True
         self.lib_rml_parser = self.load_rml_parser()
         self.lib_rml_io_normalizer = self.load_rml_io_normalizer()
         self.lib_ra_converter = self.load_ra_converter()
+        self.lib_rml_functions = self.load_rml_functions()
 
     def load_rml_parser(self):
         base_path = os.path.dirname(__file__)
@@ -60,6 +61,19 @@ class Configuration:
             return lib
         except OSError as e:
             print(f"Error loading './frontend/libraconverter.so': {e}")
+            sys.exit(1)
+
+    def load_rml_functions(self):
+        base_path = os.path.dirname(__file__)
+        lib_path = os.path.join(base_path, "frontend", "libfunctionexecutor.so")
+
+        try:
+            lib = ctypes.CDLL(lib_path)
+            lib.resolve_rml_functions.argtypes = [ctypes.c_char_p]
+            lib.resolve_rml_functions.restype = ctypes.c_char_p
+            return lib
+        except OSError as e:
+            print(f"Error loading './frontend/libfunctionexecutor.so': {e}")
             sys.exit(1)
 
 ####################################################################################################################
@@ -134,79 +148,21 @@ def convert_to_ra(normalized_graphs_arr, iterators, config):
     return ra_expressions, ra_expressions_iterators
 
 ####################################################################################################################
-### Handle Functions; TODO: Move the Cpp
-def handle_functions(normalized_graphs_arr):
-    from datetime import datetime
+### Handle Functions
+def handle_functions(normalized_graphs_arr, config):
+    lib = config.lib_rml_functions
 
-    def get_local_now():
-        now_local = datetime.now().astimezone()
-        return str(now_local.isoformat())
+    input_str = "===".join(normalized_graphs_arr).encode("utf-8")
 
-    new_normalized_graph_arr = []
+    # Call Cpp
+    results = lib.resolve_rml_functions(input_str)
+    results = results.decode()
 
-    for norm_graph in normalized_graphs_arr:
-        data = norm_graph.split("\n")
+    # Split back to graphs
+    graph_str = results.strip().split("===")
 
-        to_delete = []
-        new_triple = []
+    return graph_str
 
-        # First pass; try to find "http://semweb.mmlab.be/ns/fnml#functionValue"
-        function_value_source_node = None
-        function_value_target_node = None
-
-        for i in range(len(data)):
-            element = data[i]
-            x = element.split("|||")
-
-            if x[1] == "http://semweb.mmlab.be/ns/fnml#functionValue":
-                function_value_source_node = x[0]
-                function_value_target_node = x[2]
-                to_delete.append(x)
-
-                # Second pass; try to find "https://w3id.org/function/ontology#executes" to get function name
-                for j in range(len(data)):
-                    element2 = data[j]
-                    x2 = element2.split("|||")
-
-                    # try to find coresponding
-                    if x2[0] == function_value_target_node and x2[1] == "https://w3id.org/function/ontology#executes":
-                        function_name = x2[2]
-                        to_delete.append(x2)
-
-                        if function_name == "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now":
-                            value = get_local_now()
-                        else:
-                            print("Called function is not supported!")
-                            sys.exit(1)  
-                            
-                        new_triple.append([function_value_source_node, 'http://w3id.org/rml/constant', f'{value}'])
-
-        if len(new_triple) == 0:
-            # Nothing found, means no function in graph
-            new_normalized_graph_arr.append(norm_graph)
-            continue
-        
-        # Generate new subgraph
-        new_graph = []
-        for i in range(len(data)):
-            element = data[i]
-            x = element.split("|||")
-            if any(x[0] == entry[0] and x[1] == entry[1] and x[2] == entry[2] for entry in to_delete):
-                continue
-            new_graph.append(x)
-
-        for triple in new_triple:
-            new_graph.append(triple)
-
-        ### Transform back to String
-        result = ""
-        for triple in new_graph:
-            triple_str = f"{triple[0]}|||{triple[1]}|||{triple[2]}"
-            result += triple_str + "\n"
-
-        new_normalized_graph_arr.append(result)
-
-    return new_normalized_graph_arr
 
 ####################################################################################################################
 
@@ -229,7 +185,8 @@ def handle_cli(config):
         sys.exit(0) 
 
     if args.version:
-        print(f"flexrml {config.version} - experimental. really fast. stability not guaranteed.")
+        VERSION_TYPE = "Dev"
+        print(f"flexrml {config.version} {VERSION_TYPE} - experimental. really fast. stability not guaranteed.")
         sys.exit(0)
 
     if args.mapping:
@@ -304,21 +261,33 @@ def main():
     handle_cli(config)
 
     ### STEP 1: Parse & Validate ###
+    load_rml_start_time = time.time()
     rml_str = load_rml(config.mapping_file_path, config)
+    if config.show_output:
+        print("RML loading: ", time.time()-load_rml_start_time)
+
 
     ### STEP 2: Rewrite & Normalize ###
+    normalization_start_time = time.time()
     normalized_graphs_arr = normalize_mapping(rml_str, config)
     normalized_graphs_arr.sort()
+    if config.show_output:
+        print("Normalizing: ", time.time()-normalization_start_time)
 
     ### STEP 3: Handle Functions
-    normalized_graphs_arr = handle_functions(normalized_graphs_arr)
+    handle_functions_start_time = time.time()
+    normalized_graphs_arr = handle_functions(normalized_graphs_arr, config)
+    if config.show_output:
+        print("Calling functions: ", time.time()-handle_functions_start_time)
 
     iterators = get_iterators(normalized_graphs_arr)
     
     ### STEP 4: Logical plan generation ###
+    convert_to_ra_start_time = time.time()
     ra_expressions, ra_expressions_iterators = convert_to_ra(normalized_graphs_arr, iterators, config)
-
     ra_str = to_ra_string(ra_expressions)
+    if config.show_output:
+        print("Converting to RA: ", time.time()-convert_to_ra_start_time)
 
     ### Check if JSON and remove "$"
     ra_str = ra_str.replace("$.","")  
@@ -331,5 +300,8 @@ def main():
     run_converter(ra_str, config.output_file_path, config.base_uri, config.continue_on_error, config.threading_enabled, 
                   config.materialize_constants, config.heuristic_ordering, ra_expressions_iterators)
 
+    
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    print("Total time:", time.time() - start_time)

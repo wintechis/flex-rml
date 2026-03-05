@@ -55,9 +55,10 @@ echo "All files required files are present."
 echo ""
 
 echo "Cleaning up old shared object files..."
-rm ./frontend/libnormalizer.so ./frontend/libraconverter.so ./frontend/librdfparser.so ./backend/libexecutor.so ./backend/librapartitioner.so ./backend/libthreadexecutor.so
+rm ./frontend/libnormalizer.so ./frontend/libraconverter.so ./frontend/librdfparser.so ./backend/libexecutor.so ./frontend/libfunctionexecutor.so ./backend/librapartitioner.so ./backend/libthreadexecutor.so 
 echo ""
 
+###########################
 
 echo "Building rml parser ..."
 g++ -std=c++20 -shared -fPIC -Ifrontend/rdf_parser/serd_lib -o ./frontend/librdfparser.so ./frontend/rdf_parser/rdf_parser_lib.cpp ./frontend/rdf_parser/rdf_parser.cpp ./frontend/rdf_parser/serd_lib/*.c -O3
@@ -73,6 +74,13 @@ echo "Building relational algebra converter ..."
 g++ -std=c++20 -shared -fPIC -o ./frontend/libraconverter.so ./frontend/ra_converter/ra_converter_rml_core.cpp -O3
 check_if_exists ./frontend/libraconverter.so
 echo ""
+
+echo "Building relational algebra converter ..."
+g++ -std=c++20 -shared -fPIC -o ./frontend/libfunctionexecutor.so ./frontend/functions/rml_functions.cpp -O3
+check_if_exists ./frontend/libfunctionexecutor.so
+echo ""
+
+###########################
 
 echo "Building relational algebra partitioner ..."
 g++ -std=c++20 -shared -fPIC -o ./backend/librapartitioner.so ./backend/optimizations/ra_expression_partitioner.cpp -O3
