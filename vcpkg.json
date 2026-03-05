@@ -1,9 +1,0 @@
-{
-  "name": "flexrml",
-  "version-string": "1.0.0",
-  "dependencies": [
-    "serd",
-    "cityhash",
-    "fmt"
-  ]
-}
