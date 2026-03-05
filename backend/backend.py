@@ -5,7 +5,9 @@ from collections import defaultdict
 import time
 import json
 from jsonpath_ng import parse
-import polars as pl
+#import polars as pl
+import io
+import csv
 
 class Configuration:
     def __init__(self):
@@ -43,7 +45,7 @@ class Configuration:
 
         try:
             lib = ctypes.CDLL(lib_path)
-            lib.execute_physical_plans.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+            lib.execute_physical_plans.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
             lib.execute_physical_plans.restype = ctypes.c_char_p
             return lib
         except OSError as e:
@@ -344,7 +346,7 @@ def constant_folding(ra_expressions):
     return ra_expressions
 
 ##########################################################################################
-def standard_threading(plan_partitions, config, start_time):
+def standard_threading(plan_partitions, config, start_time, json_data):
     plans = ""
     for partition in plan_partitions:
         for plan in partition:
@@ -352,7 +354,7 @@ def standard_threading(plan_partitions, config, start_time):
         plans += "TTTtttTTTtttTTT"
     plans = plans.strip().encode()
     lib = config.lib_plan_executor
-    output = lib.execute_physical_plans(plans, config.threading_enabled.encode(), config.continue_on_error.encode(), config.output_file_path.encode(), config.keep_in_memory.encode())
+    output = lib.execute_physical_plans(plans, config.threading_enabled.encode(), config.continue_on_error.encode(), config.output_file_path.encode(), config.keep_in_memory.encode(), json_data.encode())
     output = output.decode()
     generated_triple = output.split("|||")[0]
     triple_string = output.split("|||")[1]
@@ -392,7 +394,7 @@ def phys_plan_to_str(plan):
     return plan_str
 
 
-def preprocess_json(in_relation, json_path_expr_dict, file_name):
+def preprocess_json(in_relation, json_path_expr_dict):
     with open(in_relation, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
@@ -401,10 +403,36 @@ def preprocess_json(in_relation, json_path_expr_dict, file_name):
     expr = parse(json_path_expr)
     matches = expr.find(data)
     rows = [m.value for m in matches]
-    df = pl.DataFrame(rows)
 
-    # Clean output path name
-    df.write_csv(file_name)
+    # polars
+    #df = pl.DataFrame(rows)
+    #csv_str = df.write_csv(None)
+    #return csv_str
+
+    # without polars
+    # Handle empty result early
+    if not rows:
+        return ""
+
+    # If rows are dicts, use union of keys as columns
+    if isinstance(rows[0], dict):
+        fieldnames = sorted({k for r in rows if isinstance(r, dict) for k in r.keys()})
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+        return buf.getvalue()
+
+    # If rows are lists/tuples/scalars, write a single-column CSV
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["value"])
+    for r in rows:
+        writer.writerow([r])
+    return buf.getvalue()
+
+    
+
 
 def start_conversion(ra_expressions, config = None):
     """
@@ -412,7 +440,7 @@ def start_conversion(ra_expressions, config = None):
     Input is ra_expression list and optional a config otherwise the default values are used
     """
     start_time = time.time()
-    files_to_remove = []
+    files_already_in_memory = []
     ra_expressions = [item for item in ra_expressions if item]
 
     # Setup config
@@ -423,6 +451,8 @@ def start_conversion(ra_expressions, config = None):
     ### Parse RA expressions
     ra_expressions = parse_ra(ra_expressions)
     
+    json_data = ""
+
     ### Preprocess input data
     for i in range(len(ra_expressions)):
         ra_expr = ra_expressions[i]
@@ -437,13 +467,10 @@ def start_conversion(ra_expressions, config = None):
             if iterator == None:
                 continue
             else:
-                file_name = f"tmp_{in_relation}{iterators[in_relation]}".replace(".","").replace("/","").replace("\\","")
-                
-                if file_name not in files_to_remove:
-                    preprocess_json(in_relation, iterators, file_name)
-                    files_to_remove.append(file_name)
-
-                ra_expr[0]["in_relation"] = file_name
+                if in_relation not in files_already_in_memory:
+                    csv_str = preprocess_json(in_relation, iterators)
+                    files_already_in_memory.append(in_relation)
+                    json_data += f"|||===|||{in_relation}===|||==={csv_str}"
 
         elif len(ra_expr) == 4:
             # Iterate over two input projections
@@ -455,12 +482,10 @@ def start_conversion(ra_expressions, config = None):
                 if iterator == None:
                     continue
                 else:
-                    file_name = f"tmp_{in_relation}{iterators[in_relation]}".replace(".","").replace("/","").replace("\\","")
-                    if file_name not in files_to_remove:
-                        preprocess_json(in_relation, iterators, file_name)
-                        files_to_remove.append(file_name)
-
-                    ra_expr[i]["in_relation"] = file_name
+                    if in_relation not in files_already_in_memory:
+                        csv_str = preprocess_json(in_relation, iterators, in_relation)
+                        files_already_in_memory.append(in_relation)
+                        json_data += f"|||===|||{in_relation}===|||==={csv_str}"
         else:
             print("Unsupported size! Expected 2 or 4. Got ", len(ra_expr))
 
@@ -546,7 +571,7 @@ def start_conversion(ra_expressions, config = None):
     #####################################################
 
     # Order plans
-    if config.heuristic_ordering == "true":
+    if config.heuristic_ordering == "true" and json_data == "":
         ordered_plans = {}
         for plan_partition in plan_partitions:
             total_file_size = 0
@@ -580,17 +605,10 @@ def start_conversion(ra_expressions, config = None):
     ### Execution ###
     #################  
     try:
-        if len(plan_partitions) == 1 and config.keep_in_memory == False:
+        if len(plan_partitions) == 1 and config.keep_in_memory == False and json_data == "":
             alternative_threading(plan_partitions, config, start_time)       
         else:
-            standard_threading(plan_partitions, config, start_time)
-    except:
-        pass
-    
-    # Clean up data
-    try:
-        for file in files_to_remove:
-            os.remove(file)
+            standard_threading(plan_partitions, config, start_time, json_data)
     except:
         pass
 

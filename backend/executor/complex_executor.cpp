@@ -82,7 +82,7 @@ int get_join_index(const std::vector<std::string>& proj_attrs, const std::string
   std::exit(1);
 }
 
-std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(std::ifstream& input_file,
+std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(std::istream& input_file,
                                                                                 const std::vector<int>& projected_indeces,
                                                                                 int filtered_join_index) {
   // Reserve for our hash table and duplicate check set.
@@ -167,6 +167,20 @@ std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(
   return hash_table;
 }
 
+
+// Open File or from map
+static std::unique_ptr<std::istream> open_from_map_or_file(
+    const std::unordered_map<std::string, std::string>& mem,
+    const std::string& path){
+    if (auto it = mem.find(path); it != mem.end()) {
+        return std::make_unique<std::istringstream>(it->second);
+    }
+
+    auto f = std::make_unique<std::ifstream>(path);
+    if (!f->is_open()) return nullptr;
+    return f;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int execute_complex(const fs::path& output_file_name,
@@ -181,7 +195,8 @@ int execute_complex(const fs::path& output_file_name,
                      const std::vector<std::string>& projected_attributes_right,
                      const std::vector<std::string>& s_content,
                      const std::vector<std::string>& p_content,
-                     const std::vector<std::string>& o_content) {
+                     const std::vector<std::string>& o_content,
+                     const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
   std::unordered_set<uint64_t> unique_hashes;
@@ -203,7 +218,8 @@ int execute_complex(const fs::path& output_file_name,
   //////////////////////////////////////////////////////////////////////
 
   // Open CSV files
-  std::ifstream left_file(left_path), right_file(right_path);
+  auto left_file = open_from_map_or_file(data_map, left_path);
+  auto right_file = open_from_map_or_file(data_map, right_path);
   if (!left_file || !right_file) {
     std::cerr << "Error opening input files." << std::endl;
     std::exit(1);
@@ -211,8 +227,8 @@ int execute_complex(const fs::path& output_file_name,
 
   // Read header lines
   std::string left_header_line, right_header_line;
-  std::getline(left_file, left_header_line);
-  std::getline(right_file, right_header_line);
+  std::getline(*left_file, left_header_line);
+  std::getline(*right_file, right_header_line);
 
   // Build header mappings for left and right files.
   auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
@@ -227,7 +243,7 @@ int execute_complex(const fs::path& output_file_name,
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -240,7 +256,7 @@ int execute_complex(const fs::path& output_file_name,
   }
 
   // Process right file
-  while (getline(right_file, line)) {
+  while (getline(*right_file, line)) {
     auto split_line = split_csv_line(line, ',');
 
     std::vector<std::string> projected_row;
@@ -333,9 +349,6 @@ int execute_complex(const fs::path& output_file_name,
   ////// SERIALIZE //////
   outputFile << buffered_res;
 
-  right_file.close();
-  left_file.close();
-
   return triple_counter;
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -353,14 +366,17 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
                                                           const std::vector<std::string>& s_content,
                                                           const std::vector<std::string>& p_content,
                                                           const std::vector<std::string>& o_content,
-                                                          std::unordered_set<std::string>& unique_triple) {
+                                                          std::unordered_set<std::string>& unique_triple,
+                                                          const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
   std::unordered_set<uint64_t> unique_hashes;
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  std::ifstream left_file(left_path), right_file(right_path);
+  auto left_file = open_from_map_or_file(data_map, left_path);
+  auto right_file = open_from_map_or_file(data_map, right_path);
+
   if (!left_file || !right_file) {
     std::cerr << "Error opening input files." << std::endl;
     std::exit(1);
@@ -368,8 +384,8 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
 
   // Read header lines
   std::string left_header_line, right_header_line;
-  std::getline(left_file, left_header_line);
-  std::getline(right_file, right_header_line);
+  std::getline(*left_file, left_header_line);
+  std::getline(*right_file, right_header_line);
 
   // Build header mappings for left and right files.
   auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
@@ -384,7 +400,7 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -398,7 +414,7 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
   }
 
   // Process right file
-  while (getline(right_file, line)) {
+  while (getline(*right_file, line)) {
     auto split_line = split_csv_line(line, ',');
 
     std::vector<std::string> projected_row;
@@ -492,7 +508,8 @@ int execute_complex_with_graph(const fs::path& output_file_name,
                                const std::vector<std::string>& s_content,
                                const std::vector<std::string>& p_content,
                                const std::vector<std::string>& o_content,
-                               const std::vector<std::string>& g_content) {
+                               const std::vector<std::string>& g_content,
+                               const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
   std::unordered_set<uint64_t> unique_hashes;
@@ -512,7 +529,8 @@ int execute_complex_with_graph(const fs::path& output_file_name,
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  std::ifstream left_file(left_path), right_file(right_path);
+  auto left_file = open_from_map_or_file(data_map, left_path);
+  auto right_file = open_from_map_or_file(data_map, right_path);
   if (!left_file || !right_file) {
     std::cerr << "Error opening input files." << std::endl;
     std::exit(1);
@@ -520,8 +538,8 @@ int execute_complex_with_graph(const fs::path& output_file_name,
 
   // Read header lines
   std::string left_header_line, right_header_line;
-  std::getline(left_file, left_header_line);
-  std::getline(right_file, right_header_line);
+  std::getline(*left_file, left_header_line);
+  std::getline(*right_file, right_header_line);
 
   // Build header mappings for left and right files.
   auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
@@ -536,7 +554,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -549,7 +567,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   }
 
   // Process right file
-  while (getline(right_file, line)) {
+  while (getline(*right_file, line)) {
     auto split_line = split_csv_line(line, ',');
 
     std::vector<std::string> projected_row;
@@ -647,9 +665,6 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   ////// SERIALIZE //////
   outputFile << buffered_res;
 
-  right_file.close();
-  left_file.close();
-
   return triple_counter;
 }
 
@@ -669,14 +684,16 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
                                                                      const std::vector<std::string>& p_content,
                                                                      const std::vector<std::string>& o_content,
                                                                      const std::vector<std::string>& g_content,
-                                                                     std::unordered_set<std::string>& unique_triple) {
+                                                                     std::unordered_set<std::string>& unique_triple,
+                                                                     const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
   std::unordered_set<uint64_t> unique_hashes;
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  std::ifstream left_file(left_path), right_file(right_path);
+  auto left_file = open_from_map_or_file(data_map, left_path);
+  auto right_file = open_from_map_or_file(data_map, right_path);
   if (!left_file || !right_file) {
     std::cerr << "Error opening input files." << std::endl;
     std::exit(1);
@@ -684,8 +701,8 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
 
   // Read header lines
   std::string left_header_line, right_header_line;
-  std::getline(left_file, left_header_line);
-  std::getline(right_file, right_header_line);
+  std::getline(*left_file, left_header_line);
+  std::getline(*right_file, right_header_line);
 
   // Build header mappings for left and right files.
   auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
@@ -700,7 +717,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -714,7 +731,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
   }
 
   // Process right file
-  while (getline(right_file, line)) {
+  while (getline(*right_file, line)) {
     auto split_line = split_csv_line(line, ',');
 
     std::vector<std::string> projected_row;
@@ -803,7 +820,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
 }
 
 //////////////////////////////////////////////////////////////
-size_t standalone_complex_mapping(const std::string& information) {
+size_t standalone_complex_mapping(const std::string& information, const std::unordered_map<std::string, std::string>& data_map) {
   // Extract relevant parts
   std::vector<std::string> split_info = split_by_substring(information, "\n");
   if (split_info.size() != 7) {
@@ -850,7 +867,7 @@ size_t standalone_complex_mapping(const std::string& information) {
         generated_triple = 1;
       } else {
         generated_triple = execute_complex(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                           projected_attributes_left, projected_attributes_right, s_content, p_content, o_content);
+                                           projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, data_map);
       }
     } else {
       // Handle with graph
@@ -865,7 +882,7 @@ size_t standalone_complex_mapping(const std::string& information) {
       } else {
         // If not constant handle normal
         generated_triple = execute_complex_with_graph(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                                      projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content);
+                                                      projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, data_map);
       }
     }
   } catch (const std::runtime_error& e) {
@@ -881,7 +898,7 @@ size_t standalone_complex_mapping(const std::string& information) {
   return generated_triple;
 }
 
-std::unordered_set<std::string> dependent_complex_mapping(const std::string& information, std::unordered_set<std::string>& unique_triple) {
+std::unordered_set<std::string> dependent_complex_mapping(const std::string& information, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
   // Extract relevant parts
   std::vector<std::string> split_info = split_by_substring(information, "\n");
   if (split_info.size() != 7) {
@@ -928,7 +945,7 @@ std::unordered_set<std::string> dependent_complex_mapping(const std::string& inf
         generated_triple = 1;
       } else {
         unique_triple = execute_complex_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                                  projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, unique_triple);
+                                                  projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, unique_triple, data_map);
       }
     } else {
       // Handle with graph //
@@ -941,7 +958,7 @@ std::unordered_set<std::string> dependent_complex_mapping(const std::string& inf
         generated_triple = 1;
       } else {
         unique_triple = execute_complex_with_graph_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                                             projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, unique_triple);
+                                                             projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, unique_triple, data_map);
       }
     }
   } catch (const std::runtime_error& e) {

@@ -91,11 +91,27 @@ void clear_output_file(const std::string& output_file_path) {
 }
 
 //////////////////////////////////////////////////////////////
+// Function to split json into key values pairs of filename and data
+void split_to_kv_into(std::unordered_map<std::string, std::string>& out,
+                      const std::string& s,
+                      const std::string& delim = "===|||==="){
+    const std::size_t pos = s.find(delim);
+    if (pos == std::string::npos) {
+        throw std::runtime_error("delimiter not found: " + s);
+    }
+
+    std::string key   = s.substr(0, pos);
+    std::string value = s.substr(pos + delim.size());
+
+    out[key] = value; // overwrites if key already exists
+}
+
+//////////////////////////////////////////////////////////////
 
 extern "C" {
 const char *execute_physical_plans(const char* information, const char* mode,
                            const char* continue_error,
-                           const char* output_file_path, const char* keep_data_in_memory) {
+                           const char* output_file_path, const char* keep_data_in_memory, const char* json_data) {
   // Get config variables //
   std::string continue_error_str(continue_error);
   bool continue_on_error = false;
@@ -147,6 +163,20 @@ const char *execute_physical_plans(const char* information, const char* mode,
 
     partitions.push_back(valid_separated_plans_str);
   }
+  ///////////////////////
+  // Process json data //
+  std::string json_str(json_data);
+  std::unordered_map<std::string, std::string> data_map; // Stores json data
+  if (json_str != ""){
+    std::vector<std::string> json_data_entries = split_by_substring(json_str, "|||===|||");
+    // remove empty entries
+    json_data_entries.erase(std::remove_if(json_data_entries.begin(), json_data_entries.end(),[](const std::string& s){ return s.empty(); }), json_data_entries.end());
+    for(const auto& data: json_data_entries ){
+      split_to_kv_into(data_map, data);
+    }
+  }
+
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////77
   /// EXECUTE PLANS ///
   if (threading_enabled == "false") {
@@ -157,21 +187,20 @@ const char *execute_physical_plans(const char* information, const char* mode,
         std::string plan_str = partition[0];
         int plan_size = split_by_substring(plan_str, "\n").size();
         if (plan_size == 5) {
-          nr_generate_triple += standalone_simple_mapping(plan_str);
+          nr_generate_triple += standalone_simple_mapping(plan_str, data_map);
         } else if (plan_size == 7) {
-          nr_generate_triple += standalone_complex_mapping(plan_str);
+          nr_generate_triple += standalone_complex_mapping(plan_str, data_map);
         }
       }
       // CASE 2: Partition contains multiple elements
       else {
         std::unordered_set<std::string> unique_triple;
-
         for (const auto& plan_str : partition) {
           int plan_size = split_by_substring(plan_str, "\n").size();
           if (plan_size == 5) {
-            unique_triple = dependent_simple_mapping(plan_str, unique_triple);
+            unique_triple = dependent_simple_mapping(plan_str, unique_triple, data_map);
           } else if (plan_size == 7) {
-            unique_triple = dependent_complex_mapping(plan_str, unique_triple);
+            unique_triple = dependent_complex_mapping(plan_str, unique_triple, data_map);
           }
         }
 
@@ -213,15 +242,15 @@ const char *execute_physical_plans(const char* information, const char* mode,
       // protects output_data_str and file writes
       std::mutex out_mutex;
 
-      pool.enqueue([partition, &nr_generate_triple, &file_mutex, &ouput_file, keep_in_memory, &output_data_str, &out_mutex]() {
+      pool.enqueue([partition, &nr_generate_triple, &file_mutex, &ouput_file, keep_in_memory, &output_data_str, &out_mutex, &data_map]() {
         // CASE 1: Partition contains only one element.
         if (partition.size() == 1 && !keep_in_memory) {
           std::string plan_str = partition[0];
           int plan_size = split_by_substring(plan_str, "\n").size();
           if (plan_size == 5) {
-            nr_generate_triple.fetch_add(standalone_simple_mapping(plan_str), std::memory_order_relaxed);
+            nr_generate_triple.fetch_add(standalone_simple_mapping(plan_str, data_map), std::memory_order_relaxed);
           } else if (plan_size == 7) {
-            nr_generate_triple.fetch_add(standalone_complex_mapping(plan_str), std::memory_order_relaxed);
+            nr_generate_triple.fetch_add(standalone_complex_mapping(plan_str, data_map), std::memory_order_relaxed);
           }
         }
         // CASE 2: Partition contains multiple elements.
@@ -230,9 +259,9 @@ const char *execute_physical_plans(const char* information, const char* mode,
           for (const auto& plan_str : partition) {
             int plan_size = split_by_substring(plan_str, "\n").size();
             if (plan_size == 5) {
-              unique_triple = dependent_simple_mapping(plan_str, unique_triple);
+              unique_triple = dependent_simple_mapping(plan_str, unique_triple, data_map);
             } else if (plan_size == 7) {
-              unique_triple = dependent_complex_mapping(plan_str, unique_triple);
+              unique_triple = dependent_complex_mapping(plan_str, unique_triple, data_map);
             }
           }
           nr_generate_triple.fetch_add(unique_triple.size(), std::memory_order_relaxed);
