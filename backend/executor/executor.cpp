@@ -9,6 +9,7 @@
 #include <thread>
 #include <unordered_set>
 #include <vector>
+#include <algorithm>
 
 #include "complex_executor.h"
 #include "definitions.h"
