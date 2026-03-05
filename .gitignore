@@ -16,4 +16,4 @@ xxhash.*
 *.onefile-build
 mapping
 *.json
-flexRML
+flexrml

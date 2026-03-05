@@ -149,6 +149,10 @@ def handle_cli(config):
 
     args = parser.parse_args()
 
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0) 
+
     if args.version:
         print(f"flexrml {config.version} - experimental. really fast. stability not guaranteed.")
         sys.exit(0)
@@ -156,7 +160,8 @@ def handle_cli(config):
     if args.mapping:
         config.mapping_file_path = args.mapping
     else:
-        print("No mapping file provided. Use -m flag. Nothing to do.")
+        print("Error: No mapping file provided. Nothing to do.\n")
+        parser.print_help()
         sys.exit(0)
 
 
