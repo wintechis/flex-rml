@@ -11,6 +11,7 @@ class Configuration:
     def __init__(self):
         self.mapping_path_file = ""
         self.output_file_path = ""
+        self.plan = ""
         self.base_uri = "http://example.com/base/"
         self.continue_on_error = "false"
         self.threading_enabled = "true"
@@ -186,6 +187,7 @@ def handle_cli(config):
     parser.add_argument("-b", "--base", type=str, required=False, help="The base URI used to generate RDF terms.")
     parser.add_argument("-v", "--version", action='store_true', help="Displays the version of this FlexRML build.")
     parser.add_argument("-gp", "--generate-plan", action='store_true', help="Return only plan.")
+    parser.add_argument("-p", "--plan", type=str, required=False, help="Execute mapping form existing plan.")
     parser.add_argument("--continue-on-error", action='store_true', help="Continues on error if the flag is set.")
     parser.add_argument("--no-threading", action='store_false', help="Disables multithreading during execution.")
     parser.add_argument("--no-const-folding", action='store_false', help="Disables constant folding optimization.")
@@ -206,8 +208,10 @@ def handle_cli(config):
 
     if args.mapping:
         config.mapping_file_path = args.mapping
+    elif args.plan:
+        config.plan = args.plan
     else:
-        print("Error: No mapping file provided. Nothing to do.\n")
+        print("Error: No mapping file or plan provided. Nothing to do.\n")
         parser.print_help()
         sys.exit(0)
 
@@ -278,52 +282,62 @@ def main():
     config = Configuration()
     handle_cli(config)
 
-    ### STEP 1: Parse & Validate ###
-    load_rml_start_time = time.time()
-    rml_str = load_rml(config.mapping_file_path, config)
-    if config.show_output:
-        print("RML loading: ", time.time()-load_rml_start_time)
+    if config.plan == "":
+        ############ Generate Plan and Execute ############
+        ### STEP 1: Parse & Validate ###
+        load_rml_start_time = time.time()
+        rml_str = load_rml(config.mapping_file_path, config)
+        if config.show_output:
+            print("RML loading: ", time.time()-load_rml_start_time)
 
 
-    ### STEP 2: Rewrite & Normalize ###
-    normalization_start_time = time.time()
-    normalized_graphs_arr = normalize_mapping(rml_str, config)
-    normalized_graphs_arr.sort()
-    if config.show_output:
-        print("Normalizing: ", time.time()-normalization_start_time)
+        ### STEP 2: Rewrite & Normalize ###
+        normalization_start_time = time.time()
+        normalized_graphs_arr = normalize_mapping(rml_str, config)
+        normalized_graphs_arr.sort()
+        if config.show_output:
+            print("Normalizing: ", time.time()-normalization_start_time)
 
-    ### STEP 3: Handle Functions
-    handle_functions_start_time = time.time()
-    normalized_graphs_arr = handle_functions(normalized_graphs_arr, config)
-    if config.show_output:
-        print("Calling functions: ", time.time()-handle_functions_start_time)
+        ### STEP 3: Handle Functions
+        handle_functions_start_time = time.time()
+        normalized_graphs_arr = handle_functions(normalized_graphs_arr, config)
+        if config.show_output:
+            print("Calling functions: ", time.time()-handle_functions_start_time)
 
-    iterators = get_iterators(normalized_graphs_arr)
-    
-    ### STEP 4: Logical plan generation ###
-    convert_to_ra_start_time = time.time()
-    ra_expressions, ra_expressions_iterators = convert_to_ra(normalized_graphs_arr, iterators, config)
-    ra_str = to_ra_string(ra_expressions)
-    if config.show_output:
-        print("Converting to RA: ", time.time()-convert_to_ra_start_time)
+        iterators = get_iterators(normalized_graphs_arr)
+        
+        ### STEP 4: Logical plan generation ###
+        convert_to_ra_start_time = time.time()
+        ra_expressions, ra_expressions_iterators = convert_to_ra(normalized_graphs_arr, iterators, config)
+        ra_str = to_ra_string(ra_expressions)
+        if config.show_output:
+            print("Converting to RA: ", time.time()-convert_to_ra_start_time)
 
-    ### Check if JSON and remove "$"
-    ra_str = ra_str.replace("$.","")  
-    ra_str = ra_str.replace("['","") 
-    ra_str = ra_str.replace("']","")  
+        ### Check if JSON and remove "$"
+        ra_str = ra_str.replace("$.","")  
+        ra_str = ra_str.replace("['","") 
+        ra_str = ra_str.replace("']","")  
 
-    if config.show_output:
-        print("Frontend took:", time.time()-start_time)
-    
-    # just return the plan
-    if config.generate_plan:
-        print(ra_str)
+        if config.show_output:
+            print("Frontend took:", time.time()-start_time)
+        
+        # just return the plan
+        if config.generate_plan:
+            print(f"{ra_str}<==>{ra_expressions_iterators}")
+        else:
+            run_converter(ra_str, config.output_file_path, config.base_uri, config.continue_on_error, config.threading_enabled, 
+                        config.materialize_constants, config.heuristic_ordering, ra_expressions_iterators)
     else:
+        # Just execute
+        import ast
+        ra_str = config.plan.split("<==>")[0]
+        ra_expressions_iterators = config.plan.split("<==>")[1]
+        ra_expressions_iterators = ast.literal_eval(ra_expressions_iterators)
         run_converter(ra_str, config.output_file_path, config.base_uri, config.continue_on_error, config.threading_enabled, 
-                    config.materialize_constants, config.heuristic_ordering, ra_expressions_iterators)
+                        config.materialize_constants, config.heuristic_ordering, ra_expressions_iterators)
 
     
 if __name__ == "__main__":
-    start_time = time.time()
+    #start_time = time.time()
     main()
-    print("Total time:", time.time() - start_time)
+    #print("Total time:", time.time() - start_time)

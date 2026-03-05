@@ -465,7 +465,6 @@ def start_conversion(ra_expressions, config = None):
     for i in range(len(ra_expressions)):
         ra_expr = ra_expressions[i]
         iterators = config.iterators[i]
-        
 
         if len(ra_expr) == 2:
             in_relation = ra_expr[0]["in_relation"]
@@ -651,8 +650,9 @@ def run_converter(ra_expressions: str, output_file_path: str, base_uri: str, con
     config.threading_enabled = threading_enabled
     config.materialize_constants = materialize_constants
     config.heuristic_ordering = heuristic_ordering
-    config.iterators = iterators
     config.output_file_path = output_file_path
+    config.iterators = iterators
+
     # If no path is provided just print results at the end
     if config.output_file_path == "":
         config.keep_in_memory = "true"
