@@ -1,0 +1,5 @@
+jsonpath-ng==1.8.0
+Nuitka==4.0.2
+polars==1.38.1
+polars-runtime-32==1.38.1
+zstandard==0.25.0
