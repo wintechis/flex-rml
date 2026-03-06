@@ -18,6 +18,8 @@ class Configuration:
         self.materialize_constants = "true"
         self.heuristic_ordering = "true"
         self.keep_in_memory = "false"
+        self.return_triple = False
+        self.data = {}
 
         self.show_output = False
         self.bn_number = 58932
@@ -354,7 +356,7 @@ def constant_folding(ra_expressions):
     return ra_expressions
 
 ##########################################################################################
-def standard_threading(plan_partitions, config, start_time, json_data):
+def standard_threading(plan_partitions, config, start_time, in_memory_data):
     plans = ""
     for partition in plan_partitions:
         for plan in partition:
@@ -362,7 +364,7 @@ def standard_threading(plan_partitions, config, start_time, json_data):
         plans += "TTTtttTTTtttTTT"
     plans = plans.strip().encode()
     lib = config.lib_plan_executor
-    output = lib.execute_physical_plans(plans, config.threading_enabled.encode(), config.continue_on_error.encode(), config.output_file_path.encode(), config.keep_in_memory.encode(), json_data.encode())
+    output = lib.execute_physical_plans(plans, config.threading_enabled.encode(), config.continue_on_error.encode(), config.output_file_path.encode(), config.keep_in_memory.encode(), in_memory_data.encode())
     output = output.decode()
     generated_triple = output.split("|||")[0]
     triple_string = output.split("|||")[1]
@@ -405,10 +407,14 @@ def phys_plan_to_str(plan):
     return plan_str
 
 
-def preprocess_json(in_relation, json_path_expr_dict):
-    with open(in_relation, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
+def preprocess_json(in_relation, json_path_expr_dict, data = None):
+    if data == None:
+        # If no data is provided load it
+        with open(in_relation, 'r', encoding='utf-8') as f:
+            data = f.read()
+
+    data = json.loads(data)
+
     json_path_expr = json_path_expr_dict[in_relation]
 
     expr = parse(json_path_expr)
@@ -451,7 +457,7 @@ def start_conversion(ra_expressions, config = None):
     Input is ra_expression list and optional a config otherwise the default values are used
     """
     start_time = time.time()
-    files_already_in_memory = []
+    loaded_relations = set()
     ra_expressions = [item for item in ra_expressions if item]
 
     # Setup config
@@ -462,42 +468,49 @@ def start_conversion(ra_expressions, config = None):
     ### Parse RA expressions
     ra_expressions = parse_ra(ra_expressions)
     
-    json_data = ""
+    in_memory_data = "" # Stores final output string
 
     ### Preprocess input data
     for i in range(len(ra_expressions)):
         ra_expr = ra_expressions[i]
         iterators = config.iterators[i]
 
+        # Build in_relations array
         if len(ra_expr) == 2:
-            in_relation = ra_expr[0]["in_relation"]
-            # Get iterator
-            iterator = iterators.get(in_relation)
-
-            if iterator == None:
-                continue
-            else:
-                if in_relation not in files_already_in_memory:
-                    csv_str = preprocess_json(in_relation, iterators)
-                    files_already_in_memory.append(in_relation)
-                    json_data += f"|||===|||{in_relation}===|||==={csv_str}"
-
+            in_relations = [ra_expr[0]["in_relation"]]
         elif len(ra_expr) == 4:
-            # Iterate over two input projections
-            for i in range(2):
-                in_relation = ra_expr[i]["in_relation"]
-                # Get iterator
-                iterator = iterators.get(in_relation)
-
-                if iterator == None:
-                    continue
-                else:
-                    if in_relation not in files_already_in_memory:
-                        csv_str = preprocess_json(in_relation, iterators, in_relation)
-                        files_already_in_memory.append(in_relation)
-                        json_data += f"|||===|||{in_relation}===|||==={csv_str}"
+            in_relations = [ra_expr[0]["in_relation"], ra_expr[1]["in_relation"]]
         else:
             print("Unsupported size! Expected 2 or 4. Got ", len(ra_expr))
+            continue
+        
+        # Handle data
+        for in_relation in in_relations:
+
+            if in_relation in loaded_relations:
+                continue
+
+            # Get in memory data
+            in_memory_data_value = config.data.get(in_relation, None)
+            # Get iterator
+            iterator = iterators.get(in_relation)
+            
+            # Case: Already CSV
+            if in_memory_data_value and iterator == None:
+                # Add to string, assume that it is already CSV
+                in_memory_data += f"|||===|||{in_relation}===|||==={in_memory_data_value}"
+                loaded_relations.add(in_relation)
+                continue
+            
+            # Case: No preprocessing needed.
+            if iterator == None:
+                continue
+            
+            # Case: Transformation needed.
+            csv_str = preprocess_json(in_relation, iterators, in_memory_data_value)
+            loaded_relations.add(in_relation)
+            in_memory_data += f"|||===|||{in_relation}===|||==={csv_str}"
+
 
     #################################################
     # Simple RA Expression
@@ -581,7 +594,7 @@ def start_conversion(ra_expressions, config = None):
     #####################################################
 
     # Order plans
-    if config.heuristic_ordering == "true" and json_data == "":
+    if config.heuristic_ordering == "true" and in_memory_data == "":
         ordered_plans = {}
         for plan_partition in plan_partitions:
             total_file_size = 0
@@ -615,10 +628,10 @@ def start_conversion(ra_expressions, config = None):
     ### Execution ###
     #################  
     try:
-        if len(plan_partitions) == 1 and config.keep_in_memory == False and json_data == "":
+        if len(plan_partitions) == 1 and config.keep_in_memory == False and in_memory_data == "":
             alternative_threading(plan_partitions, config, start_time)       
         else:
-            triple = standard_threading(plan_partitions, config, start_time, json_data)
+            triple = standard_threading(plan_partitions, config, start_time, in_memory_data)
             return triple
     except:
         pass # Errors handled inside cpp.
@@ -643,7 +656,7 @@ def konverter_from_file():
 ##########################################################################################
 
 def run_converter(ra_expressions: str, output_file_path: str, base_uri: str, continue_on_error: str, threading_enabled: str, 
-                  materialize_constants: str, heuristic_ordering: str, return_triple: bool, iterators = []) -> None:
+                  materialize_constants: str, heuristic_ordering: str, return_triple: bool, data= {}, iterators = []) -> None:
     """
     Function imported in other projects using the konverter backend.
     Input: The ra_expression as string.
@@ -659,6 +672,7 @@ def run_converter(ra_expressions: str, output_file_path: str, base_uri: str, con
     config.output_file_path = output_file_path
     config.iterators = iterators
     config.return_triple = return_triple
+    config.data = data
 
     # If no path is provided just print results at the end
     if config.output_file_path == "":

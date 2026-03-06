@@ -281,7 +281,7 @@ def run_mapping(mapping_config):
             print(f"{ra_str}<==>{ra_expressions_iterators}")
         else:
             triple = run_converter(ra_str, mapping_config.output_file_path, mapping_config.base_uri, mapping_config.continue_on_error, mapping_config.threading_enabled, 
-                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, ra_expressions_iterators)
+                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, mapping_config.data, ra_expressions_iterators)
             
             return triple
     else:
@@ -291,7 +291,7 @@ def run_mapping(mapping_config):
         ra_expressions_iterators = mapping_config.plan.split("<==>")[1]
         ra_expressions_iterators = ast.literal_eval(ra_expressions_iterators)
         triple = run_converter(ra_str, mapping_config.output_file_path, mapping_config.base_uri, mapping_config.continue_on_error, mapping_config.threading_enabled, 
-                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, ra_expressions_iterators)
+                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, mapping_config.data, ra_expressions_iterators)
         return triple
 
 ####################################################################################################################
