@@ -3,6 +3,7 @@ import os
 import argparse
 import sys
 import time
+from pathlib import Path
 
 from .backend.backend import run_converter
 
@@ -14,7 +15,7 @@ BASE_URI = "http://example.com/base/"
 
 class Configuration:
     def __init__(self):
-        self.mapping_path_file = ""
+        self.mapping_source = ""
         self.output_file_path = ""
         self.plan = ""
         self.base_uri = BASE_URI
@@ -23,6 +24,7 @@ class Configuration:
         self.materialize_constants = "true"
         self.heuristic_ordering = "true"
         self.generate_plan = True
+        self.data = None
 
         ##########################
         ## Internal Config
@@ -95,13 +97,16 @@ class Configuration:
 
 ####################################################################################################################
 
-def load_rml(file_path, config):
+def load_rml(source, config):
     if config.lib_rml_parser == None:
         config.lib_rml_parser = config.load_rml_parser()
 
     try:
-        with open(file_path, "r") as f:
-            raw_mapping = f.read()
+        if isinstance(source, (str, os.PathLike)) and Path(source).is_file():
+            with open(source, "r", encoding="utf-8") as f:
+                raw_mapping = f.read()
+        else:
+            raw_mapping = source
 
         raw_mapping = raw_mapping.encode()
         lib = config.lib_rml_parser
@@ -239,7 +244,7 @@ def run_mapping(mapping_config):
         ############ Generate Plan and Execute ############
         ### STEP 1: Parse & Validate ###
         load_rml_start_time = time.time()
-        rml_str = load_rml(mapping_config.mapping_file_path, mapping_config)
+        rml_str = load_rml(mapping_config.mapping_source, mapping_config)
         if mapping_config.show_output:
             print("RML loading: ", time.time()-load_rml_start_time)
 
@@ -291,11 +296,11 @@ def run_mapping(mapping_config):
 
 ####################################################################################################################
 # Function to use as library
-def execute(mapping_file_path = None, plan = None, base_uri = BASE_URI, generate_plan = False, use_threading = True):
+def execute(mapping_source = None, plan = None, base_uri = BASE_URI, generate_plan = False, use_threading = True, data = {}):
     config = Configuration()
 
-    if mapping_file_path:
-        config.mapping_file_path = mapping_file_path
+    if mapping_source:
+        config.mapping_source = mapping_source
     elif plan:
         config.plan = plan
         raise Exception("No plan or mapping provided.")
@@ -303,6 +308,7 @@ def execute(mapping_file_path = None, plan = None, base_uri = BASE_URI, generate
     config.generate_plan = generate_plan
     config.base_uri = base_uri
     config.threading_enabled = str(use_threading).lower()
+    config.data = data
 
     triple = run_mapping(config)
 
@@ -315,7 +321,7 @@ def main():
     config = Configuration()
     
     parser = argparse.ArgumentParser(description="flexrml: An experimental, really fast RML interpreter. Note: stability not guaranteed.")
-    parser.add_argument("-m", "--mapping", type=str, required=False, help="The path to the RML mapping file")
+    parser.add_argument("-m", "--mapping", type=str, required=False, help="The path to the RML mapping file or the content of the mapping file.")
     parser.add_argument("-o", "--output", type=str, required=False, help="The path where the output RDF graph is stored.")
     parser.add_argument("-b", "--base", type=str, required=False, help="The base URI used to generate RDF terms.")
     parser.add_argument("-v", "--version", action='store_true', help="Displays the version of this FlexRML build.")
@@ -338,7 +344,7 @@ def main():
         sys.exit(0)
 
     if args.mapping:
-        config.mapping_file_path = args.mapping
+        config.mapping_source = args.mapping
     elif args.plan:
         config.plan = args.plan
     else:
