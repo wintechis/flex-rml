@@ -11,5 +11,5 @@
 *.onefile-build
 mapping
 *.json
-flexrml
 flexrml.egg-info
+__pycache__
