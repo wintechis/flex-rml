@@ -12,3 +12,4 @@
 mapping
 *.json
 flexrml
+flexrml.egg-info
