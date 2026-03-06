@@ -41,7 +41,8 @@ class Configuration:
         self.return_triple = True
         ##########################
 
-        self.version = "2.0.0"
+        self.version = "2.1.0"
+        self.type = ""
         self.bn_number = 58932
 
         self.lib_rml_parser = None
@@ -326,8 +327,7 @@ def main():
         sys.exit(0) 
 
     if args.version:
-        VERSION_TYPE = "Dev"
-        print(f"flexrml {config.version} {VERSION_TYPE} - experimental. really fast. stability not guaranteed.")
+        print(f"flexrml {config.version} {config.type} - experimental. really fast. stability not guaranteed.")
         sys.exit(0)
 
     if args.mapping:
