@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from .backend.backend import run_converter
+from flexrml.backend.backend import run_converter
 
 #############################################
 ## DEFAULT VALUES
@@ -303,6 +303,7 @@ def execute(mapping_source = None, plan = None, base_uri = BASE_URI, generate_pl
         config.mapping_source = mapping_source
     elif plan:
         config.plan = plan
+    else:
         raise Exception("No plan or mapping provided.")
 
     config.generate_plan = generate_plan
