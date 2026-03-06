@@ -291,11 +291,18 @@ def run_mapping(mapping_config):
 
 ####################################################################################################################
 # Function to use as library
-def execute(mapping_file_path, base_uri = BASE_URI, generate_plan = False):
+def execute(mapping_file_path = None, plan = None, base_uri = BASE_URI, generate_plan = False, use_threading = True):
     config = Configuration()
-    config.mapping_file_path = mapping_file_path
+
+    if mapping_file_path:
+        config.mapping_file_path = mapping_file_path
+    elif plan:
+        config.plan = plan
+        raise Exception("No plan or mapping provided.")
+
     config.generate_plan = generate_plan
     config.base_uri = base_uri
+    config.threading_enabled = str(use_threading).lower()
 
     triple = run_mapping(config)
 
