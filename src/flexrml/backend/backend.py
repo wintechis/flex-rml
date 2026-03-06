@@ -8,6 +8,16 @@ from jsonpath_ng import parse
 #import polars as pl
 import io
 import csv
+from pathlib import Path
+
+def package_root() -> Path:
+    here = Path(__file__).resolve().parent
+    if here.name == "backend":
+        return here
+    return here / "flexrml" / "backend"
+
+def resource_path(*parts: str) -> str:
+    return str(package_root().joinpath(*parts))
 
 class Configuration:
     def __init__(self):
@@ -28,44 +38,32 @@ class Configuration:
         self.lib_plan_executor = self.load_plan_executor()
         self.lib_threaded_plan_executor = self.load_threaded_plan_executor()
 
+    def _load_cdll(self, relative_path: str) -> ctypes.CDLL:
+        lib_path = resource_path(*relative_path.split("/"))
+
+        try:
+            return ctypes.CDLL(lib_path)
+        except OSError as e:
+            print(f"Error loading '{lib_path}': {e}")
+            sys.exit(1)
+
     def load_ra_partitioner(self):
-        base_path = os.path.dirname(__file__)
-        lib_path = os.path.join(base_path, "librapartitioner.so")
-
-        try:
-            lib = ctypes.CDLL(lib_path)
-            lib.ra_partitioner.argtypes = [ctypes.c_char_p]
-            lib.ra_partitioner.restype = ctypes.c_char_p
-            return lib
-        except OSError as e:
-            print(f"Error loading 'librapartitioner.so': {e}")
-            sys.exit(1)
-
+        lib = self._load_cdll("librapartitioner.so")
+        lib.ra_partitioner.argtypes = [ctypes.c_char_p]
+        lib.ra_partitioner.restype = ctypes.c_char_p
+        return lib
+    
     def load_plan_executor(self):
-        base_path = os.path.dirname(__file__)
-        lib_path = os.path.join(base_path, "libexecutor.so")
-
-        try:
-            lib = ctypes.CDLL(lib_path)
-            lib.execute_physical_plans.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
-            lib.execute_physical_plans.restype = ctypes.c_char_p
-            return lib
-        except OSError as e:
-            print(f"Error loading 'libexecutor.so': {e}")
-            sys.exit(1)
+        lib = self._load_cdll("libexecutor.so")
+        lib.execute_physical_plans.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+        lib.execute_physical_plans.restype = ctypes.c_char_p
+        return lib       
 
     def load_threaded_plan_executor(self):
-        base_path = os.path.dirname(__file__)
-        lib_path = os.path.join(base_path, "libthreadexecutor.so")
-
-        try:
-            lib = ctypes.CDLL(lib_path)
-            lib.simple_threaded_mapping.argtypes = [ctypes.c_char_p]
-            lib.simple_threaded_mapping.restype = ctypes.c_int
-            return lib
-        except OSError as e:
-            print(f"Error loading 'libthreadexecutor.so': {e}")
-            sys.exit(1)
+        lib = self._load_cdll("libthreadexecutor.so")
+        lib.simple_threaded_mapping.argtypes = [ctypes.c_char_p]
+        lib.simple_threaded_mapping.restype = ctypes.c_int
+        return lib
 
 ####################################################################################################################
 
@@ -496,7 +494,7 @@ def start_conversion(ra_expressions, config = None):
             iterator = iterators.get(in_relation)
             
             # Case: Already CSV
-            if in_memory_data_value and iterator == None:
+            if in_memory_data_value != None and iterator == None:
                 # Add to string, assume that it is already CSV
                 in_memory_data += f"|||===|||{in_relation}===|||==={in_memory_data_value}"
                 loaded_relations.add(in_relation)
@@ -672,6 +670,11 @@ def run_converter(ra_expressions: str, output_file_path: str, base_uri: str, con
     config.output_file_path = output_file_path
     config.iterators = iterators
     config.return_triple = return_triple
+
+    # In compiled version this is somehow needed.
+    # Todo: DEBUG
+    if data == None:
+        data = {}
     config.data = data
 
     # If no path is provided just print results at the end

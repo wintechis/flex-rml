@@ -13,6 +13,15 @@ BASE_URI = "http://example.com/base/"
 
 #############################################
 
+def package_root() -> Path:
+    here = Path(__file__).resolve().parent
+    if here.name == "flexrml":
+        return here
+    return here / "flexrml"
+
+def resource_path(*parts: str) -> str:
+    return str(package_root().joinpath(*parts))
+
 class Configuration:
     def __init__(self):
         self.mapping_source = ""
@@ -28,72 +37,50 @@ class Configuration:
 
         ##########################
         ## Internal Config
-        # Used to show output or not
         self.show_output = False
-
-        # If True returns triple else prints
-        # Used in combination with 
-        self.return_triple = True 
+        self.return_triple = True
         ##########################
+
         self.version = "2.0.0"
         self.bn_number = 58932
-        
+
         self.lib_rml_parser = None
         self.lib_rml_io_normalizer = None
         self.lib_ra_converter = None
         self.lib_rml_functions = None
 
-    def load_rml_parser(self):
-        base_path = os.path.dirname(__file__)
-        lib_path = os.path.join(base_path, "frontend", "librdfparser.so")
+    def _load_cdll(self, relative_path: str) -> ctypes.CDLL:
+        lib_path = resource_path(*relative_path.split("/"))
 
         try:
-            lib = ctypes.CDLL(lib_path)
-            lib.parse_rdf.argtypes = [ctypes.c_char_p]
-            lib.parse_rdf.restype = ctypes.c_char_p
-            return lib
+            return ctypes.CDLL(lib_path)
         except OSError as e:
-            print(f"Error loading './frontend/librdfparser.so': {e}")
+            print(f"Error loading '{lib_path}': {e}")
             sys.exit(1)
+
+    def load_rml_parser(self):
+        lib = self._load_cdll("frontend/librdfparser.so")
+        lib.parse_rdf.argtypes = [ctypes.c_char_p]
+        lib.parse_rdf.restype = ctypes.c_char_p
+        return lib
 
     def load_rml_io_normalizer(self):
-        base_path = os.path.dirname(__file__) 
-        lib_path = os.path.join(base_path, "frontend", "libnormalizer.so")
-
-        try:
-            lib = ctypes.CDLL(lib_path)
-            lib.normalize_rml_mapping.argtypes = [ctypes.c_char_p, ctypes.c_int]
-            lib.normalize_rml_mapping.restype = ctypes.c_char_p
-            return lib
-        except OSError as e:
-            print(f"Error loading './frontend/libnormalizer.so': {e}")
-            sys.exit(1)
+        lib = self._load_cdll("frontend/libnormalizer.so")
+        lib.normalize_rml_mapping.argtypes = [ctypes.c_char_p, ctypes.c_int]
+        lib.normalize_rml_mapping.restype = ctypes.c_char_p
+        return lib
 
     def load_ra_converter(self):
-        base_path = os.path.dirname(__file__)
-        lib_path = os.path.join(base_path, "frontend", "libraconverter.so")
-
-        try:
-            lib = ctypes.CDLL(lib_path)
-            lib.create_relational_algebra.argtypes = [ctypes.c_char_p]
-            lib.create_relational_algebra.restype = ctypes.c_char_p
-            return lib
-        except OSError as e:
-            print(f"Error loading './frontend/libraconverter.so': {e}")
-            sys.exit(1)
+        lib = self._load_cdll("frontend/libraconverter.so")
+        lib.create_relational_algebra.argtypes = [ctypes.c_char_p]
+        lib.create_relational_algebra.restype = ctypes.c_char_p
+        return lib
 
     def load_rml_functions(self):
-        base_path = os.path.dirname(__file__)
-        lib_path = os.path.join(base_path, "frontend", "libfunctionexecutor.so")
-
-        try:
-            lib = ctypes.CDLL(lib_path)
-            lib.resolve_rml_functions.argtypes = [ctypes.c_char_p]
-            lib.resolve_rml_functions.restype = ctypes.c_char_p
-            return lib
-        except OSError as e:
-            print(f"Error loading './frontend/libfunctionexecutor.so': {e}")
-            sys.exit(1)
+        lib = self._load_cdll("frontend/libfunctionexecutor.so")
+        lib.resolve_rml_functions.argtypes = [ctypes.c_char_p]
+        lib.resolve_rml_functions.restype = ctypes.c_char_p
+        return lib
 
 ####################################################################################################################
 
@@ -232,7 +219,6 @@ def get_iterators(normalized_graphs_arr):
                                 path = triple[2]
                 tmp_iterators[path] = iterator
         iterators.append(tmp_iterators)
-
     return iterators
 
 ####################################################################################################################
@@ -370,10 +356,12 @@ def main():
         config.materialize_constants = str(args.no_const_folding).lower()
 
     if args.no_ordering == False:
-        config.heuristic_ordering = str(args.no_const_folding).lower()
+        config.heuristic_ordering = str(args.no_ordering).lower()
 
     if args.generate_plan == False:
         config.generate_plan = False
+
+    config.return_triple = False # Do not return triple, just display
 
     ### Execute ###
     run_mapping(config)

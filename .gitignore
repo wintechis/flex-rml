@@ -13,3 +13,4 @@ mapping
 *.json
 flexrml.egg-info
 __pycache__
+build
