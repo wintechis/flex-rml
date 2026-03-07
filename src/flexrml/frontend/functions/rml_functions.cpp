@@ -99,9 +99,10 @@ static std::string graph_vector_to_string(const std::vector<NTriple>& triples) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static std::string get_local_now_iso8601() {
   using namespace std::chrono;
-  auto now = system_clock::now();
-  zoned_time zt{current_zone(), now};
-  // Example: 2026-03-05T14:22:31+01:00
+  using centiseconds = duration<long long, std::centi>;
+  auto now = floor<centiseconds>(system_clock::now());
+  zoned_time<centiseconds> zt{current_zone(), now};
+  
   return std::format("{:%FT%T%Ez}", zt);
 }
 
@@ -119,45 +120,41 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
   std::vector<std::string> new_normalized_graph_arr;
   new_normalized_graph_arr.reserve(rdf_graph_strings.size());
 
-  constexpr const char* FNML_FUNCTION_VALUE = "http://semweb.mmlab.be/ns/fnml#functionValue";
-  constexpr const char* FNO_EXECUTES = "https://w3id.org/function/ontology#executes";
   constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
   constexpr const char* RML_CONSTANT = "http://w3id.org/rml/constant";
+  constexpr const char* RML_FUNCTION_EXECUTION = "http://w3id.org/rml/functionExecution";
+  constexpr const char* RML_FUNCTION = "http://w3id.org/rml/function";
+  constexpr const char* RML_RETURN = "http://w3id.org/rml/return";
 
   for (const auto& graph_str : rdf_graph_strings) {
-    // Build rdf_vector as before:
     std::vector<NTriple> rdf_vector = rdf_string_to_vector(graph_str);
 
-    // Index executes triples by subject (function target node)
-    std::unordered_map<std::string_view, std::string_view> executes_by_subject;
-    executes_by_subject.reserve(rdf_vector.size());
+    // Map execution node -> function IRI
+    std::unordered_map<std::string_view, std::string_view> function_by_exec_node;
+    function_by_exec_node.reserve(rdf_vector.size());
 
     for (const auto& t : rdf_vector) {
-      if (t.predicate == FNO_EXECUTES) {
+      if (t.predicate == RML_FUNCTION) {
         // keep first if duplicates exist
-        executes_by_subject.emplace(std::string_view(t.subject), std::string_view(t.object));
+        function_by_exec_node.emplace(std::string_view(t.subject), std::string_view(t.object));
       }
     }
 
-    // Mark triples to drop by index
     std::vector<char> drop(rdf_vector.size(), 0);
-
-    // New triples to add
     std::vector<NTriple> new_triples;
-    new_triples.reserve(4);  // usually small
+    new_triples.reserve(4);
 
     for (size_t i = 0; i < rdf_vector.size(); ++i) {
       const auto& t = rdf_vector[i];
-      if (t.predicate != FNML_FUNCTION_VALUE) continue;
+      if (t.predicate != RML_FUNCTION_EXECUTION) continue;
 
-      const std::string& function_value_source_node = t.subject;
-      const std::string& function_value_target_node = t.object;
+      const std::string& function_value_source_node = t.subject;  // e.g. objectMap node
+      const std::string& execution_node = t.object;               // blank node with rml:function
 
-      drop[i] = 1;  // delete fnml:functionValue triple
-
-      auto it = executes_by_subject.find(std::string_view(function_value_target_node));
-      if (it == executes_by_subject.end()) {
-        std::cerr << "fnml:functionValue target has no fno:executes: " << function_value_target_node << "\n";
+      auto it = function_by_exec_node.find(std::string_view(execution_node));
+      if (it == function_by_exec_node.end()) {
+        std::cerr << "rml:functionExecution target has no rml:function: "
+                  << execution_node << "\n";
         g_result_str.clear();
         return g_result_str.c_str();
       }
@@ -173,16 +170,24 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
         return g_result_str.c_str();
       }
 
+      // Drop the rml:functionExecution triple from the source node
+      drop[i] = 1;
+
+      // Add rml:constant with the resolved value
       new_triples.push_back(NTriple{
           function_value_source_node,
           RML_CONSTANT,
           std::move(value)});
 
-      // Also delete the executes triple(s) that correspond to this target node.
+      // Drop triples hanging off the execution node, such as:
+      //   execution_node rml:function ...
+      // and optionally other metadata like rml:return if attached there
       for (size_t j = 0; j < rdf_vector.size(); ++j) {
-        if (rdf_vector[j].subject == function_value_target_node &&
-            rdf_vector[j].predicate == FNO_EXECUTES) {
-          drop[j] = 1;
+        if (rdf_vector[j].subject == execution_node) {
+          if (rdf_vector[j].predicate == RML_FUNCTION ||
+              rdf_vector[j].predicate == RML_RETURN) {
+            drop[j] = 1;
+          }
         }
       }
     }
@@ -215,3 +220,5 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
 }
 
 }  // extern "C"
+
+
