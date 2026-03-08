@@ -3,15 +3,16 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
-#include <fstream>
-#include <iostream>
-#include <string>
-#include <string_view>
-#include <unordered_set>
 #include <chrono>
 #include <format>
+#include <fstream>
+#include <iostream>
+#include <random>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -22,12 +23,32 @@ static std::string get_local_now_iso8601() {
   using centiseconds = duration<long long, std::centi>;
   auto now = floor<centiseconds>(system_clock::now());
   zoned_time<centiseconds> zt{current_zone(), now};
-  
+
   return std::format("{:%FT%T%Ez}", zt);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+std::string generate_random_string() {
+  constexpr const std::size_t length = 40;
+  static const std::string chars =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
 
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> dist(0, chars.size() - 1);
+
+  std::string result;
+  result.reserve(length);
+
+  for (std::size_t i = 0; i < length; ++i) {
+    result += chars[dist(gen)];
+  }
+
+  return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 std::vector<std::string> split_by_substring(const std::string& str, const std::string& delimiter) {
   std::vector<std::string> result;
@@ -327,6 +348,10 @@ std::string create_operator(const std::string& term_map,
       // Handle date time function call.
       std::string time = get_local_now_iso8601();
       rdf_term = handle_term_type("literal", time, lang_tag, data_type);
+      return rdf_term;
+    } else if (rdf_term == "==FUNC==RANDOM") {
+      std::string random_string = generate_random_string();
+      rdf_term = handle_term_type("literal", random_string, lang_tag, data_type);
       return rdf_term;
     } else {
       // No funciton found

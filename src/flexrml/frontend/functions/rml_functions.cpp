@@ -108,11 +108,13 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
   std::vector<std::string> new_normalized_graph_arr;
   new_normalized_graph_arr.reserve(rdf_graph_strings.size());
 
-  constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
   constexpr const char* RML_REFERENCE = "function";
   constexpr const char* RML_FUNCTION_EXECUTION = "http://w3id.org/rml/functionExecution";
   constexpr const char* RML_FUNCTION = "http://w3id.org/rml/function";
   constexpr const char* RML_RETURN = "http://w3id.org/rml/return";
+
+  constexpr const char* IDLAB_RANDOM_FUNCTION = "https://w3id.org/imec/idlab/function#random";
+  constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
 
   for (const auto& graph_str : rdf_graph_strings) {
     std::vector<NTriple> rdf_vector = rdf_string_to_vector(graph_str);
@@ -152,8 +154,9 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
 
       //std::string value;
       if (function_name == GREL_DATE_NOW) {
-        //value = get_local_now_iso8601();
         func_name = "==FUNC==DATE_NOW";
+      } else if(function_name == IDLAB_RANDOM_FUNCTION){
+        func_name = "==FUNC==RANDOM";
       } else {
         std::cerr << "Called function is not supported: " << function_name << "\n";
         g_result_str.clear();
