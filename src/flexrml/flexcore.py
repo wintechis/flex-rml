@@ -242,7 +242,7 @@ def run_mapping(mapping_config):
         normalized_graphs_arr.sort()
         if mapping_config.show_output:
             print("Normalizing: ", time.time()-normalization_start_time)
-
+            
         ### STEP 3: Handle Functions
         handle_functions_start_time = time.time()
         normalized_graphs_arr = handle_functions(normalized_graphs_arr, mapping_config)

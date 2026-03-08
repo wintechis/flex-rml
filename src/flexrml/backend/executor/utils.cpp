@@ -8,6 +8,26 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <chrono>
+#include <format>
+#include <sstream>
+#include <unordered_map>
+#include <vector>
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////// RML Functions
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static std::string get_local_now_iso8601() {
+  using namespace std::chrono;
+  using centiseconds = duration<long long, std::centi>;
+  auto now = floor<centiseconds>(system_clock::now());
+  zoned_time<centiseconds> zt{current_zone(), now};
+  
+  return std::format("{:%FT%T%Ez}", zt);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 std::vector<std::string> split_by_substring(const std::string& str, const std::string& delimiter) {
   std::vector<std::string> result;
@@ -291,8 +311,7 @@ std::string create_operator(const std::string& term_map,
     rdf_term = replace_substring(rdf_term, term_map, data);
 
     // Add base iri if needed
-    if (term_type == "iri" && !(rdf_term.starts_with("http://") ||
-                                rdf_term.starts_with("https://"))) {
+    if (term_type == "iri" && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
       rdf_term = base_uri + rdf_term;
     }
 
@@ -302,10 +321,20 @@ std::string create_operator(const std::string& term_map,
   } else if (term_map_type == "constant") {
     rdf_term = handle_term_type(term_type, rdf_term, lang_tag, data_type);
     return rdf_term;
+  } else if (term_map_type == "function") {
+    // Handle function calls
+    if (rdf_term == "==FUNC==DATE_NOW") {
+      // Handle date time function call.
+      std::string time = get_local_now_iso8601();
+      rdf_term = handle_term_type("literal", time, lang_tag, data_type);
+      return rdf_term;
+    } else {
+      // No funciton found
+      std::cout << "Error: Requested function not found. Got: '" << rdf_term << "'" << std::endl;
+      exit(1);
+    }
   } else {
-    std::cout << "Error: term map type not supported! Valid types are: "
-                 "'template', 'reference', 'constant'. Received: "
-              << term_map_type << term_map << std::endl;
+    std::cout << "Error: term map type not supported! Valid types are: 'template', 'reference', 'constant'. Received: '" << term_map_type << "'" << "'" << term_map << "'" << std::endl;
     exit(1);
   }
 }

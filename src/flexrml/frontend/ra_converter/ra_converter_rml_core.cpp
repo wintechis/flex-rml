@@ -564,6 +564,15 @@ Object get_object_wo_join(const std::vector<NTriple> &triples,
     return result;
   }
 
+  // Check if FUNCTION
+  results = find_matching_objects(triples, object_node, "function");
+  if (results.size() == 1) {
+    result.term_map_type = "function";
+    result.term_map = results[0];
+
+    return result;
+  }
+
   // Check if template
   results = find_matching_objects(triples, object_node, "http://w3id.org/rml/template");
   if (results.size() == 1) {

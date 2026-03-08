@@ -95,18 +95,6 @@ static std::string graph_vector_to_string(const std::vector<NTriple>& triples) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////// RML Functions
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-static std::string get_local_now_iso8601() {
-  using namespace std::chrono;
-  using centiseconds = duration<long long, std::centi>;
-  auto now = floor<centiseconds>(system_clock::now());
-  zoned_time<centiseconds> zt{current_zone(), now};
-  
-  return std::format("{:%FT%T%Ez}", zt);
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// Functions supported in RML
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 extern "C" {
@@ -121,7 +109,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
   new_normalized_graph_arr.reserve(rdf_graph_strings.size());
 
   constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
-  constexpr const char* RML_CONSTANT = "http://w3id.org/rml/constant";
+  constexpr const char* RML_REFERENCE = "function";
   constexpr const char* RML_FUNCTION_EXECUTION = "http://w3id.org/rml/functionExecution";
   constexpr const char* RML_FUNCTION = "http://w3id.org/rml/function";
   constexpr const char* RML_RETURN = "http://w3id.org/rml/return";
@@ -160,10 +148,12 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
       }
 
       std::string_view function_name = it->second;
+      std::string func_name;
 
-      std::string value;
+      //std::string value;
       if (function_name == GREL_DATE_NOW) {
-        value = get_local_now_iso8601();
+        //value = get_local_now_iso8601();
+        func_name = "==FUNC==DATE_NOW";
       } else {
         std::cerr << "Called function is not supported: " << function_name << "\n";
         g_result_str.clear();
@@ -176,8 +166,8 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
       // Add rml:constant with the resolved value
       new_triples.push_back(NTriple{
           function_value_source_node,
-          RML_CONSTANT,
-          std::move(value)});
+          RML_REFERENCE,
+          func_name});
 
       // Drop triples hanging off the execution node, such as:
       //   execution_node rml:function ...

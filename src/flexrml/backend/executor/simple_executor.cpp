@@ -152,7 +152,10 @@ int execute_simple_with_graph(const std::string& input_file_name,
   // Read and split header
   std::getline(*file, setup_data.line);
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
-  std::vector<int> projected_indices = get_attribute_index(*file, header, projected_attributes);
+  std::vector<int> projected_indices;
+  if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
+      projected_indices = get_attribute_index(*file, header, projected_attributes);
+  }
 
   // Project Header
   std::vector<std::string> projected_header;
@@ -273,7 +276,10 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
   // Read and split header
   std::getline(*file, setup_data.line);
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
-  std::vector<int> projected_indices = get_attribute_index(*file, header, projected_attributes);
+  std::vector<int> projected_indices;
+  if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
+      projected_indices = get_attribute_index(*file, header, projected_attributes);
+  }
 
   // Project Header
   std::vector<std::string> projected_header;
@@ -379,7 +385,10 @@ int execute_simple(const std::string& input_file_name,
   // Get index of attributes in header
   std::getline(*file, setup_data.line);
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
-  std::vector<int> projected_indices = get_attribute_index(*file, header, projected_attributes);
+  std::vector<int> projected_indices;
+  if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
+      projected_indices = get_attribute_index(*file, header, projected_attributes);
+  }
 
   // Project Header
   std::vector<std::string> projected_header;
@@ -492,7 +501,11 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
   // Read and split header
   std::getline(*file, setup_data.line);
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
-  std::vector<int> projected_indices = get_attribute_index(*file, header, projected_attributes);
+
+  std::vector<int> projected_indices;
+  if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
+      projected_indices = get_attribute_index(*file, header, projected_attributes);
+  }
 
   // Project header
   std::vector<std::string> projected_header;

@@ -110,7 +110,7 @@ std::string get_invar(const std::vector<std::string>& content) {
     invariant = term_map;
   } else if (term_map_type == "template") {
     invariant = get_template_invariant(term_map);
-  } else if (term_map_type == "reference") {
+  } else if (term_map_type == "reference" || term_map_type == "function") {
     invariant = "";
   } else {
     std::cout << "Error: term map type not found! Got: " << term_map_type << std::endl;
