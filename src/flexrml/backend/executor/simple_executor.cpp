@@ -7,15 +7,15 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
-#include <sstream>
-#include <set>
 #include <map>
 #include <mutex>
 #include <queue>
+#include <set>
+#include <sstream>
 #include <string>
 #include <thread>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "definitions.h"
@@ -95,7 +95,6 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   return data;
 }
 
-
 ///////////////////////////////////////////////////////////////7
 /// HELPER FUNCTIONS
 //////////////////////////////////////////////////////////////
@@ -120,14 +119,14 @@ std::vector<int> get_attribute_index(std::istream& file, const std::vector<std::
 // Open File or from map
 static std::unique_ptr<std::istream> open_from_map_or_file(
     const std::unordered_map<std::string, std::string>& mem,
-    const std::string& path){
-    if (auto it = mem.find(path); it != mem.end()) {
-        return std::make_unique<std::istringstream>(it->second);
-    }
+    const std::string& path) {
+  if (auto it = mem.find(path); it != mem.end()) {
+    return std::make_unique<std::istringstream>(it->second);
+  }
 
-    auto f = std::make_unique<std::ifstream>(path);
-    if (!f->is_open()) return nullptr;
-    return f;
+  auto f = std::make_unique<std::ifstream>(path);
+  if (!f->is_open()) return nullptr;
+  return f;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -154,7 +153,7 @@ int execute_simple_with_graph(const std::string& input_file_name,
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
   std::vector<int> projected_indices;
   if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
-      projected_indices = get_attribute_index(*file, header, projected_attributes);
+    projected_indices = get_attribute_index(*file, header, projected_attributes);
   }
 
   // Project Header
@@ -278,7 +277,7 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
   std::vector<int> projected_indices;
   if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
-      projected_indices = get_attribute_index(*file, header, projected_attributes);
+    projected_indices = get_attribute_index(*file, header, projected_attributes);
   }
 
   // Project Header
@@ -368,13 +367,13 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int execute_simple(const std::string& input_file_name,
-                    const fs::path& output_file_name,
-                    const std::string& base_uri,
-                    const std::vector<std::string>& projected_attributes,
-                    const std::vector<std::string>& s_content,
-                    const std::vector<std::string>& p_content,
-                    const std::vector<std::string>& o_content,
-                    const std::unordered_map<std::string, std::string>& data_map) {
+                   const fs::path& output_file_name,
+                   const std::string& base_uri,
+                   const std::vector<std::string>& projected_attributes,
+                   const std::vector<std::string>& s_content,
+                   const std::vector<std::string>& p_content,
+                   const std::vector<std::string>& o_content,
+                   const std::unordered_map<std::string, std::string>& data_map) {
   ///// Setup /////
   SetupData setup_data = initialize_setup(output_file_name);
 
@@ -387,7 +386,7 @@ int execute_simple(const std::string& input_file_name,
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
   std::vector<int> projected_indices;
   if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
-      projected_indices = get_attribute_index(*file, header, projected_attributes);
+    projected_indices = get_attribute_index(*file, header, projected_attributes);
   }
 
   // Project Header
@@ -478,8 +477,6 @@ int execute_simple(const std::string& input_file_name,
   return setup_data.triple_counter;
 }
 
-
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 std::unordered_set<std::string> execute_simple_dependent(const std::string& input_file_name,
                                                          const fs::path& output_file_name,
@@ -489,7 +486,7 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
                                                          const std::vector<std::string>& p_content,
                                                          const std::vector<std::string>& o_content,
                                                          std::unordered_set<std::string>& unique_triple,
-                                                        const std::unordered_map<std::string, std::string>& data_map) {
+                                                         const std::unordered_map<std::string, std::string>& data_map) {
   ///// Setup /////
   SetupData setup_data = initialize_setup_dependent(output_file_name);
 
@@ -504,7 +501,7 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
 
   std::vector<int> projected_indices;
   if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
-      projected_indices = get_attribute_index(*file, header, projected_attributes);
+    projected_indices = get_attribute_index(*file, header, projected_attributes);
   }
 
   // Project header
@@ -514,7 +511,15 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
   }
 
   // Iterate over file line by line
+  int line_count = 0;
   while (std::getline(*file, setup_data.line)) {
+    // create temp content
+    std::vector<std::string> s_content_copy = s_content;
+    std::vector<std::string> p_content_copy = p_content;
+    std::vector<std::string> o_content_copy = o_content;
+
+    line_count++;
+
     setup_data.split_line = split_csv_line(setup_data.line, ',');
 
     ////// PROJECTION //////
@@ -547,25 +552,37 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
       row[projected_header[i]] = setup_data.projected_row[i];
     }
 
+    ////// FUNCTION EXEC //////
+    if (s_content_copy[1] == "function") {
+      s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
+      s_content_copy[1] = "constant";
+    } else if (p_content_copy[1] == "function") {
+      p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
+      p_content_copy[1] = "constant";
+    } else if (o_content[1] == "function") {
+      o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
+      o_content_copy[1] = "constant";
+    }
+
     ////// CREATE //////
     try {
       // SUBJECT
-      if (s_content[1] == "preformatted") {
-        setup_data.subject = s_content[0];
+      if (s_content_copy[1] == "preformatted") {
+        setup_data.subject = s_content_copy[0];
       } else {
-        setup_data.subject = create_operator(s_content[0], s_content[1], s_content[2], "", "", base_uri, row);
+        setup_data.subject = create_operator(s_content_copy[0], s_content_copy[1], s_content_copy[2], "", "", base_uri, row);
       }
       // PREDICATE
-      if (p_content[1] == "preformatted") {
-        setup_data.predicate = p_content[0];
+      if (p_content_copy[1] == "preformatted") {
+        setup_data.predicate = p_content_copy[0];
       } else {
-        setup_data.predicate = create_operator(p_content[0], p_content[1], p_content[2], "", "", base_uri, row);
+        setup_data.predicate = create_operator(p_content_copy[0], p_content_copy[1], p_content_copy[2], "", "", base_uri, row);
       }
       // OBJECT
-      if (o_content[1] == "preformatted") {
-        setup_data.object = o_content[0];
+      if (o_content_copy[1] == "preformatted") {
+        setup_data.object = o_content_copy[0];
       } else {
-        setup_data.object = create_operator(o_content[0], o_content[1], o_content[2], o_content[3], o_content[4], base_uri, row);
+        setup_data.object = create_operator(o_content_copy[0], o_content_copy[1], o_content_copy[2], o_content_copy[3], o_content_copy[4], base_uri, row);
       }
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
@@ -656,7 +673,7 @@ size_t standalone_simple_mapping(const std::string& information, const std::unor
       } else {
         info.generated_triple = execute_simple(info.input_file_name, info.output_file_name, info.base_uri,
                                                info.projected_attributes, info.s_content, info.p_content, info.o_content, data_map);
-      } 
+      }
     } else {
       // Handle with graph //
       if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant" && info.g_content[1] == "constant") {
