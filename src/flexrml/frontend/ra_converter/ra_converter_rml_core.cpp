@@ -52,6 +52,13 @@ struct Graph {
   std::string term_map;       // contains value
 };
 
+struct FunctionExec {
+  bool aFunc = false;
+  std::string function_name;
+  std::string input_term_map_type;
+  std::string input_term_map;
+};
+
 std::unordered_set<std::string> valid_language_subtags = {
     "en",  // English
     "es",  // Spanish
@@ -84,7 +91,7 @@ std::unordered_set<std::string> generated_strings;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Helper function to determine if a character at position `i` is escaped
-bool isEscaped(const std::string &line, size_t i) {
+bool isEscaped(const std::string& line, size_t i) {
   if (i == 0) return false;
   size_t backslash_count = 0;
   // Count the number of consecutive backslashes before the current character
@@ -113,7 +120,7 @@ std::vector<std::string> split(std::string_view text, char delim) {
 }
 
 // Check for lang tag annotation, But only if no lang tag is given by languageMap
-std::tuple<std::string, std::string> check_annotated_lang_tag(const std::string &rdf_term_map, const std::string &current_lang_tag) {
+std::tuple<std::string, std::string> check_annotated_lang_tag(const std::string& rdf_term_map, const std::string& current_lang_tag) {
   if (current_lang_tag == "None") {
     // Split vector
     std::vector<std::string> split_rdf_term_map = split(rdf_term_map, '@');
@@ -156,7 +163,7 @@ std::string generate_random_string(size_t length) {
   return random_string;
 }
 
-std::vector<std::string> extract_substrings(const std::string &str) {
+std::vector<std::string> extract_substrings(const std::string& str) {
   std::vector<std::string> substrings;
 
   size_t startPos = 0, endPos = 0;
@@ -177,12 +184,36 @@ std::vector<std::string> extract_substrings(const std::string &str) {
   return substrings;
 }
 
+// Function to split a line at a given char.
+std::vector<std::string> split_line_at_char(const std::string& line, const std::string& split_char) {
+    std::vector<std::string> parts;
+
+    // Guard against empty delimiter to avoid infinite loop
+    if (split_char.empty()) {
+        parts.push_back(line);
+        return parts;
+    }
+
+    std::size_t start = 0;
+    std::size_t pos = 0;
+
+    while ((pos = line.find(split_char, start)) != std::string::npos) {
+        parts.push_back(line.substr(start, pos - start));
+        start = pos + split_char.length();
+    }
+
+    // Add the remaining part
+    parts.push_back(line.substr(start));
+
+    return parts;
+}
+
 std::vector<std::string> find_matching_subjects(
-    const std::vector<NTriple> &triples, const std::string &predicate,
-    const std::string &object) {
+    const std::vector<NTriple>& triples, const std::string& predicate,
+    const std::string& object) {
   std::vector<std::string> results;
 
-  for (const auto &triple : triples) {
+  for (const auto& triple : triples) {
     // Check predicate
     if (triple.predicate != predicate) {
       continue;  // skip this triple if predicates don't match
@@ -201,11 +232,11 @@ std::vector<std::string> find_matching_subjects(
 }
 
 std::vector<std::string> find_matching_objects(
-    const std::vector<NTriple> &triples, const std::string &subject,
-    const std::string &predicate) {
+    const std::vector<NTriple>& triples, const std::string& subject,
+    const std::string& predicate) {
   std::vector<std::string> results;
 
-  for (const NTriple &triple : triples) {
+  for (const NTriple& triple : triples) {
     // Check subject if not empty
     if (!subject.empty() && triple.subject != subject) {
       continue;  // skip this triple if subjects don't match
@@ -223,10 +254,10 @@ std::vector<std::string> find_matching_objects(
   return results;  // returns the vector of matching objects
 }
 
-int get_number_suject_maps(const std::vector<NTriple> &triples) {
+int get_number_suject_maps(const std::vector<NTriple>& triples) {
   int subject_map_counter = 0;
 
-  for (const auto &triple : triples) {
+  for (const auto& triple : triples) {
     if (triple.predicate == "http://www.w3.org/ns/r2rml#subjectMap") {
       subject_map_counter++;
     }
@@ -235,7 +266,7 @@ int get_number_suject_maps(const std::vector<NTriple> &triples) {
   return subject_map_counter;
 }
 
-std::string get_root_tm(const std::vector<NTriple> &triples) {
+std::string get_root_tm(const std::vector<NTriple>& triples) {
   // Get triple maps
   std::vector<std::string> tms = find_matching_subjects(
       triples, "http://w3id.org/rml/subjectMap", "");
@@ -263,8 +294,8 @@ std::string get_root_tm(const std::vector<NTriple> &triples) {
   return tms[i];
 }
 
-std::string get_predicate_object_map(const std::vector<NTriple> &triples,
-                                     const std::string &root_tm) {
+std::string get_predicate_object_map(const std::vector<NTriple>& triples,
+                                     const std::string& root_tm) {
   std::vector<std::string> res = find_matching_objects(
       triples, root_tm, "http://w3id.org/rml/predicateObjectMap");
 
@@ -280,9 +311,9 @@ std::string get_predicate_object_map(const std::vector<NTriple> &triples,
 /////// Functions to extract information and fill structs
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::vector<Graph> get_graph(const std::vector<NTriple> &triples,
-                             const std::string &root_tm,
-                             const std::string &pom) {
+std::vector<Graph> get_graph(const std::vector<NTriple>& triples,
+                             const std::string& root_tm,
+                             const std::string& pom) {
   std::vector<Graph> graphs;
 
   // Get subject nodes
@@ -386,11 +417,10 @@ std::vector<Graph> get_graph(const std::vector<NTriple> &triples,
   return graphs;
 }
 
-Subject get_subject(const std::vector<NTriple> &triples,
-                    const std::string &root_tm) {
+Subject get_subject(const std::vector<NTriple>& triples,
+                    const std::string& root_tm) {
   // Get subject nodes
-  std::vector<std::string> subject_nodes = find_matching_objects(
-      triples, root_tm, "http://w3id.org/rml/subjectMap");
+  std::vector<std::string> subject_nodes = find_matching_objects(triples, root_tm, "http://w3id.org/rml/subjectMap");
   std::string subject_node = subject_nodes[0];
 
   // Initialize Subject result with default values
@@ -427,6 +457,14 @@ Subject get_subject(const std::vector<NTriple> &triples,
     return result;
   }
 
+  // Check if function
+  results = find_matching_objects(triples, subject_node, "function");
+  if (results.size() == 1) {
+    result.term_map_type = "function";
+    result.term_map = results[0];
+    return result;
+  }
+
   // Check if template
   results = find_matching_objects(triples, subject_node, "http://w3id.org/rml/template");
   if (results.size() == 1) {
@@ -439,8 +477,7 @@ Subject get_subject(const std::vector<NTriple> &triples,
   return result;
 }
 
-Predicate get_predicate(const std::vector<NTriple> &triples,
-                        const std::string &pom) {
+Predicate get_predicate(const std::vector<NTriple>& triples, const std::string& pom) {
   // Get predicate nodes
   std::vector<std::string> predicate_nodes = find_matching_objects(
       triples, pom, "http://w3id.org/rml/predicateMap");
@@ -481,11 +518,10 @@ Predicate get_predicate(const std::vector<NTriple> &triples,
   return result;
 }
 
-Object get_object_wo_join(const std::vector<NTriple> &triples,
-                          const std::string &pom) {
+Object get_object_wo_join(const std::vector<NTriple>& triples,
+                          const std::string& pom) {
   // Get object nodes
-  std::vector<std::string> object_nodes = find_matching_objects(
-      triples, pom, "http://w3id.org/rml/objectMap");
+  std::vector<std::string> object_nodes = find_matching_objects(triples, pom, "http://w3id.org/rml/objectMap");
   std::string object_node = object_nodes[0];
 
   // Initialize Subject result with default values
@@ -495,8 +531,7 @@ Object get_object_wo_join(const std::vector<NTriple> &triples,
   result.term_map = "";
 
   // Handle language map
-  std::vector<std::string> lang_map_nodes = find_matching_objects(
-      triples, object_node, "http://w3id.org/rml/languageMap");
+  std::vector<std::string> lang_map_nodes = find_matching_objects(triples, object_node, "http://w3id.org/rml/languageMap");
   if (lang_map_nodes.size() == 1) {
     std::string lang_tag = find_matching_objects(triples, lang_map_nodes[0], "http://w3id.org/rml/constant")[0];
     // Check if lang tag is valid
@@ -508,8 +543,7 @@ Object get_object_wo_join(const std::vector<NTriple> &triples,
   }
 
   // Handle data type
-  std::vector<std::string> data_type_map_nodes = find_matching_objects(
-      triples, object_node, "http://w3id.org/rml/datatypeMap");
+  std::vector<std::string> data_type_map_nodes = find_matching_objects(triples, object_node, "http://w3id.org/rml/datatypeMap");
   if (data_type_map_nodes.size() == 1) {
     std::string data_type = find_matching_objects(triples, data_type_map_nodes[0], "http://w3id.org/rml/constant")[0];
     // Check if lang tag is valid
@@ -525,7 +559,7 @@ Object get_object_wo_join(const std::vector<NTriple> &triples,
     std::string new_term_type = results[0];
     if (new_term_type == "http://w3id.org/rml/IRI") {
       result.term_type = "iri";
-    } else if (new_term_type == "http://w3id.org/rml/BlankNode"){
+    } else if (new_term_type == "http://w3id.org/rml/BlankNode") {
       result.term_type = "blanknode";
     } else if (new_term_type == "http://w3id.org/rml/Literal") {
       result.term_type = "literal";
@@ -565,11 +599,30 @@ Object get_object_wo_join(const std::vector<NTriple> &triples,
   }
 
   // Check if FUNCTION
+  //FunctionExec func;
   results = find_matching_objects(triples, object_node, "function");
   if (results.size() == 1) {
     result.term_map_type = "function";
     result.term_map = results[0];
 
+    //result.term_map = "func1"; // TODO generate id
+    /*
+    // Add function
+    func.aFunc = true;
+    func.function_name = split_line_at_char(results[0], "(")[0];
+
+    // Parameters of function 
+    std::string param_str = split_line_at_char(results[0], "(")[1];
+
+    // Get first param
+    std::string param1 = split_line_at_char(param_str, "||")[1];
+    param1 = split_line_at_char(param1, ")")[0];  // Remove last ")"
+
+    std::vector<std::string> args = split_line_at_char(param1, "|");
+    func.input_term_map_type = args[1];
+    func.input_term_map = args[2];
+    
+    //std::cout << "PARA;S " << args[0] << "  " << args[1] << "  " << args[2] << std::endl;*/
     return result;
   }
 
@@ -601,7 +654,7 @@ Object get_object_wo_join(const std::vector<NTriple> &triples,
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 std::tuple<Object, std::string> get_object_w_join(
-    const std::vector<NTriple> &triples, const std::string &pom) {
+    const std::vector<NTriple>& triples, const std::string& pom) {
   // Initialize Object result with default values
   Object result;
   result.term_map_type = "";
@@ -690,9 +743,9 @@ std::tuple<Object, std::string> get_object_w_join(
   return {result, parent_tm_source};
 }
 
-std::vector<std::string> get_projected_attributes(const Subject &subj,
-                                                  const Predicate &pred,
-                                                  const Object &obj) {
+std::vector<std::string> get_projected_attributes(const Subject& subj,
+                                                  const Predicate& pred,
+                                                  const Object& obj) {
   std::set<std::string> unique_attributes;
 
   // Handle Subject
@@ -726,7 +779,7 @@ std::vector<std::string> get_projected_attributes(const Subject &subj,
   }
 
   // Handle join condition if available
-  bool is_empty = std::all_of(obj.join_condition.begin(), obj.join_condition.end(), [](const std::string &s) { return s.empty(); });
+  bool is_empty = std::all_of(obj.join_condition.begin(), obj.join_condition.end(), [](const std::string& s) { return s.empty(); });
   // if object is empty -> generation of child join; else geneartion of parent
   // join
 
@@ -745,9 +798,9 @@ std::vector<std::string> get_projected_attributes(const Subject &subj,
   return projected_attributes;
 }
 
-std::string replace_substring(const std::string &original,
-                              const std::string &toReplace,
-                              const std::string &replacement) {
+std::string replace_substring(const std::string& original,
+                              const std::string& toReplace,
+                              const std::string& replacement) {
   std::string result = original;
   std::size_t pos = result.find(toReplace);
   if (pos != std::string::npos) {
@@ -756,7 +809,7 @@ std::string replace_substring(const std::string &original,
   return result;
 }
 
-std::string create_complex_tree(const std::vector<NTriple> &triples) {
+std::string create_complex_tree(const std::vector<NTriple>& triples) {
   // Get source
   std::vector<std::string> sources = find_matching_objects(triples, "", "http://w3id.org/rml/path");
 
@@ -845,7 +898,7 @@ std::string create_complex_tree(const std::vector<NTriple> &triples) {
   } else {
     if (subj.term_map_type == "template") {
       std::vector<std::string> sub_strings = extract_substrings(subj.term_map);
-      for (const auto &sub_str : sub_strings) {
+      for (const auto& sub_str : sub_strings) {
         std::string replacement = std::format("{}_{}", sources[0], sub_str);
         subj.term_map = replace_substring(subj.term_map, "{" + sub_str + "}", "{" + replacement + "}");
       }
@@ -857,7 +910,7 @@ std::string create_complex_tree(const std::vector<NTriple> &triples) {
     // Predicate
     if (pred.term_map_type == "template") {
       std::vector<std::string> sub_strings = extract_substrings(pred.term_map);
-      for (const auto &sub_str : sub_strings) {
+      for (const auto& sub_str : sub_strings) {
         std::string replacement = std::format("{}_{}", sources[0], sub_str);
         pred.term_map = replace_substring(pred.term_map, "{" + sub_str + "}", "{" + replacement + "}");
       }
@@ -869,7 +922,7 @@ std::string create_complex_tree(const std::vector<NTriple> &triples) {
     // Object
     if (obj.term_map_type == "template") {
       std::vector<std::string> sub_strings = extract_substrings(obj.term_map);
-      for (const auto &sub_str : sub_strings) {
+      for (const auto& sub_str : sub_strings) {
         std::string replacement = std::format("{}_{}", parent_source, sub_str);
         obj.term_map = replace_substring(obj.term_map, "{" + sub_str + "}", "{" + replacement + "}");
       }
@@ -879,12 +932,12 @@ std::string create_complex_tree(const std::vector<NTriple> &triples) {
     }
 
     // Graph
-    for (auto &graph : graphs) {
+    for (auto& graph : graphs) {
       if (!graph.term_map.empty()) {
         if (graph.term_map_type == "template") {
           std::vector<std::string> sub_strings =
               extract_substrings(graph.term_map);
-          for (const auto &sub_str : sub_strings) {
+          for (const auto& sub_str : sub_strings) {
             std::string replacement = std::format("{}_{}", sources[0], sub_str);
             graph.term_map = replace_substring(graph.term_map, sub_str, replacement);
           }
@@ -937,7 +990,7 @@ std::string create_complex_tree(const std::vector<NTriple> &triples) {
 
   // Generate final result
   std::string final_result = "";
-  for (const auto &proj_node : proj_nodes) {
+  for (const auto& proj_node : proj_nodes) {
     std::string result = proj_node + "(" + join_node + ")";
     final_result += result + "\n";
   }
@@ -945,7 +998,7 @@ std::string create_complex_tree(const std::vector<NTriple> &triples) {
   return final_result;
 }
 
-std::string create_simple_tree(const std::vector<NTriple> &triples) {
+std::string create_simple_tree(const std::vector<NTriple>& triples) {
   /////////////////////
   std::vector<std::string> final_result;
   /////////////////////
@@ -1018,14 +1071,14 @@ std::string create_simple_tree(const std::vector<NTriple> &triples) {
   }
 
   std::string res_str = "";
-  for (const auto &result : final_result) {
+  for (const auto& result : final_result) {
     res_str += result + "\n";
   }
 
   return res_str;
 }
 
-std::string converter(const std::vector<NTriple> &triples) {
+std::string converter(const std::vector<NTriple>& triples) {
   // Check if with join, i.e. two subj. maps
   std::vector<std::string> subject_nodes = find_matching_objects(triples, "", "http://w3id.org/rml/subjectMap");
 
@@ -1046,7 +1099,7 @@ std::string converter(const std::vector<NTriple> &triples) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Function to split a single line into an NTriple
-NTriple split_line(const std::string &line) {
+NTriple split_line(const std::string& line) {
   NTriple triple;
   size_t pos1 = line.find("|||");
   size_t pos2 = line.find("|||", pos1 + 3);
@@ -1061,7 +1114,7 @@ NTriple split_line(const std::string &line) {
 }
 
 // Function to process the entire RDF string
-std::vector<NTriple> rdf_string_to_vector(const std::string &rdf_string) {
+std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
   std::vector<NTriple> triples;
   std::istringstream stream(rdf_string);
   std::string line;
@@ -1079,7 +1132,7 @@ std::vector<NTriple> rdf_string_to_vector(const std::string &rdf_string) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 extern "C" {
-const char *create_relational_algebra(const char *rml_input) {
+const char* create_relational_algebra(const char* rml_input) {
   // Convert the C-style string into a std::string
   std::string rml(rml_input);
 
@@ -1095,7 +1148,7 @@ const char *create_relational_algebra(const char *rml_input) {
   return g_result_str.c_str();
 }
 
-void converter_free(char *ptr) {
+void converter_free(char* ptr) {
   delete[] ptr;
 }
 

@@ -27,8 +27,29 @@ static std::string get_local_now_iso8601() {
   return std::format("{:%FT%T%Ez}", zt);
 }
 
-std::string generate_random_string() {
-  constexpr const std::size_t length = 40;
+std::string get_current_date_time_string() {
+  using namespace std::chrono;
+
+  const auto now = system_clock::now();
+  const auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+
+  const std::time_t tt = system_clock::to_time_t(now);
+  std::tm tm{};
+
+#ifdef _WIN32
+  localtime_s(&tm, &tt);
+#else
+  localtime_r(&tt, &tm);
+#endif
+
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y%m%d%H%M%S")
+      << std::setw(3) << std::setfill('0') << ms.count();
+
+  return oss.str();
+}
+
+std::string generate_random_string(std::size_t length) {
   static const std::string chars =
       "0123456789"
       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -344,20 +365,33 @@ std::string create_operator(const std::string& term_map,
     return rdf_term;
   } else if (term_map_type == "function") {
     // Handle function calls
-    if (rdf_term == "==FUNC==DATE_NOW") {
+
+    // 1. Split command
+    const std::vector<std::string> commands = split_by_substring(rdf_term, ";;");
+    const std::string function_type = commands[0];
+
+    if (function_type == "==FUNC==DATE_NOW") {
       // Handle date time function call.
-      std::string time = get_local_now_iso8601();
+      const std::string time = get_local_now_iso8601();
       rdf_term = handle_term_type("literal", time, lang_tag, data_type);
       return rdf_term;
-    } else if (rdf_term == "==FUNC==RANDOM") {
-      std::string random_string = generate_random_string();
+    } else if (function_type == "==FUNC==RANDOM") {
+      constexpr const std::size_t length = 40;
+      std::string random_string = generate_random_string(length);
       rdf_term = handle_term_type("literal", random_string, lang_tag, data_type);
+      return rdf_term;
+    } else if (function_type == "==FUNC==GENERATE_IRI") {
+      // Assume only one input
+      const std::string base_iri = commands[3];
+      constexpr const std::size_t length = 10;
+      rdf_term = base_iri + get_current_date_time_string() + generate_random_string(length);
       return rdf_term;
     } else {
       // No funciton found
       std::cout << "Error: Requested function not found. Got: '" << rdf_term << "'" << std::endl;
       exit(1);
     }
+
   } else {
     std::cout << "Error: term map type not supported! Valid types are: 'template', 'reference', 'constant'. Received: '" << term_map_type << "'" << "'" << term_map << "'" << std::endl;
     exit(1);
