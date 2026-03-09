@@ -74,10 +74,21 @@ SerdStatus RDFParser::capture_prefix(const SerdNode* name, const SerdNode* uri) 
 
 // Function to expand a serd curie to an uri
 SerdNode RDFParser::expand_node(const SerdNode* node) {
+  // If it is already a full URI or literal, let Serd handle it normally
   SerdNode expanded = serd_env_expand_node(env, node);
+
   if (expanded.buf) {
     return expanded;
   }
+
+  // If this was a CURIE and expansion failed, the prefix is missing
+  if (node->type == SERD_CURIE) {
+    throw std::runtime_error(
+        "Undefined prefix in CURIE: " +
+        std::string(reinterpret_cast<const char*>(node->buf), node->n_bytes));
+  }
+
+  // Otherwise keep the original node
   return *node;
 }
 
