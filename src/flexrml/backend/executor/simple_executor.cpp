@@ -101,14 +101,19 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
 std::vector<int> get_attribute_index(std::istream& file, const std::vector<std::string>& header, const std::vector<std::string>& projected_attributes) {
   // Get indices for projected attributes
   std::vector<int> projected_indices;
+
   for (const auto& attr : projected_attributes) {
+    if (attr == ""){
+      continue;
+    }
+
     auto it = std::find_if(header.begin(), header.end(), [&](std::string_view field) {
       return field == attr;
     });
     if (it != header.end()) {
       projected_indices.push_back(std::distance(header.begin(), it));
     } else {
-      std::cerr << "Attribute not found: " << attr << std::endl;
+      std::cerr << "Attribute not found: '" << attr << "'" << std::endl;
       std::exit(1);
     }
   }
@@ -207,13 +212,16 @@ int execute_simple_with_graph(const std::string& input_file_name,
     if (s_content_copy[1] == "function") {
       s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    } else if (p_content_copy[1] == "function") {
+    } 
+    if (p_content_copy[1] == "function") {
       p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    } else if (o_content_copy[1] == "function") {
+    } 
+    if (o_content_copy[1] == "function") {
       o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
-    } else if (g_content_copy[1] == "function") {
+    } 
+    if (g_content_copy[1] == "function") {
       g_content_copy[0] = handle_function_call(g_content_copy[0], line_count, input_file_name);
       g_content_copy[1] = "constant";
     }
@@ -463,10 +471,12 @@ int execute_simple(const std::string& input_file_name,
     if (s_content_copy[1] == "function") {
       s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    } else if (p_content_copy[1] == "function") {
+    } 
+    if (p_content_copy[1] == "function") {
       p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    } else if (o_content[1] == "function") {
+    } 
+    if (o_content[1] == "function") {
       o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
     }
@@ -598,10 +608,12 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
     if (s_content_copy[1] == "function") {
       s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    } else if (p_content_copy[1] == "function") {
+    } 
+    if (p_content_copy[1] == "function") {
       p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    } else if (o_content[1] == "function") {
+    } 
+    if (o_content_copy[1] == "function") {
       o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
     }

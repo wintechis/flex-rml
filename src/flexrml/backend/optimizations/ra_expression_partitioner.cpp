@@ -113,7 +113,12 @@ std::string get_invar(const std::vector<std::string>& content) {
   } else if (term_map_type == "reference" || term_map_type == "function") {
     invariant = "";
   } else {
-    std::cout << "Error: term map type not found! Got: " << term_map_type << std::endl;
+    std::cout << "Got content:  ";
+    for (const auto& element : content) {
+      std::cout << element << "  ";
+    }
+    std::cout << std::endl;
+    std::cout << "Error: term map type not found! Got: '" << term_map_type << "'" << std::endl;
     std::exit(1);
   }
 

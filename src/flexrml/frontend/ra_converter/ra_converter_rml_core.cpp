@@ -186,26 +186,26 @@ std::vector<std::string> extract_substrings(const std::string& str) {
 
 // Function to split a line at a given char.
 std::vector<std::string> split_line_at_char(const std::string& line, const std::string& split_char) {
-    std::vector<std::string> parts;
+  std::vector<std::string> parts;
 
-    // Guard against empty delimiter to avoid infinite loop
-    if (split_char.empty()) {
-        parts.push_back(line);
-        return parts;
-    }
-
-    std::size_t start = 0;
-    std::size_t pos = 0;
-
-    while ((pos = line.find(split_char, start)) != std::string::npos) {
-        parts.push_back(line.substr(start, pos - start));
-        start = pos + split_char.length();
-    }
-
-    // Add the remaining part
-    parts.push_back(line.substr(start));
-
+  // Guard against empty delimiter to avoid infinite loop
+  if (split_char.empty()) {
+    parts.push_back(line);
     return parts;
+  }
+
+  std::size_t start = 0;
+  std::size_t pos = 0;
+
+  while ((pos = line.find(split_char, start)) != std::string::npos) {
+    parts.push_back(line.substr(start, pos - start));
+    start = pos + split_char.length();
+  }
+
+  // Add the remaining part
+  parts.push_back(line.substr(start));
+
+  return parts;
 }
 
 std::vector<std::string> find_matching_subjects(
@@ -599,19 +599,19 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
   }
 
   // Check if FUNCTION
-  //FunctionExec func;
+  // FunctionExec func;
   results = find_matching_objects(triples, object_node, "function");
   if (results.size() == 1) {
     result.term_map_type = "function";
     result.term_map = results[0];
 
-    //result.term_map = "func1"; // TODO generate id
+    // result.term_map = "func1"; // TODO generate id
     /*
     // Add function
     func.aFunc = true;
     func.function_name = split_line_at_char(results[0], "(")[0];
 
-    // Parameters of function 
+    // Parameters of function
     std::string param_str = split_line_at_char(results[0], "(")[1];
 
     // Get first param
@@ -621,7 +621,7 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
     std::vector<std::string> args = split_line_at_char(param1, "|");
     func.input_term_map_type = args[1];
     func.input_term_map = args[2];
-    
+
     //std::cout << "PARA;S " << args[0] << "  " << args[1] << "  " << args[2] << std::endl;*/
     return result;
   }
@@ -653,8 +653,7 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
 /////// RA generation functions
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::tuple<Object, std::string> get_object_w_join(
-    const std::vector<NTriple>& triples, const std::string& pom) {
+std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& triples, const std::string& pom) {
   // Initialize Object result with default values
   Object result;
   result.term_map_type = "";
@@ -732,6 +731,15 @@ std::tuple<Object, std::string> get_object_w_join(
   results = find_matching_objects(triples, parent_tm_subject_node, "http://w3id.org/rml/template");
   if (results.size() == 1) {
     result.term_map_type = "template";
+    result.term_map = results[0];
+    result.term_type = "iri";
+    return {result, parent_tm_source};
+  }
+
+  // check if function
+  results = find_matching_objects(triples, parent_tm_subject_node, "function");
+  if (results.size() == 1) {
+    result.term_map_type = "function";
     result.term_map = results[0];
     result.term_type = "iri";
     return {result, parent_tm_source};
