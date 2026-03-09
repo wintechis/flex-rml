@@ -130,7 +130,6 @@ static std::unique_ptr<std::istream> open_from_map_or_file(
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
-
 int execute_simple_with_graph(const std::string& input_file_name,
                               const fs::path& output_file_name,
                               const std::string& base_uri,
@@ -163,7 +162,15 @@ int execute_simple_with_graph(const std::string& input_file_name,
   }
 
   // Iterate over file line by line
+  int line_count = 0;
+  // Iterate over file line by line
   while (std::getline(*file, setup_data.line)) {
+    // Copy content
+    std::vector<std::string> s_content_copy = s_content;
+    std::vector<std::string> p_content_copy = p_content;
+    std::vector<std::string> o_content_copy = o_content;
+    std::vector<std::string> g_content_copy = g_content;
+
     setup_data.split_line = split_csv_line(setup_data.line, ',');
 
     ////// PROJECTION //////
@@ -196,31 +203,46 @@ int execute_simple_with_graph(const std::string& input_file_name,
       row[projected_header[i]] = setup_data.projected_row[i];
     }
 
+    ////// FUNCTION EXEC //////
+    if (s_content_copy[1] == "function") {
+      s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
+      s_content_copy[1] = "constant";
+    } else if (p_content_copy[1] == "function") {
+      p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
+      p_content_copy[1] = "constant";
+    } else if (o_content_copy[1] == "function") {
+      o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
+      o_content_copy[1] = "constant";
+    } else if (g_content_copy[1] == "function") {
+      g_content_copy[0] = handle_function_call(g_content_copy[0], line_count, input_file_name);
+      g_content_copy[1] = "constant";
+    }
+
     ////// CREATE //////
     try {
       // SUBJECT
-      if (s_content[1] == "preformatted") {
-        setup_data.subject = s_content[0];
+      if (s_content_copy[1] == "preformatted") {
+        setup_data.subject = s_content_copy[0];
       } else {
-        setup_data.subject = create_operator(s_content[0], s_content[1], s_content[2], "", "", base_uri, row);
+        setup_data.subject = create_operator(s_content_copy[0], s_content_copy[1], s_content_copy[2], "", "", base_uri, row);
       }
       // PREDICATE
-      if (p_content[1] == "preformatted") {
-        setup_data.predicate = p_content[0];
+      if (p_content_copy[1] == "preformatted") {
+        setup_data.predicate = p_content_copy[0];
       } else {
-        setup_data.predicate = create_operator(p_content[0], p_content[1], p_content[2], "", "", base_uri, row);
+        setup_data.predicate = create_operator(p_content_copy[0], p_content_copy[1], p_content_copy[2], "", "", base_uri, row);
       }
       // OBJECT
-      if (o_content[1] == "preformatted") {
-        setup_data.object = o_content[0];
+      if (o_content_copy[1] == "preformatted") {
+        setup_data.object = o_content_copy[0];
       } else {
-        setup_data.object = create_operator(o_content[0], o_content[1], o_content[2], o_content[3], o_content[4], base_uri, row);
+        setup_data.object = create_operator(o_content_copy[0], o_content_copy[1], o_content_copy[2], o_content_copy[3], o_content_copy[4], base_uri, row);
       }
       // GRAPH
-      if (g_content[1] == "preformatted") {
-        setup_data.graph = g_content[0];
+      if (g_content_copy[1] == "preformatted") {
+        setup_data.graph = g_content_copy[0];
       } else {
-        setup_data.graph = create_operator(g_content[0], g_content[1], g_content[2], "", "", base_uri, row);
+        setup_data.graph = create_operator(g_content_copy[0], g_content_copy[1], g_content_copy[2], "", "", base_uri, row);
       }
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
@@ -395,8 +417,16 @@ int execute_simple(const std::string& input_file_name,
     projected_header.push_back(header[i]);
   }
 
+  int line_count = 0;
   // Iterate over file line by line
   while (std::getline(*file, setup_data.line)) {
+    // Copy content
+    std::vector<std::string> s_content_copy = s_content;
+    std::vector<std::string> p_content_copy = p_content;
+    std::vector<std::string> o_content_copy = o_content;
+
+    line_count++;
+
     setup_data.split_line = split_csv_line(setup_data.line, ',');
 
     ////// PROJECTION //////
@@ -429,25 +459,37 @@ int execute_simple(const std::string& input_file_name,
       row[projected_header[i]] = setup_data.projected_row[i];
     }
 
+    ////// FUNCTION EXEC //////
+    if (s_content_copy[1] == "function") {
+      s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
+      s_content_copy[1] = "constant";
+    } else if (p_content_copy[1] == "function") {
+      p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
+      p_content_copy[1] = "constant";
+    } else if (o_content[1] == "function") {
+      o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
+      o_content_copy[1] = "constant";
+    }
+
     ////// CREATE //////
     try {
       // SUBJECT
-      if (s_content[1] == "preformatted") {
-        setup_data.subject = s_content[0];
+      if (s_content_copy[1] == "preformatted") {
+        setup_data.subject = s_content_copy[0];
       } else {
-        setup_data.subject = create_operator(s_content[0], s_content[1], s_content[2], "", "", base_uri, row);
+        setup_data.subject = create_operator(s_content_copy[0], s_content_copy[1], s_content_copy[2], "", "", base_uri, row);
       }
       // PREDICATE
-      if (p_content[1] == "preformatted") {
-        setup_data.predicate = p_content[0];
+      if (p_content_copy[1] == "preformatted") {
+        setup_data.predicate = p_content_copy[0];
       } else {
-        setup_data.predicate = create_operator(p_content[0], p_content[1], p_content[2], "", "", base_uri, row);
+        setup_data.predicate = create_operator(p_content_copy[0], p_content_copy[1], p_content_copy[2], "", "", base_uri, row);
       }
       // OBJECT
-      if (o_content[1] == "preformatted") {
-        setup_data.object = o_content[0];
+      if (o_content_copy[1] == "preformatted") {
+        setup_data.object = o_content_copy[0];
       } else {
-        setup_data.object = create_operator(o_content[0], o_content[1], o_content[2], o_content[3], o_content[4], base_uri, row);
+        setup_data.object = create_operator(o_content_copy[0], o_content_copy[1], o_content_copy[2], o_content_copy[3], o_content_copy[4], base_uri, row);
       }
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
