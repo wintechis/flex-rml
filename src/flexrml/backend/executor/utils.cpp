@@ -94,7 +94,26 @@ std::string generate_random_string(std::size_t length) {
   return result;
 }
 
-std::string handle_function_call(std::string function_signature, int line_count, std::string realation_name) {
+std::string generate_deterministic_string(std::mt19937_64& rng, const std::size_t length) {
+    static const std::string chars =
+        "abcdefghijklmnopqrstuvwxyz"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "0123456789";
+
+    std::uniform_int_distribution<std::size_t> dist(0, chars.size() - 1);
+
+    std::string s;
+    s.reserve(length);
+
+    for (std::size_t i = 0; i < length; ++i) {
+        s += chars[dist(rng)];
+    }
+
+    return s;
+}
+
+
+std::string handle_function_call(const std::string function_signature, std::mt19937_64& rng) {
   // 1. Split command
   const std::vector<std::string> commands = split_by_substring(function_signature, ";;");
   const std::string function_type = commands[0];
@@ -110,7 +129,7 @@ std::string handle_function_call(std::string function_signature, int line_count,
   } else if (function_type == "==FUNC==GENERATE_IRI") {
     // Assume only one input
     const std::string base_iri = commands[3];
-    std::string generated_uri = base_iri + transform_string(std::to_string(line_count) + realation_name);
+    std::string generated_uri = base_iri + generate_deterministic_string(rng, 15);
 
     return generated_uri;
   } else {
