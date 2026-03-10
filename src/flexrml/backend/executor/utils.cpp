@@ -16,111 +16,6 @@
 #include <vector>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////// RML Functions
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-std::unordered_map<std::string, std::string> uri_map;
-
-static std::string transform_string(const std::string& input) {
-  static constexpr std::string_view digit_map[10] = {
-      "A01f", "B08f", "C997", "D745", "EEAF",
-      "FFNb", "GGbf", "HHQf", "IIDv", "JJ9W"};
-
-  std::string result;
-  result.reserve(input.size() * 2);
-
-  for (unsigned char ch : input) {
-    if (ch >= 'a' && ch <= 'z') {
-      result += static_cast<char>((ch - 'a' + 1) % 26 + 'a');
-    } else if (ch >= 'A' && ch <= 'Z') {
-      result += static_cast<char>((ch - 'A' + 1) % 26 + 'A');
-    } else if (ch >= '0' && ch <= '9') {
-      result += digit_map[ch - '0'];
-    } else {
-      result += '_';
-    }
-  }
-
-  return result;
-}
-
-std::string get_local_now_iso8601() {
-  using namespace std::chrono;
-  using centiseconds = duration<long long, std::centi>;
-  auto now = floor<centiseconds>(system_clock::now());
-  zoned_time<centiseconds> zt{current_zone(), now};
-
-  return std::format("{:%FT%T%Ez}", zt);
-}
-
-std::string get_current_date_time_string() {
-  using namespace std::chrono;
-
-  const auto now = system_clock::now();
-  const auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
-
-  const std::time_t tt = system_clock::to_time_t(now);
-  std::tm tm{};
-
-#ifdef _WIN32
-  localtime_s(&tm, &tt);
-#else
-  localtime_r(&tt, &tm);
-#endif
-
-  std::ostringstream oss;
-  oss << std::put_time(&tm, "%Y%m%d%H%M%S")
-      << std::setw(3) << std::setfill('0') << ms.count();
-
-  return oss.str();
-}
-
-std::string generate_random_string(std::size_t length) {
-  static const std::string chars =
-      "0123456789"
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-      "abcdefghijklmnopqrstuvwxyz";
-
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> dist(0, chars.size() - 1);
-
-  std::string result;
-  result.reserve(length);
-
-  for (std::size_t i = 0; i < length; ++i) {
-    result += chars[dist(gen)];
-  }
-
-  return result;
-}
-
-std::string handle_function_call(std::string function_signature, int line_count, std::string realation_name) {
-  // 1. Split command
-  const std::vector<std::string> commands = split_by_substring(function_signature, ";;");
-  const std::string function_type = commands[0];
-
-  if (function_type == "==FUNC==DATE_NOW") {
-    // Handle date time function call.
-    const std::string time = get_local_now_iso8601();
-    return time;
-  } else if (function_type == "==FUNC==RANDOM") {
-    constexpr const std::size_t length = 40;
-    std::string random_string = generate_random_string(length);
-    return random_string;
-  } else if (function_type == "==FUNC==GENERATE_IRI") {
-    // Assume only one input
-    const std::string base_iri = commands[3];
-    std::string generated_uri = base_iri + transform_string(std::to_string(line_count) + realation_name);
-
-    return generated_uri;
-  } else {
-    // No funciton found
-    std::cout << "Error: Requested function not found. Got: '" << function_signature << "'" << std::endl;
-    exit(1);
-  }
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 std::vector<std::string> split_by_substring(const std::string& str, const std::string& delimiter) {
   std::vector<std::string> result;
@@ -231,6 +126,121 @@ std::string clean_blank_node(std::string_view raw) {
     out = "bnode" + std::to_string(id);
   }
   return out;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////// RML Functions
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+std::unordered_map<std::string, std::string> uri_map;
+
+static std::string transform_string(const std::string& input) {
+  static constexpr std::string_view digit_map[10] = {
+      "A01f", "B08f", "C997", "D745", "EEAF",
+      "FFNb", "GGbf", "HHQf", "IIDv", "JJ9W"};
+
+  std::string result;
+  result.reserve(input.size() * 2);
+
+  for (unsigned char ch : input) {
+    if (ch >= 'a' && ch <= 'z') {
+      result += static_cast<char>((ch - 'a' + 1) % 26 + 'a');
+    } else if (ch >= 'A' && ch <= 'Z') {
+      result += static_cast<char>((ch - 'A' + 1) % 26 + 'A');
+    } else if (ch >= '0' && ch <= '9') {
+      result += digit_map[ch - '0'];
+    } else {
+      result += '_';
+    }
+  }
+
+  return result;
+}
+
+std::string get_local_now_iso8601() {
+  using namespace std::chrono;
+  using centiseconds = duration<long long, std::centi>;
+  auto now = floor<centiseconds>(system_clock::now());
+  zoned_time<centiseconds> zt{current_zone(), now};
+
+  return std::format("{:%FT%T%Ez}", zt);
+}
+
+std::string get_current_date_time_string() {
+  using namespace std::chrono;
+
+  const auto now = system_clock::now();
+  const auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+
+  const std::time_t tt = system_clock::to_time_t(now);
+  std::tm tm{};
+
+#ifdef _WIN32
+  localtime_s(&tm, &tt);
+#else
+  localtime_r(&tt, &tm);
+#endif
+
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y%m%d%H%M%S")
+      << std::setw(3) << std::setfill('0') << ms.count();
+
+  return oss.str();
+}
+
+std::string generate_random_string(std::size_t length) {
+  static const std::string chars =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
+
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> dist(0, chars.size() - 1);
+
+  std::string result;
+  result.reserve(length);
+
+  for (std::size_t i = 0; i < length; ++i) {
+    result += chars[dist(gen)];
+  }
+
+  return result;
+}
+
+std::string handle_function_call(std::string function_signature, int line_count, std::string realation_name) {
+  // 1. Split command
+  const std::vector<std::string> commands = split_by_substring(function_signature, ";;");
+  const std::string function_type = commands[0];
+
+  if (function_type == "==FUNC==DATE_NOW") {
+    // Handle date time function call.
+    const std::string time = get_local_now_iso8601();
+    return time;
+  } else if (function_type == "==FUNC==RANDOM") {
+    constexpr const std::size_t length = 40;
+    std::string random_string = generate_random_string(length);
+    return random_string;
+  } else if (function_type == "==FUNC==GENERATE_IRI") {
+    // Assume only one input
+    std::string base_iri = commands[3];
+
+    const std::vector<std::string> split_data = split_by_substring(base_iri, "?-??");
+    std::string base_uri = split_data[0];
+    std::string index = split_data[1];
+
+    std::string generated_uri = uri_map[index];
+
+    if (generated_uri == "") {
+      generated_uri = base_uri + transform_string(std::to_string(line_count) + realation_name);
+      uri_map[index] = generated_uri;
+    } 
+
+    return generated_uri;
+  } else {
+    // No funciton found
+    std::cout << "Error: Requested function not found. Got: '" << function_signature << "'" << std::endl;
+    exit(1);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

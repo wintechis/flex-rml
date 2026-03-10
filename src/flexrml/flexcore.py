@@ -236,6 +236,94 @@ def run_mapping(mapping_config):
         if mapping_config.show_output:
             print("RML loading: ", time.time()-load_rml_start_time)
 
+        ###########################################################
+
+        def get_object(s, p, lines):
+            result = []
+
+            for line in lines:
+                if line == "":
+                    continue
+
+                triple = line.split("|||")
+
+                if triple[0] == s and triple[1] == p:
+                    result.append(triple[2])
+
+            return result
+        
+        def get_subject(p, o, lines):
+            result = []
+
+            for line in lines:
+                if line == "":
+                    continue
+
+                triple = line.split("|||")
+
+                if triple[1] == p and triple[2] == o:
+                    result.append(triple[0])
+
+            return result
+        
+        def set_object(entry, lines):
+            s = entry[0]
+            p = entry[1]
+            new_o = entry[2]
+            for i, line in enumerate(lines):
+                if line == "":
+                    continue
+
+                triple = line.split("|||")
+
+                if triple[0] == s and triple[1] == p:
+                    triple[2] = new_o
+                    lines[i] = "|||".join(triple)
+                    return True  # updated first match
+
+            return False  # nothing found
+                    
+
+
+
+        lines = rml_str.split("\n")
+        for line in lines:
+            print(line)
+
+        to_add = []
+
+        function_nodes = get_subject("http://w3id.org/rml/function", "https://w3id.org/imec/idlab/function#generateUniqueIRI", lines)
+
+        cnt = 0
+        for function_node in function_nodes:
+            input_nodes = get_object(function_node, "http://w3id.org/rml/input", lines)
+            print("input_nodes", input_nodes)
+            input_node = input_nodes[0]
+            
+            inputValueMap_nodes = get_object(input_node, "http://w3id.org/rml/inputValueMap", lines)
+            print("inputValueMap_nodes", inputValueMap_nodes)
+            inputValueMap_node = inputValueMap_nodes[0]
+
+            uris = get_object(inputValueMap_node, "http://w3id.org/rml/constant", lines)
+            print("uris", uris)
+            uri = uris[0]
+            
+            # Get TS
+            ts_ms = str(int(time.time() * 1000))
+
+            new_object = uri + ts_ms + "/" "?-??" + str(cnt) + "?-??"
+            cnt += 1
+            to_add.append([inputValueMap_node, "http://w3id.org/rml/constant", new_object])
+
+        for entry in to_add:
+            set_object(entry, lines)
+
+        rml_str = "\n".join(lines)
+
+
+        ###########################################################
+
+
         ### STEP 2: Rewrite & Normalize ###
         normalization_start_time = time.time()
         normalized_graphs_arr = normalize_mapping(rml_str, mapping_config)
@@ -257,6 +345,8 @@ def run_mapping(mapping_config):
         ra_str = to_ra_string(ra_expressions)
         if mapping_config.show_output:
             print("Converting to RA: ", time.time()-convert_to_ra_start_time)
+
+        print(ra_str)
 
         ### Check if JSON and remove "$"
         ra_str = ra_str.replace("$.","")  
