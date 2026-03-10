@@ -10,7 +10,6 @@
 #include <map>
 #include <mutex>
 #include <queue>
-#include <random>
 #include <set>
 #include <sstream>
 #include <string>
@@ -104,7 +103,7 @@ std::vector<int> get_attribute_index(std::istream& file, const std::vector<std::
   std::vector<int> projected_indices;
 
   for (const auto& attr : projected_attributes) {
-    if (attr == "") {
+    if (attr == ""){
       continue;
     }
 
@@ -144,8 +143,7 @@ int execute_simple_with_graph(const std::string& input_file_name,
                               const std::vector<std::string>& p_content,
                               const std::vector<std::string>& o_content,
                               const std::vector<std::string>& g_content,
-                              const std::unordered_map<std::string, std::string>& data_map,
-                              std::mt19937_64& rng) {
+                              const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   SetupData setup_data = initialize_setup(output_file_name);
 
@@ -212,19 +210,19 @@ int execute_simple_with_graph(const std::string& input_file_name,
 
     ////// FUNCTION EXEC //////
     if (s_content_copy[1] == "function") {
-      s_content_copy[0] = handle_function_call(s_content_copy[0], rng);
+      s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    }
+    } 
     if (p_content_copy[1] == "function") {
-      p_content_copy[0] = handle_function_call(p_content_copy[0], rng);
+      p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    }
+    } 
     if (o_content_copy[1] == "function") {
-      o_content_copy[0] = handle_function_call(o_content_copy[0], rng);
+      o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
-    }
+    } 
     if (g_content_copy[1] == "function") {
-      g_content_copy[0] = handle_function_call(g_content_copy[0], rng);
+      g_content_copy[0] = handle_function_call(g_content_copy[0], line_count, input_file_name);
       g_content_copy[1] = "constant";
     }
 
@@ -405,8 +403,7 @@ int execute_simple(const std::string& input_file_name,
                    const std::vector<std::string>& s_content,
                    const std::vector<std::string>& p_content,
                    const std::vector<std::string>& o_content,
-                   const std::unordered_map<std::string, std::string>& data_map,
-                   std::mt19937_64& rng) {
+                   const std::unordered_map<std::string, std::string>& data_map) {
   ///// Setup /////
   SetupData setup_data = initialize_setup(output_file_name);
 
@@ -472,15 +469,15 @@ int execute_simple(const std::string& input_file_name,
 
     ////// FUNCTION EXEC //////
     if (s_content_copy[1] == "function") {
-      s_content_copy[0] = handle_function_call(s_content_copy[0], rng);
+      s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    }
+    } 
     if (p_content_copy[1] == "function") {
-      p_content_copy[0] = handle_function_call(p_content_copy[0], rng);
+      p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    }
+    } 
     if (o_content[1] == "function") {
-      o_content_copy[0] = handle_function_call(o_content_copy[0], rng);
+      o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
     }
 
@@ -541,8 +538,7 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
                                                          const std::vector<std::string>& p_content,
                                                          const std::vector<std::string>& o_content,
                                                          std::unordered_set<std::string>& unique_triple,
-                                                         const std::unordered_map<std::string, std::string>& data_map,
-                                                         std::mt19937_64& rng) {
+                                                         const std::unordered_map<std::string, std::string>& data_map) {
   ///// Setup /////
   SetupData setup_data = initialize_setup_dependent(output_file_name);
 
@@ -567,11 +563,14 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
   }
 
   // Iterate over file line by line
+  int line_count = 0;
   while (std::getline(*file, setup_data.line)) {
     // create temp content
     std::vector<std::string> s_content_copy = s_content;
     std::vector<std::string> p_content_copy = p_content;
     std::vector<std::string> o_content_copy = o_content;
+
+    line_count++;
 
     setup_data.split_line = split_csv_line(setup_data.line, ',');
 
@@ -607,15 +606,15 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
 
     ////// FUNCTION EXEC //////
     if (s_content_copy[1] == "function") {
-      s_content_copy[0] = handle_function_call(s_content_copy[0], rng);
+      s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    }
+    } 
     if (p_content_copy[1] == "function") {
-      p_content_copy[0] = handle_function_call(p_content_copy[0], rng);
+      p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    }
+    } 
     if (o_content_copy[1] == "function") {
-      o_content_copy[0] = handle_function_call(o_content_copy[0], rng);
+      o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
     }
 
@@ -713,10 +712,6 @@ ParsedContent parse_information(const std::string& information) {
 
 size_t standalone_simple_mapping(const std::string& information, const std::unordered_map<std::string, std::string>& data_map) {
   ParsedContent info = parse_information(information);
-
-  // Init RNG Generator
-  std::mt19937_64 rng = std::mt19937_64(g_seed64);
-
   ////////////////////////////////////////////////////////////
   // Execute
   try {
@@ -731,7 +726,7 @@ size_t standalone_simple_mapping(const std::string& information, const std::unor
         info.generated_triple = 1;
       } else {
         info.generated_triple = execute_simple(info.input_file_name, info.output_file_name, info.base_uri,
-                                               info.projected_attributes, info.s_content, info.p_content, info.o_content, data_map, rng);
+                                               info.projected_attributes, info.s_content, info.p_content, info.o_content, data_map);
       }
     } else {
       // Handle with graph //
@@ -744,7 +739,7 @@ size_t standalone_simple_mapping(const std::string& information, const std::unor
       } else {
         // If not constant handle normal
         info.generated_triple = execute_simple_with_graph(info.input_file_name, info.output_file_name, info.base_uri,
-                                                          info.projected_attributes, info.s_content, info.p_content, info.o_content, info.g_content, data_map, rng);
+                                                          info.projected_attributes, info.s_content, info.p_content, info.o_content, info.g_content, data_map);
       }
     }
   } catch (const std::runtime_error& e) {
@@ -760,15 +755,9 @@ size_t standalone_simple_mapping(const std::string& information, const std::unor
   return info.generated_triple;
 }
 
-std::unordered_set<std::string> dependent_simple_mapping(const std::string& information, 
-                                                         std::unordered_set<std::string>& unique_triple, 
-                                                         const std::unordered_map<std::string, 
-                                                         std::string>& data_map) {
+std::unordered_set<std::string> dependent_simple_mapping(const std::string& information, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
   // Extract relevant parts
   ParsedContent info = parse_information(information);
-
-  // Init RNG Generator
-  std::mt19937_64 rng = std::mt19937_64(g_seed64);
 
   ////////////////////////////////////////////////////////////
   // Execute
@@ -787,7 +776,7 @@ std::unordered_set<std::string> dependent_simple_mapping(const std::string& info
         info.generated_triple = 1;
       } else {
         unique_triple = execute_simple_dependent(info.input_file_name, info.output_file_name, info.base_uri, info.projected_attributes,
-                                                 info.s_content, info.p_content, info.o_content, unique_triple, data_map, rng);
+                                                 info.s_content, info.p_content, info.o_content, unique_triple, data_map);
       }
     } else {
       // Handle with graph

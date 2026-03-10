@@ -5,7 +5,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <random>
 
 #include "definitions.h"
 #include "xxhash.h"
@@ -49,4 +48,4 @@ std::string create_operator(const std::string& term_map,
 std::string get_local_now_iso8601();
 std::string get_current_date_time_string();
 std::string generate_random_string(std::size_t length);
-std::string handle_function_call(const std::string function_signature, std::mt19937_64& rng);
+std::string handle_function_call(std::string function_signature, int line_count, std::string realation_name);

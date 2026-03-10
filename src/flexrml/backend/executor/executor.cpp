@@ -10,7 +10,6 @@
 #include <unordered_set>
 #include <vector>
 #include <algorithm>
-#include <random>
 
 #include "complex_executor.h"
 #include "definitions.h"
@@ -120,7 +119,7 @@ const char *execute_physical_plans(const char* information, const char* mode,
   if (continue_error_str == "true") {
     continue_on_error = true;
   }
-
+  
   std::string threading_enabled(mode);
   std::string info(information);
   std::string ouput_file(output_file_path);
