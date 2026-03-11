@@ -183,8 +183,11 @@ const char *execute_physical_plans(const char* information, const char* mode,
   if (threading_enabled == "false") {
     /// SINGLE THREADED EXECUTION ///
     for (const auto& partition : partitions) {
-      // CASE 1: Partition contains only one element and do not keep in memory
-      if (partition.size() == 1 && !keep_in_memory) {
+
+      bool has_function_call = (partition[0].find("==FUNC==") != std::string::npos);
+
+      // CASE 1: Partition contains only one element and do not keep in memory and no function call
+      if (partition.size() == 1 && !keep_in_memory && !has_function_call) {
         std::string plan_str = partition[0];
         int plan_size = split_by_substring(plan_str, "\n").size();
         if (plan_size == 5) {
@@ -240,9 +243,12 @@ const char *execute_physical_plans(const char* information, const char* mode,
 
     // Enqueue each partition as a task.
     for (const auto& partition : partitions) {
-      pool.enqueue([partition, &nr_generate_triple, &output_mutex, &ouput_file, keep_in_memory, &output_data_str, &data_map]() {
+
+      bool has_function_call = (partition[0].find("==FUNC==") != std::string::npos);
+
+      pool.enqueue([partition, &nr_generate_triple, &output_mutex, &ouput_file, keep_in_memory, &output_data_str, &data_map, &has_function_call]() {
         // CASE 1: Partition contains only one element.
-        if (partition.size() == 1 && !keep_in_memory) {
+        if (partition.size() == 1 && !keep_in_memory && !has_function_call) {
           std::string plan_str = partition[0];
           int plan_size = split_by_substring(plan_str, "\n").size();
           if (plan_size == 5) {

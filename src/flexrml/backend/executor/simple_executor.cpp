@@ -103,7 +103,7 @@ std::vector<int> get_attribute_index(std::istream& file, const std::vector<std::
   std::vector<int> projected_indices;
 
   for (const auto& attr : projected_attributes) {
-    if (attr == ""){
+    if (attr == "") {
       continue;
     }
 
@@ -212,15 +212,15 @@ int execute_simple_with_graph(const std::string& input_file_name,
     if (s_content_copy[1] == "function") {
       s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    } 
+    }
     if (p_content_copy[1] == "function") {
       p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    } 
+    }
     if (o_content_copy[1] == "function") {
       o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
-    } 
+    }
     if (g_content_copy[1] == "function") {
       g_content_copy[0] = handle_function_call(g_content_copy[0], line_count, input_file_name);
       g_content_copy[1] = "constant";
@@ -315,6 +315,7 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
   for (int i : projected_indices) {
     projected_header.push_back(header[i]);
   }
+
 
   // Iterate over file line by line
   while (std::getline(*file, setup_data.line)) {
@@ -471,11 +472,11 @@ int execute_simple(const std::string& input_file_name,
     if (s_content_copy[1] == "function") {
       s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    } 
+    }
     if (p_content_copy[1] == "function") {
       p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    } 
+    }
     if (o_content[1] == "function") {
       o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";
@@ -564,6 +565,10 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
 
   // Iterate over file line by line
   int line_count = 0;
+
+  // Check if funciton is needed
+  bool function_called = (s_content[1] == "function") || (p_content[1] == "function") || (o_content[1] == "function");
+
   while (std::getline(*file, setup_data.line)) {
     // create temp content
     std::vector<std::string> s_content_copy = s_content;
@@ -588,14 +593,17 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
         break;
       }
     }
-    if (setup_data.skip) {
+
+    if (setup_data.skip && !function_called) {
       continue;
     }
 
-    // Eliminate duplicates
-    setup_data.hash = combinedHash(setup_data.projected_row);
-    if (!(setup_data.unique_hashes.insert(setup_data.hash).second)) {
-      continue;
+    if (!function_called) {
+      // Eliminate duplicates
+      setup_data.hash = combinedHash(setup_data.projected_row);
+      if (!(setup_data.unique_hashes.insert(setup_data.hash).second)) {
+        continue;
+      }
     }
 
     // Create map
@@ -608,11 +616,11 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
     if (s_content_copy[1] == "function") {
       s_content_copy[0] = handle_function_call(s_content_copy[0], line_count, input_file_name);
       s_content_copy[1] = "constant";
-    } 
+    }
     if (p_content_copy[1] == "function") {
       p_content_copy[0] = handle_function_call(p_content_copy[0], line_count, input_file_name);
       p_content_copy[1] = "constant";
-    } 
+    }
     if (o_content_copy[1] == "function") {
       o_content_copy[0] = handle_function_call(o_content_copy[0], line_count, input_file_name);
       o_content_copy[1] = "constant";

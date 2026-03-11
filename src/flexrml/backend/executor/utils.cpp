@@ -222,18 +222,11 @@ std::string handle_function_call(std::string function_signature, int line_count,
     return random_string;
   } else if (function_type == "==FUNC==GENERATE_IRI") {
     // Assume only one input
-    std::string base_iri = commands[3];
+    const std::string base_iri = commands[3];
 
-    const std::vector<std::string> split_data = split_by_substring(base_iri, "?-??");
-    std::string base_uri = split_data[0];
-    std::string index = split_data[1];
+    std::string to_add = transform_string(std::to_string(line_count) + realation_name);
 
-    std::string generated_uri = uri_map[index];
-
-    if (generated_uri == "") {
-      generated_uri = base_uri + transform_string(std::to_string(line_count) + realation_name);
-      uri_map[index] = generated_uri;
-    } 
+    const std::string generated_uri = base_iri + to_add;
 
     return generated_uri;
   } else {

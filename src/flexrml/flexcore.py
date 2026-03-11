@@ -237,6 +237,8 @@ def run_mapping(mapping_config):
             print("RML loading: ", time.time()-load_rml_start_time)
 
         ###########################################################
+        ## TODO: Move to cpp
+        ## Code to handle unique function names
 
         def get_object(s, p, lines):
             result = []
@@ -285,41 +287,43 @@ def run_mapping(mapping_config):
                     
 
 
-
         lines = rml_str.split("\n")
-        for line in lines:
-            print(line)
+        #for line in lines:
+            #print(line)
 
         to_add = []
 
         function_nodes = get_subject("http://w3id.org/rml/function", "https://w3id.org/imec/idlab/function#generateUniqueIRI", lines)
 
-        cnt = 0
+        ts_ms = str(int(time.time() * 1000)) # Get TS as base for URIs
+        cnt = 0 # For identifing unique URIs
+
         for function_node in function_nodes:
             input_nodes = get_object(function_node, "http://w3id.org/rml/input", lines)
-            print("input_nodes", input_nodes)
+            #print("input_nodes", input_nodes)
             input_node = input_nodes[0]
             
             inputValueMap_nodes = get_object(input_node, "http://w3id.org/rml/inputValueMap", lines)
-            print("inputValueMap_nodes", inputValueMap_nodes)
+            #print("inputValueMap_nodes", inputValueMap_nodes)
             inputValueMap_node = inputValueMap_nodes[0]
 
             uris = get_object(inputValueMap_node, "http://w3id.org/rml/constant", lines)
-            print("uris", uris)
+            #print("uris", uris)
             uri = uris[0]
             
-            # Get TS
-            ts_ms = str(int(time.time() * 1000))
+            # Add "/" if not available
+            if uri[-1] != "/":
+                uri += "/"
 
-            new_object = uri + ts_ms + "/" "?-??" + str(cnt) + "?-??"
+            new_object = uri + ts_ms + str(cnt)
             cnt += 1
             to_add.append([inputValueMap_node, "http://w3id.org/rml/constant", new_object])
 
+        # Add new URIs to lines
         for entry in to_add:
             set_object(entry, lines)
 
         rml_str = "\n".join(lines)
-
 
         ###########################################################
 
@@ -346,7 +350,7 @@ def run_mapping(mapping_config):
         if mapping_config.show_output:
             print("Converting to RA: ", time.time()-convert_to_ra_start_time)
 
-        print(ra_str)
+        #print(ra_str)
 
         ### Check if JSON and remove "$"
         ra_str = ra_str.replace("$.","")  
