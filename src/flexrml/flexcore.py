@@ -90,7 +90,12 @@ def load_rml(source, config):
         config.lib_rml_parser = config.load_rml_parser()
 
     try:
-        if isinstance(source, (str, os.PathLike)) and Path(source).is_file():
+        try:
+            is_existing_file = isinstance(source, (str, os.PathLike)) and Path(source).is_file()
+        except OSError:
+            is_existing_file = False
+
+        if is_existing_file:
             with open(source, "r", encoding="utf-8") as f:
                 raw_mapping = f.read()
         else:
