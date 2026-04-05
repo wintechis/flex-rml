@@ -404,10 +404,18 @@ def phys_plan_to_str(plan):
     plan_str = plan_str
     return plan_str
 
+def flatten_dict(d, parent_key="", sep="."):
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
-def preprocess_json(in_relation, json_path_expr_dict, data = None):
-    if data == None:
-        # If no data is provided load it
+def preprocess_json(in_relation, json_path_expr_dict, data=None):
+    if data is None:
         with open(in_relation, 'r', encoding='utf-8') as f:
             data = f.read()
 
@@ -419,34 +427,24 @@ def preprocess_json(in_relation, json_path_expr_dict, data = None):
     matches = expr.find(data)
     rows = [m.value for m in matches]
 
-    # polars
-    #df = pl.DataFrame(rows)
-    #csv_str = df.write_csv(None)
-    #return csv_str
-
-    # without polars
-    # Handle empty result early
     if not rows:
         return ""
 
-    # If rows are dicts, use union of keys as columns
     if isinstance(rows[0], dict):
-        fieldnames = sorted({k for r in rows if isinstance(r, dict) for k in r.keys()})
+        flat_rows = [flatten_dict(r) for r in rows]
+        fieldnames = sorted({k for r in flat_rows for k in r.keys()})
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(flat_rows)
         return buf.getvalue()
 
-    # If rows are lists/tuples/scalars, write a single-column CSV
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["value"])
     for r in rows:
         writer.writerow([r])
     return buf.getvalue()
-
-    
 
 
 def start_conversion(ra_expressions, config = None):
@@ -506,6 +504,7 @@ def start_conversion(ra_expressions, config = None):
             
             # Case: Transformation needed.
             csv_str = preprocess_json(in_relation, iterators, in_memory_data_value)
+
             loaded_relations.add(in_relation)
             in_memory_data += f"|||===|||{in_relation}===|||==={csv_str}"
 

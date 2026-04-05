@@ -73,7 +73,6 @@ void validate_rml(const std::vector<NTriple> &rml_triple) {
 
   // Check if subject map is constant and a term map type is given
   results = find_matching_subjects(rml_triple, "http://w3id.org/rml/constant", "");
-
   for (const auto &result : results) {
     std::vector<std::string> term_types = find_matching_objects(rml_triple, result, "http://w3id.org/rml/termType");
     if (term_types.size() != 0) {

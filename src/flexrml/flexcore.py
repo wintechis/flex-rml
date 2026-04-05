@@ -289,13 +289,105 @@ def run_mapping(mapping_config):
                     return True  # updated first match
 
             return False  # nothing found
-                    
+        
 
+        def get_all_predicates_objects(subject, lines):
+            """Return all outgoing (predicate, object) pairs for a subject."""
+            result = []
+            for line in lines:
+                if line == "":
+                    continue
+                s, p, o = line.split("|||")
+                if s == subject:
+                    result.append((p, o))
+            return result
+        
+        def new_bnode(lines, prefix="b"):
+            """Generate a fresh blank-node id like b12, b13, ..."""
+            used = set()
+            for line in lines:
+                if line == "":
+                    continue
+                s, p, o = line.split("|||")
+                if s.startswith(prefix):
+                    used.add(s)
+                if o.startswith(prefix):
+                    used.add(o)
+
+            max_id = 0
+            for node in used:
+                suffix = node[len(prefix):]
+                if suffix.isdigit():
+                    max_id = max(max_id, int(suffix))
+
+            return f"{prefix}{max_id + 1}"
+        
+        def replace_blank_subjectmap_with_function(lines, constant_value="dt3fav"):
+            """
+            Find:
+                rml:subjectMap [ rml:termType rml:BlankNode ]
+            where the subjectMap blank node has nothing else inside it,
+            and add the functionExecution structure.
+            """
+            
+            RML = "http://w3id.org/rml/"
+
+            P_SUBJECT_MAP = RML + "subjectMap"
+            P_TERM_TYPE = RML + "termType"
+            O_BLANK_NODE = RML + "BlankNode"
+
+            P_FUNCTION_EXECUTION = RML + "functionExecution"
+            P_FUNCTION = RML + "function"
+            P_INPUT = RML + "input"
+            P_INPUT_VALUE_MAP = RML + "inputValueMap"
+            P_CONSTANT = RML + "constant"
+
+            FN_GENERATE_UNIQUE_IRI = "https://w3id.org/imec/idlab/function#generateUniqueIRI"
+           
+            changed = False
+
+            # find all subjectMap objects
+            subject_maps = []
+            for line in lines:
+                if line == "":
+                    continue
+                s, p, o = line.split("|||")
+                if p == P_SUBJECT_MAP:
+                    subject_maps.append(o)
+
+            for sm in subject_maps:
+                outgoing = get_all_predicates_objects(sm, lines)
+
+                # exact match: only one outgoing triple, and it is termType BlankNode
+                if len(outgoing) == 1 and outgoing[0] == (P_TERM_TYPE, O_BLANK_NODE):
+                    # avoid double insertion
+                    if get_object(sm, P_FUNCTION_EXECUTION, lines):
+                        continue
+
+                    b_fx = new_bnode(lines)
+                    b_input = new_bnode(lines)
+                    b_ivm = new_bnode(lines)
+
+                    lines.append(f"{sm}|||{P_FUNCTION_EXECUTION}|||{b_fx}")
+                    lines.append(f"{b_fx}|||{P_FUNCTION}|||{FN_GENERATE_UNIQUE_IRI}")
+                    lines.append(f"{b_fx}|||{P_INPUT}|||{b_input}")
+                    lines.append(f"{b_input}|||{P_INPUT_VALUE_MAP}|||{b_ivm}")
+                    lines.append(f"{b_ivm}|||{P_CONSTANT}|||{constant_value}")
+
+                    changed = True
+
+            return changed, lines
 
         lines = rml_str.split("\n")
         #for line in lines:
             #print(line)
 
+        #############################################################################
+        # Replace fixed rml:termType rml:BlankNode with function call.
+        changed, lines = replace_blank_subjectmap_with_function(lines, constant_value="dt3fav")
+        
+        #############################################################################
+        # Handle funciton calls
         to_add = []
 
         function_nodes = get_subject("http://w3id.org/rml/function", "https://w3id.org/imec/idlab/function#generateUniqueIRI", lines)
