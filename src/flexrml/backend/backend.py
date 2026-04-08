@@ -100,6 +100,16 @@ def pretty_print_nt(rdf_str):
 
 ###############################################################################
 
+def _split_projection_segment(segment: str) -> tuple[str, str]:
+    try:
+        arguments, source = segment.rsplit("](", 1)
+    except ValueError:
+        print("Could not parse projection segment. Got:")
+        print(segment)
+        sys.exit(1)
+
+    return arguments.strip(), source.strip().rstrip(")").strip()
+
 def parse_ra(ra_expressions):
     new_ra_expressions = []
 
@@ -110,8 +120,8 @@ def parse_ra(ra_expressions):
         # Simple mapping has 2 projections (pi)
         if pi_count == 2:
             # Handle projection
-            source = ra_expression.split("pi[")[-1].split("]")[1].replace("(","").replace("))", "")
-            arguments = ra_expression.split("pi[")[-1].split("]")[0].replace(",","===")
+            projection_arguments, source = _split_projection_segment(ra_expression.split("pi[")[-1])
+            arguments = projection_arguments.replace(",","===")
             projection_node = {"type": "projection", "in_relation": source, "arguments": arguments}
             # Handle creation
             create_count = ra_expression.split("pi[")[1].count("create(")
@@ -137,12 +147,12 @@ def parse_ra(ra_expressions):
                 sys.exit(1)
 
         elif pi_count == 3:
-            source1 = ra_expression.split("pi[")[2].split("bowtie")[0].split("](")[1].replace("))","").strip()
-            arguments1 = ra_expression.split("pi[")[2].split("bowtie")[0].split("](")[0].replace(",", "===").strip()
+            projection_arguments1, source1 = _split_projection_segment(ra_expression.split("pi[")[2].split("bowtie")[0])
+            arguments1 = projection_arguments1.replace(",", "===").strip()
             projection_node1 = {"type": "projection", "in_relation": source1, "arguments": arguments1, "name": "parent"}
 
-            source2 = ra_expression.split("pi[")[-1].split("](")[1].replace(")))","").strip()
-            arguments2 = ra_expression.split("pi[")[-1].split("](")[0].replace(",", "===").strip()
+            projection_arguments2, source2 = _split_projection_segment(ra_expression.split("pi[")[-1])
+            arguments2 = projection_arguments2.replace(",", "===").strip()
             projection_node2 = {"type": "projection", "in_relation": source2, "arguments": arguments2, "name": "child"}
 
             #new_ra_expressions.append([{"type": "projection", "in_relation": in_relation_left, "arguments": right_args + "==="+ left_args,},
@@ -414,6 +424,30 @@ def flatten_dict(d, parent_key="", sep="."):
             items.append((new_key, v))
     return dict(items)
 
+def expand_json_row(value, parent_key="", sep="."):
+    if isinstance(value, dict):
+        rows = [{}]
+        for key, nested_value in value.items():
+            nested_key = f"{parent_key}{sep}{key}" if parent_key else key
+            nested_rows = expand_json_row(nested_value, nested_key, sep=sep)
+            rows = [{**base_row, **nested_row} for base_row in rows for nested_row in nested_rows]
+        return rows
+
+    if isinstance(value, list):
+        if not value:
+            return []
+
+        list_key = f"{parent_key}[*]" if parent_key else "[*]"
+        rows = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                rows.extend(expand_json_row(item, list_key, sep=sep))
+            else:
+                rows.append({list_key: item})
+        return rows
+
+    return [{parent_key: value}]
+
 def preprocess_json(in_relation, json_path_expr_dict, data=None):
     if data is None:
         with open(in_relation, 'r', encoding='utf-8') as f:
@@ -431,7 +465,13 @@ def preprocess_json(in_relation, json_path_expr_dict, data=None):
         return ""
 
     if isinstance(rows[0], dict):
-        flat_rows = [flatten_dict(r) for r in rows]
+        flat_rows = []
+        for row in rows:
+            flat_rows.extend(expand_json_row(row))
+
+        if not flat_rows:
+            return ""
+
         fieldnames = sorted({k for r in flat_rows for k in r.keys()})
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
@@ -600,12 +640,15 @@ def start_conversion(ra_expressions, config = None):
                 # Simple mapping
                 if len(plan) == 5:
                     path = plan[0][1]
-                    total_file_size += os.path.getsize(path)   
+                    if os.path.isfile(path):
+                        total_file_size += os.path.getsize(path)
                 elif len(plan) == 7:  
                     path1 = plan[0][1]
-                    total_file_size += os.path.getsize(path1)
+                    if os.path.isfile(path1):
+                        total_file_size += os.path.getsize(path1)
                     path2 = plan[1][1]
-                    total_file_size += os.path.getsize(path2)
+                    if os.path.isfile(path2):
+                        total_file_size += os.path.getsize(path2)
                 else:
                     print("Error ordering plans")
                     sys.exit()
