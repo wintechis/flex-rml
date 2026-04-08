@@ -1,6 +1,7 @@
 import ctypes
 import os
 import sys
+import re
 from collections import defaultdict
 import time
 import json
@@ -348,11 +349,20 @@ def constant_folding(ra_expressions):
             elif element[2] == "blanknode":
                 constant_value = f"_:{element[0]}"
             elif element[2] == "literal":
+                inferred_datatype = element[4]
+                if element[3] == "None" and element[4] == "None":
+                    if element[0] == "true" or element[0] == "false":
+                        inferred_datatype = "http://www.w3.org/2001/XMLSchema#boolean"
+                    elif re.match(r"^-?(0|[1-9][0-9]*)$", element[0]):
+                        inferred_datatype = "http://www.w3.org/2001/XMLSchema#integer"
+                    elif re.match(r"^-?(0|[1-9][0-9]*)\.[0-9]+$", element[0]):
+                        inferred_datatype = "http://www.w3.org/2001/XMLSchema#decimal"
+
                 constant_value = f"\"{element[0]}\""
                 if element[3] != "None":
                     constant_value += f"@{element[3]}"
-                elif element[4] != "None":
-                    constant_value += f"^^<{element[4]}>"
+                elif inferred_datatype != "None":
+                    constant_value += f"^^<{inferred_datatype}>"
 
             if i == 0:
                 create_funciton_elements["s_content"] = f"{constant_value}===preformatted===xxx"

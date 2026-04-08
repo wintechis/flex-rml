@@ -528,6 +528,9 @@ std::string create_operator(const std::string& term_map,
     std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
     std::string effective_data_type = resolve_annotation_value(data_type, map);
     effective_data_type = normalize_iri_annotation(effective_data_type);
+    if (term_type == "literal") {
+      effective_data_type = infer_literal_datatype(rdf_term, effective_lang_tag, effective_data_type);
+    }
     rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
     return rdf_term;
   } else {
