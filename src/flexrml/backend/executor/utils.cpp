@@ -244,19 +244,36 @@ std::vector<std::string> extract_substrings(const std::string& str) {
   std::vector<std::string> substrings;
   substrings.reserve(5);
 
-  size_t startPos = 0, endPos = 0;
+  size_t startPos = 0;
 
   while ((startPos = str.find('{', startPos)) != std::string::npos) {
-    if (startPos == 0 || str[startPos - 1] != '\\') {
-      endPos = str.find('}', startPos);
-      if (endPos != std::string::npos) {
-        substrings.emplace_back(str, startPos + 1, endPos - startPos - 1);
-        startPos = endPos + 1;
-      } else {
-        break;  // no matching closing brace found
-      }
-    } else {
+    if (startPos > 0 && str[startPos - 1] == '\\') {
       startPos++;
+      continue;
+    }
+
+    size_t endPos = startPos + 1;
+    while (endPos < str.size()) {
+      if (str[endPos] == '}' && !(endPos > 0 && str[endPos - 1] == '\\')) {
+        std::string extracted = str.substr(startPos + 1, endPos - startPos - 1);
+        std::string unescaped;
+        unescaped.reserve(extracted.size());
+        for (size_t i = 0; i < extracted.size(); ++i) {
+          if (extracted[i] == '\\' && i + 1 < extracted.size() &&
+              (extracted[i + 1] == '{' || extracted[i + 1] == '}')) {
+            continue;
+          }
+          unescaped.push_back(extracted[i]);
+        }
+        substrings.emplace_back(std::move(unescaped));
+        startPos = endPos + 1;
+        break;
+      }
+      endPos++;
+    }
+
+    if (endPos >= str.size()) {
+      break;
     }
   }
   return substrings;
@@ -382,6 +399,20 @@ std::string resolve_annotation_value(const std::string& annotation,
   return annotation;
 }
 
+std::string escape_braces(const std::string& value) {
+  std::string escaped;
+  escaped.reserve(value.size() * 2);
+
+  for (char c : value) {
+    if (c == '{' || c == '}') {
+      escaped.push_back('\\');
+    }
+    escaped.push_back(c);
+  }
+
+  return escaped;
+}
+
 std::string infer_literal_datatype(const std::string& rdf_term,
                                    const std::string& lang_tag,
                                    const std::string& data_type) {
@@ -443,7 +474,12 @@ std::string create_operator(const std::string& term_map,
       }
 
       // Replace reference id with actual data
-      rdf_term = replace_substring(rdf_term, "{" + match + "}", data);
+      std::string placeholder = "{" + match + "}";
+      rdf_term = replace_substring(rdf_term, placeholder, data);
+      if (rdf_term.find(placeholder) == std::string::npos) {
+        std::string escaped_placeholder = "{" + escape_braces(match) + "}";
+        rdf_term = replace_substring(rdf_term, escaped_placeholder, data);
+      }
 
       // unmask data, remove \\ in fromt of { or }
       rdf_term = unmaskString(rdf_term);

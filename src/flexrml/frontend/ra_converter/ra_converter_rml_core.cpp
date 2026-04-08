@@ -165,20 +165,36 @@ std::string generate_random_string(size_t length) {
 
 std::vector<std::string> extract_substrings(const std::string& str) {
   std::vector<std::string> substrings;
-
-  size_t startPos = 0, endPos = 0;
+  size_t startPos = 0;
 
   while ((startPos = str.find('{', startPos)) != std::string::npos) {
-    if (startPos == 0 || str[startPos - 1] != '\\') {
-      endPos = str.find('}', startPos);
-      if (endPos != std::string::npos) {
-        substrings.emplace_back(str, startPos + 1, endPos - startPos - 1);
-        startPos = endPos + 1;
-      } else {
-        break;  // no matching closing brace found
-      }
-    } else {
+    if (startPos > 0 && str[startPos - 1] == '\\') {
       startPos++;
+      continue;
+    }
+
+    size_t endPos = startPos + 1;
+    while (endPos < str.size()) {
+      if (str[endPos] == '}' && !(endPos > 0 && str[endPos - 1] == '\\')) {
+        std::string extracted = str.substr(startPos + 1, endPos - startPos - 1);
+        std::string unescaped;
+        unescaped.reserve(extracted.size());
+        for (size_t i = 0; i < extracted.size(); ++i) {
+          if (extracted[i] == '\\' && i + 1 < extracted.size() &&
+              (extracted[i + 1] == '{' || extracted[i + 1] == '}')) {
+            continue;
+          }
+          unescaped.push_back(extracted[i]);
+        }
+        substrings.emplace_back(std::move(unescaped));
+        startPos = endPos + 1;
+        break;
+      }
+      endPos++;
+    }
+
+    if (endPos >= str.size()) {
+      break;
     }
   }
   return substrings;
