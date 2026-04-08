@@ -787,6 +787,10 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
       unique_attributes.insert(res.begin(), res.end());
       return;
     }
+
+    if (!(annotation.starts_with("http://") || annotation.starts_with("https://"))) {
+      unique_attributes.insert(annotation);
+    }
   };
 
   // Handle Subject
