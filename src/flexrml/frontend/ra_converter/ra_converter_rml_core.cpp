@@ -449,7 +449,11 @@ Subject get_subject(const std::vector<NTriple>& triples,
   std::vector<std::string> results = find_matching_objects(triples, subject_node, "http://w3id.org/rml/termType");
   if (results.size() == 1) {
     std::string new_term_type = results[0];
-    if (new_term_type == "http://w3id.org/rml/BlankNode") {
+    if (new_term_type == "http://w3id.org/rml/URI") {
+      result.term_type = "uri";
+    } else if (new_term_type == "http://w3id.org/rml/IRI") {
+      result.term_type = "iri";
+    } else if (new_term_type == "http://w3id.org/rml/BlankNode") {
       result.term_type = "blanknode";
     } else if (new_term_type == "http://w3id.org/rml/UnsafeIRI") {
       result.term_type = "unsafeiri";
@@ -586,7 +590,9 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
   if (results.size() == 1) {
     term_type_given = true;
     std::string new_term_type = results[0];
-    if (new_term_type == "http://w3id.org/rml/IRI") {
+    if (new_term_type == "http://w3id.org/rml/URI") {
+      result.term_type = "uri";
+    } else if (new_term_type == "http://w3id.org/rml/IRI") {
       result.term_type = "iri";
     } else if (new_term_type == "http://w3id.org/rml/UnsafeIRI") {
       result.term_type = "unsafeiri";

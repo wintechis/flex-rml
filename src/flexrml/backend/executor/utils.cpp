@@ -279,7 +279,7 @@ std::vector<std::string> extract_substrings(const std::string& str) {
   return substrings;
 }
 
-std::string make_safe_iri(const std::string& node) {
+std::string make_safe_iri(const std::string& node, bool encode_non_ascii = true) {
   // Lookup table for encoding special characters
   // clang-format off
       static const std::unordered_map<char, std::string> encode_map = {
@@ -302,7 +302,7 @@ std::string make_safe_iri(const std::string& node) {
   for (unsigned char c : node) {
     if (encode_map.count(c)) {
       result += encode_map.at(c);  // Append the encoded value
-    } else if (c > 127) {
+    } else if (encode_non_ascii && c > 127) {
       result += '%';
       result += hex_digits[(c >> 4) & 0x0F];
       result += hex_digits[c & 0x0F];
@@ -328,9 +328,9 @@ std::string handle_term_type(const std::string& term_type,
   static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
                                                       ')', ',', '[', ']'};
 
-  if (term_type == "iri" || term_type == "unsafeiri") {
+  if (term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") {
     // Check for invalid characters
-    if (term_type == "iri" && contains_invalid_chars(rdf_term, errorChars)) {
+    if ((term_type == "uri" || term_type == "iri") && contains_invalid_chars(rdf_term, errorChars)) {
       std::string error_msg = "Error: invalid IRI detected for node: '" + rdf_term + "'. ";
       if (continue_on_error == true) {
         std::cout << error_msg << "Skipping!\n";
@@ -356,7 +356,7 @@ std::string handle_term_type(const std::string& term_type,
   }
   // Return an empty string for unsupported term types
   std::string error_msg =
-      "Error: unsupported term type. Valid term types are 'iri', "
+      "Error: unsupported term type. Valid term types are 'uri', 'iri', "
       "'unsafeiri', 'blanknode', 'literal'. Received: " +
       term_type;
   std::cout << error_msg << std::endl;
@@ -475,8 +475,10 @@ std::string create_operator(const std::string& term_map,
       // Get data of row at match
       std::string data = map[match];
       // If IRI make data safes
-      if (term_type == "iri") {
-        data = make_safe_iri(data);
+      if (term_type == "uri") {
+        data = make_safe_iri(data, true);
+      } else if (term_type == "iri") {
+        data = make_safe_iri(data, false);
       }
 
       // Replace reference id with actual data
@@ -492,7 +494,7 @@ std::string create_operator(const std::string& term_map,
     }
 
     // Add base iri if needed
-    if ((term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
+    if ((term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
       rdf_term = base_uri + rdf_term;
     }
 
@@ -515,7 +517,7 @@ std::string create_operator(const std::string& term_map,
     rdf_term = replace_substring(rdf_term, term_map, data);
 
     // Add base iri if needed
-    if ((term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
+    if ((term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
       rdf_term = base_uri + rdf_term;
     }
 
