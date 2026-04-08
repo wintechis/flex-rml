@@ -733,6 +733,10 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
         std::vector<std::string> templates =
             find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/template");
         if (templates.size() == 1) {
+          std::vector<std::string> extracted = extract_substrings(templates[0]);
+          if (extracted.size() == 1) {
+            return extracted[0];
+          }
           return templates[0];
         }
 
