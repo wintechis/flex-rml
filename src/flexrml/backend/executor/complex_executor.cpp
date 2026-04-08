@@ -82,9 +82,32 @@ int get_join_index(const std::vector<std::string>& proj_attrs, const std::string
   std::exit(1);
 }
 
+struct JoinBinding {
+  int index = -1;
+  std::string constant;
+};
+
+JoinBinding resolve_join_binding(const std::vector<std::string>& proj_attrs,
+                                 const std::string& prefix,
+                                 const std::string& join_attr) {
+  for (size_t i = 0; i < proj_attrs.size(); ++i) {
+    if (prefix + "_" + proj_attrs[i] == join_attr) {
+      return {static_cast<int>(i), ""};
+    }
+  }
+
+  const std::string join_prefix = prefix + "_";
+  if (join_attr.starts_with(join_prefix)) {
+    return {-1, join_attr.substr(join_prefix.size())};
+  }
+
+  std::cerr << "Error: Join attribute " << join_attr << " not found in projected attributes." << std::endl;
+  std::exit(1);
+}
+
 std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(std::istream& input_file,
                                                                                 const std::vector<int>& projected_indeces,
-                                                                                int filtered_join_index) {
+                                                                                const JoinBinding& join_binding) {
   // Reserve for our hash table and duplicate check set.
   std::unordered_multimap<std::string, std::vector<std::string>> hash_table;
   hash_table.reserve(1024 * 1024 * 2);
@@ -129,7 +152,7 @@ std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(
         }
 
         // Insert into hash table.
-        std::string key = projected_row[filtered_join_index];
+        std::string key = join_binding.index >= 0 ? projected_row[join_binding.index] : join_binding.constant;
         hash_table.emplace(std::move(key), std::move(projected_row));
       }
       batch_lines.clear();
@@ -160,7 +183,7 @@ std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(
       continue;
     }
 
-    std::string key = projected_row[filtered_join_index];
+    std::string key = join_binding.index >= 0 ? projected_row[join_binding.index] : join_binding.constant;
     hash_table.emplace(std::move(key), std::move(projected_row));
   }
 
@@ -238,13 +261,13 @@ int execute_complex(const fs::path& output_file_name,
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  int left_filtered_join_index = get_join_index(projected_attributes_left, left_name, left_join_attr);
-  int right_filtered_join_index = get_join_index(projected_attributes_right, right_name, right_join_attr);
+  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
+  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -284,7 +307,7 @@ int execute_complex(const fs::path& output_file_name,
       continue;
     }
 
-    std::string key = projected_row[right_filtered_join_index];
+    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
     auto range = hash_table.equal_range(key);
 
     for (auto it = range.first; it != range.second; ++it) {
@@ -395,13 +418,13 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  int left_filtered_join_index = get_join_index(projected_attributes_left, left_name, left_join_attr);
-  int right_filtered_join_index = get_join_index(projected_attributes_right, right_name, right_join_attr);
+  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
+  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -442,7 +465,7 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
       continue;
     }
 
-    std::string key = projected_row[right_filtered_join_index];
+    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
     auto range = hash_table.equal_range(key);
 
     for (auto it = range.first; it != range.second; ++it) {
@@ -549,13 +572,13 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  int left_filtered_join_index = get_join_index(projected_attributes_left, left_name, left_join_attr);
-  int right_filtered_join_index = get_join_index(projected_attributes_right, right_name, right_join_attr);
+  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
+  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -595,7 +618,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
       continue;
     }
 
-    std::string key = projected_row[right_filtered_join_index];
+    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
     auto range = hash_table.equal_range(key);
 
     for (auto it = range.first; it != range.second; ++it) {
@@ -712,13 +735,13 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  int left_filtered_join_index = get_join_index(projected_attributes_left, left_name, left_join_attr);
-  int right_filtered_join_index = get_join_index(projected_attributes_right, right_name, right_join_attr);
+  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
+  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_filtered_join_index);
+  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -759,7 +782,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
       continue;
     }
 
-    std::string key = projected_row[right_filtered_join_index];
+    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
     auto range = hash_table.equal_range(key);
 
     for (auto it = range.first; it != range.second; ++it) {

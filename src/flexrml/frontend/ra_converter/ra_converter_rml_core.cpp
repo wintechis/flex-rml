@@ -44,6 +44,7 @@ struct Object {
   std::string data_type = "None";
   std::string join_type = "None";
   std::array<std::string, 2> join_condition = {"", ""};
+  std::array<std::string, 2> join_condition_type = {"", ""};
 };
 
 struct Graph {
@@ -718,7 +719,7 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
       std::vector<std::string> direct_values =
           find_matching_objects(triples, condition_node, direct_predicate);
       if (direct_values.size() == 1) {
-        return direct_values[0];
+        return std::make_pair(direct_values[0], std::string("reference"));
       }
 
       std::vector<std::string> map_nodes =
@@ -727,7 +728,7 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
         std::vector<std::string> references =
             find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/reference");
         if (references.size() == 1) {
-          return references[0];
+          return std::make_pair(references[0], std::string("reference"));
         }
 
         std::vector<std::string> templates =
@@ -735,27 +736,27 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
         if (templates.size() == 1) {
           std::vector<std::string> extracted = extract_substrings(templates[0]);
           if (extracted.size() == 1) {
-            return extracted[0];
+            return std::make_pair(extracted[0], std::string("template"));
           }
-          return templates[0];
+          return std::make_pair(templates[0], std::string("template"));
         }
 
         std::vector<std::string> constants =
             find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/constant");
         if (constants.size() == 1) {
-          return constants[0];
+          return std::make_pair(constants[0], std::string("constant"));
         }
       }
 
-      return std::string{};
+      return std::make_pair(std::string{}, std::string{});
     };
 
-    std::string child = resolve_join_value(join_condition_node,
-                                           "http://w3id.org/rml/child",
-                                           "http://w3id.org/rml/childMap");
-    std::string parent = resolve_join_value(join_condition_node,
-                                            "http://w3id.org/rml/parent",
-                                            "http://w3id.org/rml/parentMap");
+    auto [child, child_type] = resolve_join_value(join_condition_node,
+                                                  "http://w3id.org/rml/child",
+                                                  "http://w3id.org/rml/childMap");
+    auto [parent, parent_type] = resolve_join_value(join_condition_node,
+                                                    "http://w3id.org/rml/parent",
+                                                    "http://w3id.org/rml/parentMap");
 
     if (child.empty() || parent.empty()) {
       std::cout << "Could not parse join condition." << std::endl;
@@ -764,6 +765,8 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
 
     result.join_condition[0] = child;
     result.join_condition[1] = parent;
+    result.join_condition_type[0] = child_type;
+    result.join_condition_type[1] = parent_type;
   }
 
   // Get parentTM
@@ -808,6 +811,13 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
   // Check if template
   results = find_matching_objects(triples, parent_tm_subject_node, "http://w3id.org/rml/template");
   if (results.size() == 1) {
+    if (result.join_condition_type[1] == "constant") {
+      std::vector<std::string> extracted = extract_substrings(results[0]);
+      if (extracted.size() == 1) {
+        result.join_condition[1] = extracted[0];
+        result.join_condition_type[1] = "template";
+      }
+    }
     result.term_map_type = "template";
     result.term_map = results[0];
     result.term_type = "iri";
@@ -841,6 +851,9 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
       unique_attributes.insert(res.begin(), res.end());
     } else if (term_map_type == "reference") {
       unique_attributes.insert(term_map);
+    } else if (term_map_type == "function") {
+      std::vector<std::string> res = extract_substrings(term_map);
+      unique_attributes.insert(res.begin(), res.end());
     }
   };
 
@@ -889,7 +902,8 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
   if (!is_empty) {
     if (obj.term_map_type.empty()) {
       unique_attributes.insert(obj.join_condition[0]);
-    } else {
+    } else if (obj.join_condition_type[1] != "constant" &&
+               (obj.term_map_type == "reference" || obj.term_map_type == "template" || obj.term_map_type == "function")) {
       unique_attributes.insert(obj.join_condition[1]);
     }
   }
