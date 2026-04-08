@@ -1087,11 +1087,15 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
 }
 
 std::string converter(const std::vector<NTriple>& triples) {
-  // Check if with join, i.e. two subj. maps
-  std::vector<std::string> subject_nodes = find_matching_objects(triples, "", "http://w3id.org/rml/subjectMap");
+  // Use the complex path for referencing object maps as well as normalized
+  // two-subject join structures.
+  std::vector<std::string> subject_nodes =
+      find_matching_objects(triples, "", "http://w3id.org/rml/subjectMap");
+  std::vector<std::string> parent_tm_nodes =
+      find_matching_objects(triples, "", "http://w3id.org/rml/parentTriplesMap");
 
   // Handle join
-  if (subject_nodes.size() == 2) {
+  if (subject_nodes.size() == 2 || !parent_tm_nodes.empty()) {
     std::string result = create_complex_tree(triples);
     return result;
   }
