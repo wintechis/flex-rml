@@ -40,6 +40,7 @@ def normalize_output(output: str) -> list[str]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
+        line = " ".join(line.split())
         lines.append(line)
     return sorted(lines)
 

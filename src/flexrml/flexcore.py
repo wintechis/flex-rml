@@ -1,6 +1,7 @@
 import ctypes
 import os
 import argparse
+import re
 import sys
 import time
 from pathlib import Path
@@ -449,10 +450,9 @@ def run_mapping(mapping_config):
 
         #print(ra_str)
 
-        ### Check if JSON and remove "$"
-        ra_str = ra_str.replace("$.","")  
-        ra_str = ra_str.replace("['","") 
-        ra_str = ra_str.replace("']","")  
+        ### Normalize JSONPath references used in generated plans.
+        ra_str = re.sub(r"\$\['([^']+)'\]", r"\1", ra_str)
+        ra_str = ra_str.replace("$.", "")
         
         # just return the plan
         if mapping_config.generate_plan:
