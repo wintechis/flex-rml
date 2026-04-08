@@ -106,8 +106,11 @@ def dataset_context_map(dataset: Dataset) -> dict[str, object]:
 
 
 def compare_rdf_outputs(expected_output: str, actual_output: str) -> bool:
-    expected_dataset = parse_with_rdflib(expected_output)
-    actual_dataset = parse_with_rdflib(actual_output)
+    try:
+        expected_dataset = parse_with_rdflib(expected_output)
+        actual_dataset = parse_with_rdflib(actual_output)
+    except ValueError:
+        return False
 
     expected_contexts = dataset_context_map(expected_dataset)
     actual_contexts = dataset_context_map(actual_dataset)

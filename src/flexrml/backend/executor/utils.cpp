@@ -328,9 +328,9 @@ std::string handle_term_type(const std::string& term_type,
   static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
                                                       ')', ',', '[', ']'};
 
-  if (term_type == "iri") {
+  if (term_type == "iri" || term_type == "unsafeiri") {
     // Check for invalid characters
-    if (contains_invalid_chars(rdf_term, errorChars)) {
+    if (term_type == "iri" && contains_invalid_chars(rdf_term, errorChars)) {
       std::string error_msg = "Error: invalid IRI detected for node: '" + rdf_term + "'. ";
       if (continue_on_error == true) {
         std::cout << error_msg << "Skipping!\n";
@@ -357,7 +357,7 @@ std::string handle_term_type(const std::string& term_type,
   // Return an empty string for unsupported term types
   std::string error_msg =
       "Error: unsupported term type. Valid term types are 'iri', "
-      "'blanknode', 'literal'. Received: " +
+      "'unsafeiri', 'blanknode', 'literal'. Received: " +
       term_type;
   std::cout << error_msg << std::endl;
   throw std::runtime_error(error_msg);
@@ -492,7 +492,7 @@ std::string create_operator(const std::string& term_map,
     }
 
     // Add base iri if needed
-    if (term_type == "iri" && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
+    if ((term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
       rdf_term = base_uri + rdf_term;
     }
 
@@ -515,7 +515,7 @@ std::string create_operator(const std::string& term_map,
     rdf_term = replace_substring(rdf_term, term_map, data);
 
     // Add base iri if needed
-    if (term_type == "iri" && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
+    if ((term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
       rdf_term = base_uri + rdf_term;
     }
 

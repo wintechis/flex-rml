@@ -451,6 +451,8 @@ Subject get_subject(const std::vector<NTriple>& triples,
     std::string new_term_type = results[0];
     if (new_term_type == "http://w3id.org/rml/BlankNode") {
       result.term_type = "blanknode";
+    } else if (new_term_type == "http://w3id.org/rml/UnsafeIRI") {
+      result.term_type = "unsafeiri";
     } else if (new_term_type == "http://w3id.org/rml/Literal") {
       std::cout << "Literal not supported!" << std::endl;
       std::exit(1);
@@ -586,6 +588,8 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
     std::string new_term_type = results[0];
     if (new_term_type == "http://w3id.org/rml/IRI") {
       result.term_type = "iri";
+    } else if (new_term_type == "http://w3id.org/rml/UnsafeIRI") {
+      result.term_type = "unsafeiri";
     } else if (new_term_type == "http://w3id.org/rml/BlankNode") {
       result.term_type = "blanknode";
     } else if (new_term_type == "http://w3id.org/rml/Literal") {
