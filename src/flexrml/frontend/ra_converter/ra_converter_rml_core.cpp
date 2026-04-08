@@ -580,13 +580,25 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
   // Handle language map
   std::vector<std::string> lang_map_nodes = find_matching_objects(triples, object_node, "http://w3id.org/rml/languageMap");
   if (lang_map_nodes.size() == 1) {
-    std::string lang_tag = find_matching_objects(triples, lang_map_nodes[0], "http://w3id.org/rml/constant")[0];
-    // Check if lang tag is valid
-    if (valid_language_subtags.find(lang_tag) == valid_language_subtags.end()) {
-      std::cout << "Runtime error occurred. Language tag is not supported!" << std::endl;
-      std::exit(1);
+    std::vector<std::string> lang_tags = find_matching_objects(triples, lang_map_nodes[0], "http://w3id.org/rml/constant");
+    if (lang_tags.size() == 1) {
+      std::string lang_tag = lang_tags[0];
+      if (valid_language_subtags.find(lang_tag) == valid_language_subtags.end()) {
+        std::cout << "Runtime error occurred. Language tag is not supported!" << std::endl;
+        std::exit(1);
+      }
+      result.lang_tag = lang_tag;
+    } else {
+      lang_tags = find_matching_objects(triples, lang_map_nodes[0], "http://w3id.org/rml/reference");
+      if (lang_tags.size() == 1) {
+        result.lang_tag = lang_tags[0];
+      } else {
+        lang_tags = find_matching_objects(triples, lang_map_nodes[0], "http://w3id.org/rml/template");
+        if (lang_tags.size() == 1) {
+          result.lang_tag = lang_tags[0];
+        }
+      }
     }
-    result.lang_tag = lang_tag;
   }
 
   // Handle data type
