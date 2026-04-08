@@ -712,14 +712,51 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
     join_condition_node = join_condition_nodes[0];
     result.join_type = "equi-join";
 
-    // Get Join conditions
-    std::vector<std::string> child_arr = find_matching_objects(
-        triples, join_condition_node, "http://w3id.org/rml/child");
-    std::string child = child_arr[0];
+    auto resolve_join_value = [&triples](const std::string& condition_node,
+                                         const std::string& direct_predicate,
+                                         const std::string& map_predicate) {
+      std::vector<std::string> direct_values =
+          find_matching_objects(triples, condition_node, direct_predicate);
+      if (direct_values.size() == 1) {
+        return direct_values[0];
+      }
 
-    std::vector<std::string> parent_arr = find_matching_objects(
-        triples, join_condition_node, "http://w3id.org/rml/parent");
-    std::string parent = parent_arr[0];
+      std::vector<std::string> map_nodes =
+          find_matching_objects(triples, condition_node, map_predicate);
+      if (map_nodes.size() == 1) {
+        std::vector<std::string> references =
+            find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/reference");
+        if (references.size() == 1) {
+          return references[0];
+        }
+
+        std::vector<std::string> templates =
+            find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/template");
+        if (templates.size() == 1) {
+          return templates[0];
+        }
+
+        std::vector<std::string> constants =
+            find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/constant");
+        if (constants.size() == 1) {
+          return constants[0];
+        }
+      }
+
+      return std::string{};
+    };
+
+    std::string child = resolve_join_value(join_condition_node,
+                                           "http://w3id.org/rml/child",
+                                           "http://w3id.org/rml/childMap");
+    std::string parent = resolve_join_value(join_condition_node,
+                                            "http://w3id.org/rml/parent",
+                                            "http://w3id.org/rml/parentMap");
+
+    if (child.empty() || parent.empty()) {
+      std::cout << "Could not parse join condition." << std::endl;
+      std::exit(1);
+    }
 
     result.join_condition[0] = child;
     result.join_condition[1] = parent;
