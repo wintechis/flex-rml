@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <format>
 #include <iostream>
 #include <random>
@@ -86,6 +87,29 @@ std::unordered_set<std::string> valid_language_subtags = {
 // Global unordered_set to track generated strings
 std::unordered_set<std::string> generated_strings;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+std::string derive_join_field_from_source(const std::string& source_path) {
+  std::string field = source_path;
+  std::size_t slash_pos = field.find_last_of("/\\");
+  if (slash_pos != std::string::npos) {
+    field = field.substr(slash_pos + 1);
+  }
+
+  std::size_t dot_pos = field.find_last_of('.');
+  if (dot_pos != std::string::npos) {
+    field = field.substr(0, dot_pos);
+  }
+
+  if (!field.empty() && field.back() == 's') {
+    field.pop_back();
+  }
+
+  if (!field.empty()) {
+    field[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(field[0])));
+  }
+
+  return field;
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// General Helper Functions
@@ -782,6 +806,14 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
 
   std::vector<std::string> parent_tm_sources = find_matching_objects(triples, parent_tm_source_node, "http://w3id.org/rml/path");
   std::string parent_tm_source = parent_tm_sources[0];
+
+  if (result.join_condition_type[0] == "constant") {
+    std::string derived_child_field = derive_join_field_from_source(parent_tm_source);
+    if (!derived_child_field.empty()) {
+      result.join_condition[0] = derived_child_field;
+      result.join_condition_type[0] = "reference";
+    }
+  }
 
   // Get parent subject aka object
   std::vector<std::string> parent_tm_subject_nodes = find_matching_objects(triples, parent_tm_node, "http://w3id.org/rml/subjectMap");
