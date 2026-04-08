@@ -71,6 +71,21 @@ std::vector<std::string> split_csv_line(const std::string& str, char separator) 
   return result;
 }
 
+bool is_default_graph_marker(const std::string& graph) {
+  return graph == "http://w3id.org/rml/defaultGraph" || graph == "<http://w3id.org/rml/defaultGraph>";
+}
+
+std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object) {
+  return subject + " " + predicate + " " + object + " .\n";
+}
+
+std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph) {
+  if (graph.empty() || is_default_graph_marker(graph)) {
+    return format_statement(subject, predicate, object);
+  }
+  return subject + " " + predicate + " " + object + " " + graph + " .\n";
+}
+
 int get_index(const std::vector<std::string>& input_vector, std::string searched_element) {
   auto it = std::find(input_vector.begin(), input_vector.end(), searched_element);
 
@@ -554,10 +569,10 @@ void handle_constant(const std::vector<std::string>& s_content, const std::vecto
   object = handle_term_type(o_content[2], o_content[0], o_content[3], o_content[4]);
 
   if (g_content.empty()) {
-    outputFile << subject + " " + predicate + " " + object + " .\n";
+    outputFile << format_statement(subject, predicate, object);
   } else {
     graph = handle_term_type(g_content[2], g_content[0], "", "");
-    outputFile << subject + " " + predicate + " " + object + " " + graph + " .\n";
+    outputFile << format_statement(subject, predicate, object, graph);
   }
 }
 
@@ -571,9 +586,9 @@ void handle_constant_preformatted(const std::vector<std::string>& s_content, con
   }
 
   if (g_content.empty()) {
-    outputFile << s_content[0] + " " + p_content[0] + " " + o_content[0] + " .\n";
+    outputFile << format_statement(s_content[0], p_content[0], o_content[0]);
   } else {
-    outputFile << s_content[0] + " " + p_content[0] + " " + o_content[0] + " " + g_content[0] + " .\n";
+    outputFile << format_statement(s_content[0], p_content[0], o_content[0], g_content[0]);
   }
 }
 
@@ -586,13 +601,13 @@ std::unordered_set<std::string> handle_constant_dependent(const std::vector<std:
   object = handle_term_type(o_content[2], o_content[0], o_content[3], o_content[4]);
 
   if (g_content.empty()) {
-    std::string res = subject + " " + predicate + " " + object + " .\n";
+    std::string res = format_statement(subject, predicate, object);
     unique_triple.insert(res);
     return unique_triple;
   } else {
     graph = handle_term_type(g_content[2], g_content[0], "", "");
 
-    std::string res = subject + " " + predicate + " " + object + " " + graph + " .\n";
+    std::string res = format_statement(subject, predicate, object, graph);
     unique_triple.insert(res);
     return unique_triple;
   }
@@ -602,11 +617,11 @@ std::unordered_set<std::string> handle_constant_preformatted_dependent(const std
                                                                        const std::vector<std::string>& o_content, const std::vector<std::string>& g_content,
                                                                        const fs::path& output_file_name, std::unordered_set<std::string>& unique_triple) {
   if (g_content.empty()) {
-    std::string res = s_content[0] + " " + p_content[0] + " " + o_content[0] + " .\n";
+    std::string res = format_statement(s_content[0], p_content[0], o_content[0]);
     unique_triple.insert(res);
     return unique_triple;
   } else {
-    std::string res = s_content[0] + " " + p_content[0] + " " + o_content[0] + " " + g_content[0] + " .\n";
+    std::string res = format_statement(s_content[0], p_content[0], o_content[0], g_content[0]);
     unique_triple.insert(res);
     return unique_triple;
   }

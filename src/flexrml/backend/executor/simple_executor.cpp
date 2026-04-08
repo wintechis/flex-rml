@@ -263,7 +263,7 @@ int execute_simple_with_graph(const std::string& input_file_name,
       }
     }
 
-    setup_data.res = setup_data.subject + " " + setup_data.predicate + " " + setup_data.object + " " + setup_data.graph + " .\n";
+    setup_data.res = format_statement(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph);
     setup_data.triple_counter++;
 
     setup_data.buffered_res += setup_data.res;
@@ -390,7 +390,7 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
       }
     }
 
-    setup_data.res = setup_data.subject + " " + setup_data.predicate + " " + setup_data.object + " " + setup_data.graph + " .\n";
+    setup_data.res = format_statement(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph);
     unique_triple.insert(setup_data.res);
     setup_data.triple_counter++;
   }

@@ -649,7 +649,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
         }
       }
 
-      std::string res = subject + " " + predicate + " " + object + " " + graph + " .\n";
+      std::string res = format_statement(subject, predicate, object, graph);
       triple_counter++;
 
       buffered_res += res;
@@ -812,7 +812,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
         }
       }
 
-      std::string res = subject + " " + predicate + " " + object + " " + graph + " .\n";
+      std::string res = format_statement(subject, predicate, object, graph);
 
       unique_triple.insert(res);
     }

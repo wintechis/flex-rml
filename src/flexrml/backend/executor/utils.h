@@ -20,6 +20,9 @@ uint64_t combinedHash(std::vector<std::string>& fields);
 int get_index(const std::vector<std::string>& input_vector, std::string searched_element);
 
 std::vector<std::string> split_csv_line(const std::string& str, char separator);
+bool is_default_graph_marker(const std::string& graph);
+std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object);
+std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph);
 
 void handle_constant(const std::vector<std::string>& s_content, const std::vector<std::string>& p_content,
                      const std::vector<std::string>& o_content, const std::vector<std::string>& g_content,

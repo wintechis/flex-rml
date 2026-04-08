@@ -91,10 +91,11 @@ void handle_constant_preformatted(const std::vector<std::string>& s_content, con
   }
   global_hashes.insert(rowHash);
 
-  for (const auto& element : val) {
-    outputFile << element + " ";
+  if (g_content.empty()) {
+    outputFile << format_statement(s_content[0], p_content[0], o_content[0]);
+  } else {
+    outputFile << format_statement(s_content[0], p_content[0], o_content[0], g_content[0]);
   }
-  outputFile << ".\n";
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -744,7 +745,7 @@ size_t execute_with_graph(const std::string& input_file_name,
             }
           }
 
-          std::string tripleStr = subject + " " + predicate + " " + object + " " + graph + " .\n";
+          std::string tripleStr = format_statement(subject, predicate, object, graph);
           tripleChunk.push_back(std::move(tripleStr));
         }
 
