@@ -368,7 +368,6 @@ std::string infer_literal_datatype(const std::string& rdf_term,
 
   static const std::regex integer_pattern(R"(^-?(0|[1-9][0-9]*)$)");
   static const std::regex decimal_pattern(R"(^-?(0|[1-9][0-9]*)\.[0-9]+$)");
-  static const std::regex double_pattern(R"(^-?(0|[1-9][0-9]*)(\.[0-9]+)?[eE][+-]?[0-9]+$)");
 
   if (rdf_term == "true" || rdf_term == "false") {
     return "http://www.w3.org/2001/XMLSchema#boolean";
@@ -378,9 +377,6 @@ std::string infer_literal_datatype(const std::string& rdf_term,
   }
   if (std::regex_match(rdf_term, decimal_pattern)) {
     return "http://www.w3.org/2001/XMLSchema#decimal";
-  }
-  if (std::regex_match(rdf_term, double_pattern)) {
-    return "http://www.w3.org/2001/XMLSchema#double";
   }
 
   return data_type;

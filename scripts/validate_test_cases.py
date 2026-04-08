@@ -46,7 +46,13 @@ def normalize_output(output: str) -> list[str]:
 
 def run_case(case_dir: Path) -> CaseResult:
     expected_error = parse_error_expected(case_dir / "README.md")
-    output_path = Path(tempfile.gettempdir()) / f"flexrml_validation_{case_dir.name}.nq"
+    with tempfile.NamedTemporaryFile(
+        suffix=f"_{case_dir.name}.nq",
+        prefix="flexrml_validation_",
+        delete=False,
+    ) as handle:
+        output_path = Path(handle.name)
+
     if output_path.exists():
         output_path.unlink()
 
@@ -64,40 +70,43 @@ def run_case(case_dir: Path) -> CaseResult:
     stdout = proc.stdout.strip()
     stderr = proc.stderr.strip()
 
-    if expected_error:
-        passed = proc.returncode != 0
-        reason = "error observed as expected" if passed else "expected an error, but execution succeeded"
-        return CaseResult(case_dir.name, passed, expected_error, proc.returncode, reason, stdout, stderr)
+    try:
+        if expected_error:
+            passed = proc.returncode != 0
+            reason = "error observed as expected" if passed else "expected an error, but execution succeeded"
+            return CaseResult(case_dir.name, passed, expected_error, proc.returncode, reason, stdout, stderr)
 
-    if proc.returncode != 0:
-        return CaseResult(
-            case_dir.name,
-            False,
-            expected_error,
-            proc.returncode,
-            "unexpected execution error",
-            stdout,
-            stderr,
-        )
+        if proc.returncode != 0:
+            return CaseResult(
+                case_dir.name,
+                False,
+                expected_error,
+                proc.returncode,
+                "unexpected execution error",
+                stdout,
+                stderr,
+            )
 
-    actual_output = output_path.read_text(encoding="utf-8") if output_path.exists() else ""
-    expected_output = (case_dir / "output.nq").read_text(encoding="utf-8")
+        actual_output = output_path.read_text(encoding="utf-8") if output_path.exists() else ""
+        expected_output = (case_dir / "output.nq").read_text(encoding="utf-8")
 
-    actual_lines = normalize_output(actual_output)
-    expected_lines = normalize_output(expected_output)
+        actual_lines = normalize_output(actual_output)
+        expected_lines = normalize_output(expected_output)
 
-    if actual_lines != expected_lines:
-        return CaseResult(
-            case_dir.name,
-            False,
-            expected_error,
-            proc.returncode,
-            "output mismatch",
-            f"expected:\n{expected_output.strip()}\nactual:\n{actual_output.strip()}",
-            stderr,
-        )
+        if actual_lines != expected_lines:
+            return CaseResult(
+                case_dir.name,
+                False,
+                expected_error,
+                proc.returncode,
+                "output mismatch",
+                f"expected:\n{expected_output.strip()}\nactual:\n{actual_output.strip()}",
+                stderr,
+            )
 
-    return CaseResult(case_dir.name, True, expected_error, proc.returncode, "output matches", stdout, stderr)
+        return CaseResult(case_dir.name, True, expected_error, proc.returncode, "output matches", stdout, stderr)
+    finally:
+        output_path.unlink(missing_ok=True)
 
 
 def iter_case_dirs(selected: list[str] | None) -> list[Path]:
