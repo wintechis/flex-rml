@@ -14,3 +14,4 @@ mapping
 flexrml.egg-info
 __pycache__
 build
+test_cases

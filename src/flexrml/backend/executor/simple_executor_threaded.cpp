@@ -132,8 +132,7 @@ std::unordered_set<uint64_t> execute_dependent(
 
   std::string headerLine;
   if (!std::getline(file, headerLine)) {
-    std::cerr << "CSV file is empty or missing header\n";
-    std::exit(1);
+    return global_hashes;
   }
   std::vector<std::string> header = split_csv_line(headerLine, ',');
 
@@ -361,8 +360,7 @@ size_t execute(const std::string& input_file_name,
 
   std::string headerLine;
   if (!std::getline(file, headerLine)) {
-    std::cerr << "CSV file is empty or missing header\n";
-    return 1;
+    return 0;
   }
   std::vector<std::string> header = split_csv_line(headerLine, ',');
 
@@ -607,8 +605,7 @@ size_t execute_with_graph(const std::string& input_file_name,
 
   std::string headerLine;
   if (!std::getline(file, headerLine)) {
-    std::cerr << "CSV file is empty or missing header\n";
-    return 1;
+    return 0;
   }
   std::vector<std::string> header = split_csv_line(headerLine, ',');
 

@@ -153,7 +153,9 @@ int execute_simple_with_graph(const std::string& input_file_name,
 
   // Get index of attributes in header
   // Read and split header
-  std::getline(*file, setup_data.line);
+  if (!std::getline(*file, setup_data.line)) {
+    return 0;
+  }
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
   std::vector<int> projected_indices;
   if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
@@ -303,7 +305,9 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
 
   // Get index of attributes in header
   // Read and split header
-  std::getline(*file, setup_data.line);
+  if (!std::getline(*file, setup_data.line)) {
+    return unique_triple;
+  }
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
   std::vector<int> projected_indices;
   if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
@@ -413,7 +417,9 @@ int execute_simple(const std::string& input_file_name,
   auto file = open_from_map_or_file(data_map, input_file_name);
 
   // Get index of attributes in header
-  std::getline(*file, setup_data.line);
+  if (!std::getline(*file, setup_data.line)) {
+    return 0;
+  }
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
   std::vector<int> projected_indices;
   if (!(projected_attributes.size() == 1 && projected_attributes[0] == "")) {
@@ -549,7 +555,9 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
 
   //////////////////////////////////////////////////////////////////////
   // Read and split header
-  std::getline(*file, setup_data.line);
+  if (!std::getline(*file, setup_data.line)) {
+    return unique_triple;
+  }
   std::vector<std::string> header = split_csv_line(setup_data.line, ',');
 
   std::vector<int> projected_indices;

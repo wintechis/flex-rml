@@ -227,8 +227,9 @@ int execute_complex(const fs::path& output_file_name,
 
   // Read header lines
   std::string left_header_line, right_header_line;
-  std::getline(*left_file, left_header_line);
-  std::getline(*right_file, right_header_line);
+  if (!std::getline(*left_file, left_header_line) || !std::getline(*right_file, right_header_line)) {
+    return 0;
+  }
 
   // Build header mappings for left and right files.
   auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
