@@ -297,9 +297,15 @@ std::string make_safe_iri(const std::string& node) {
   std::string result;
   result.reserve(fixed_reserve_size);
 
-  for (char c : node) {
+  static constexpr char hex_digits[] = "0123456789ABCDEF";
+
+  for (unsigned char c : node) {
     if (encode_map.count(c)) {
       result += encode_map.at(c);  // Append the encoded value
+    } else if (c > 127) {
+      result += '%';
+      result += hex_digits[(c >> 4) & 0x0F];
+      result += hex_digits[c & 0x0F];
     } else {
       result += c;  // Append the character as-is
     }
