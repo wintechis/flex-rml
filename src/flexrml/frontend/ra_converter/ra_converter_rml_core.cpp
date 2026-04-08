@@ -788,6 +788,10 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
       return;
     }
 
+    if (valid_language_subtags.find(annotation) != valid_language_subtags.end()) {
+      return;
+    }
+
     if (!(annotation.starts_with("http://") || annotation.starts_with("https://"))) {
       unique_attributes.insert(annotation);
     }
