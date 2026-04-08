@@ -42,7 +42,7 @@ class Configuration:
         self.return_triple = True
         ##########################
 
-        self.version = "2.1.0"
+        self.version = "2.2.0"
         self.type = ""
         self.bn_number = 58932
 

@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover - handled at runtime for missing deps
 ROOT = Path(__file__).resolve().parents[1]
 TEST_CASES_DIR = ROOT / "test_cases"
 REPORT_PATH = ROOT / "validation_report.md"
+PYPROJECT_PATH = ROOT / "pyproject.toml"
 
 
 @dataclass
@@ -210,15 +211,29 @@ def iter_case_dirs(selected: list[str] | None) -> list[Path]:
     return [case_dir for case_dir in case_dirs if case_dir.name in selected_set]
 
 
+def parse_project_version() -> str:
+    if not PYPROJECT_PATH.exists():
+        return "unknown"
+
+    content = PYPROJECT_PATH.read_text(encoding="utf-8")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+    if not match:
+        return "unknown"
+
+    return match.group(1)
+
+
 def write_markdown_report(results: list[CaseResult], selected: list[str] | None) -> None:
     passed_count = sum(result.passed for result in results)
     failed = [result for result in results if not result.passed]
     scope = ", ".join(selected) if selected else "all test cases"
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    version = parse_project_version()
 
     lines = [
         "# Validation Report",
         "",
+        f"- FlexRML version: `{version}`",
         f"- Generated at: `{generated_at}`",
         f"- Scope: `{scope}`",
         f"- Passed: `{passed_count}/{len(results)}`",
