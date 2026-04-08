@@ -9,6 +9,14 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
+
+try:
+    from rdflib import Dataset
+    from rdflib.compare import to_isomorphic
+except ImportError:  # pragma: no cover - handled at runtime for missing deps
+    Dataset = None
+    to_isomorphic = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +51,67 @@ def normalize_output(output: str) -> list[str]:
         line = " ".join(line.split())
         lines.append(line)
     return sorted(lines)
+
+
+TERM_RE = r'(?:<[^>]*>|_:[^\s]+|"(?:[^"\\]|\\.)*"(?:@[A-Za-z0-9-]+|\^\^<[^>]*>)?)'
+TRIPLE_RE = re.compile(
+    rf"^({TERM_RE})\s+(<[^>]*>)\s+({TERM_RE})(?:\s+({TERM_RE}))?\s+\.$"
+)
+
+
+def parse_rdf_lines(output: str) -> list[tuple[str, str, str, str | None]]:
+    triples = []
+    for line in normalize_output(output):
+        match = TRIPLE_RE.match(line)
+        if not match:
+            raise ValueError(f"Could not parse RDF line: {line}")
+        subject, predicate, obj, graph = match.groups()
+        triples.append((subject, predicate, obj, graph))
+    return triples
+
+
+def parse_with_rdflib(output: str) -> Dataset:
+    if Dataset is None:
+        raise RuntimeError(
+            "rdflib is required for RDF result comparison. Install dependencies with "
+            "`pip install -r requirements.txt`."
+        )
+
+    cleaned_output = "\n".join(normalize_output(output))
+    last_error: Exception | None = None
+    for rdf_format in ("nquads", "nt"):
+        dataset = Dataset()
+        try:
+            dataset.parse(data=cleaned_output, format=rdf_format)
+            return dataset
+        except Exception as exc:
+            last_error = exc
+
+    raise ValueError(f"Could not parse RDF output with rdflib: {last_error}")
+
+
+def dataset_context_map(dataset: Dataset) -> dict[str, object]:
+    contexts = {}
+    for graph in dataset.graphs():
+        contexts[str(graph.identifier)] = graph
+    return contexts
+
+
+def compare_rdf_outputs(expected_output: str, actual_output: str) -> bool:
+    expected_dataset = parse_with_rdflib(expected_output)
+    actual_dataset = parse_with_rdflib(actual_output)
+
+    expected_contexts = dataset_context_map(expected_dataset)
+    actual_contexts = dataset_context_map(actual_dataset)
+
+    if set(expected_contexts) != set(actual_contexts):
+        return False
+
+    for identifier in expected_contexts:
+        if to_isomorphic(expected_contexts[identifier]) != to_isomorphic(actual_contexts[identifier]):
+            return False
+
+    return True
 
 
 def run_case(case_dir: Path) -> CaseResult:
@@ -94,7 +163,11 @@ def run_case(case_dir: Path) -> CaseResult:
         actual_lines = normalize_output(actual_output)
         expected_lines = normalize_output(expected_output)
 
-        if actual_lines != expected_lines:
+        outputs_match = actual_lines == expected_lines
+        if not outputs_match:
+            outputs_match = compare_rdf_outputs(expected_output, actual_output)
+
+        if not outputs_match:
             return CaseResult(
                 case_dir.name,
                 False,
@@ -128,21 +201,22 @@ def main() -> int:
         print("No matching test cases found.", file=sys.stderr)
         return 2
 
-    results = [run_case(case_dir) for case_dir in case_dirs]
-
-    for result in results:
+    results = []
+    for case_dir in case_dirs:
+        result = run_case(case_dir)
+        results.append(result)
         status = "PASS" if result.passed else "FAIL"
-        print(f"{status} {result.name}: {result.reason}")
+        print(f"{status} {result.name}: {result.reason}", flush=True)
         if not result.passed:
-            print(f"  return code: {result.return_code}")
+            print(f"  return code: {result.return_code}", flush=True)
             if result.details:
-                print("  details:")
+                print("  details:", flush=True)
                 for line in result.details.splitlines():
-                    print(f"    {line}")
+                    print(f"    {line}", flush=True)
             if result.stderr:
-                print("  stderr:")
+                print("  stderr:", flush=True)
                 for line in result.stderr.splitlines():
-                    print(f"    {line}")
+                    print(f"    {line}", flush=True)
 
     passed_count = sum(result.passed for result in results)
     print(f"\nSummary: {passed_count}/{len(results)} cases passed.")
