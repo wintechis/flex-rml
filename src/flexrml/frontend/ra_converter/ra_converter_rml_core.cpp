@@ -545,9 +545,20 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
   // Handle data type
   std::vector<std::string> data_type_map_nodes = find_matching_objects(triples, object_node, "http://w3id.org/rml/datatypeMap");
   if (data_type_map_nodes.size() == 1) {
-    std::string data_type = find_matching_objects(triples, data_type_map_nodes[0], "http://w3id.org/rml/constant")[0];
-    // Check if lang tag is valid
-    result.data_type = data_type;
+    std::vector<std::string> data_type = find_matching_objects(triples, data_type_map_nodes[0], "http://w3id.org/rml/constant");
+    if (data_type.size() == 1) {
+      result.data_type = data_type[0];
+    } else {
+      data_type = find_matching_objects(triples, data_type_map_nodes[0], "http://w3id.org/rml/template");
+      if (data_type.size() == 1) {
+        result.data_type = data_type[0];
+      } else {
+        data_type = find_matching_objects(triples, data_type_map_nodes[0], "http://w3id.org/rml/reference");
+        if (data_type.size() == 1) {
+          result.data_type = data_type[0];
+        }
+      }
+    }
   }
 
   bool term_type_given = false;
@@ -756,35 +767,44 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
                                                   const Object& obj) {
   std::set<std::string> unique_attributes;
 
+  auto collect_term_map_attributes = [&unique_attributes](const std::string& term_map_type,
+                                                          const std::string& term_map) {
+    if (term_map_type == "template") {
+      std::vector<std::string> res = extract_substrings(term_map);
+      unique_attributes.insert(res.begin(), res.end());
+    } else if (term_map_type == "reference") {
+      unique_attributes.insert(term_map);
+    }
+  };
+
+  auto collect_annotation_attributes = [&unique_attributes](const std::string& annotation) {
+    if (annotation.empty() || annotation == "None") {
+      return;
+    }
+
+    std::vector<std::string> res = extract_substrings(annotation);
+    if (!res.empty()) {
+      unique_attributes.insert(res.begin(), res.end());
+      return;
+    }
+  };
+
   // Handle Subject
   if (!subj.term_map_type.empty()) {
-    if (subj.term_map_type == "template") {
-      std::vector<std::string> res = extract_substrings(subj.term_map);
-      unique_attributes.insert(res.begin(), res.end());
-    } else if (subj.term_map_type == "reference") {
-      unique_attributes.insert(subj.term_map);
-    }
+    collect_term_map_attributes(subj.term_map_type, subj.term_map);
   }
 
   // Handle Predicate
   if (!pred.term_map_type.empty()) {
-    if (pred.term_map_type == "template") {
-      std::vector<std::string> res = extract_substrings(pred.term_map);
-      unique_attributes.insert(res.begin(), res.end());
-    } else if (pred.term_map_type == "reference") {
-      unique_attributes.insert(pred.term_map);
-    }
+    collect_term_map_attributes(pred.term_map_type, pred.term_map);
   }
 
   // Handle Object
   if (!obj.term_map_type.empty()) {
-    if (obj.term_map_type == "template") {
-      std::vector<std::string> res = extract_substrings(obj.term_map);
-      unique_attributes.insert(res.begin(), res.end());
-    } else if (obj.term_map_type == "reference") {
-      unique_attributes.insert(obj.term_map);
-    }
+    collect_term_map_attributes(obj.term_map_type, obj.term_map);
   }
+  collect_annotation_attributes(obj.lang_tag);
+  collect_annotation_attributes(obj.data_type);
 
   // Handle join condition if available
   bool is_empty = std::all_of(obj.join_condition.begin(), obj.join_condition.end(), [](const std::string& s) { return s.empty(); });

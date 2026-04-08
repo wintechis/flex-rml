@@ -359,6 +359,29 @@ std::string unmaskString(const std::string& input) {
   return output;
 }
 
+std::string resolve_annotation_value(const std::string& annotation,
+                                     std::unordered_map<std::string, std::string>& map) {
+  if (annotation == "None") {
+    return annotation;
+  }
+
+  std::string resolved = annotation;
+  std::vector<std::string> matches = extract_substrings(resolved);
+  if (!matches.empty()) {
+    for (const auto& match : matches) {
+      resolved = replace_substring(resolved, "{" + match + "}", map[match]);
+    }
+    return unmaskString(resolved);
+  }
+
+  auto it = map.find(annotation);
+  if (it != map.end()) {
+    return it->second;
+  }
+
+  return annotation;
+}
+
 std::string infer_literal_datatype(const std::string& rdf_term,
                                    const std::string& lang_tag,
                                    const std::string& data_type) {
@@ -393,6 +416,9 @@ std::string create_operator(const std::string& term_map,
 
   // Handle template
   if (term_map_type == "template") {
+    std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
+    std::string effective_data_type = resolve_annotation_value(data_type, map);
+
     // Find all matches in term_map
     std::vector<std::string> matches = extract_substrings(rdf_term);
 
@@ -417,17 +443,18 @@ std::string create_operator(const std::string& term_map,
       rdf_term = base_uri + rdf_term;
     }
 
-    rdf_term = handle_term_type(term_type, rdf_term, lang_tag, data_type);
+    rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
 
     return rdf_term;
   }
   // Handle reference
   else if (term_map_type == "reference") {
     std::string data = map[term_map];
-    std::string effective_data_type = data_type;
+    std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
+    std::string effective_data_type = resolve_annotation_value(data_type, map);
 
     if (term_type == "literal") {
-      effective_data_type = infer_literal_datatype(data, lang_tag, data_type);
+      effective_data_type = infer_literal_datatype(data, effective_lang_tag, effective_data_type);
     }
 
     // Replace reference id with actual data
@@ -438,11 +465,13 @@ std::string create_operator(const std::string& term_map,
       rdf_term = base_uri + rdf_term;
     }
 
-    rdf_term = handle_term_type(term_type, rdf_term, lang_tag, effective_data_type);
+    rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
 
     return rdf_term;
   } else if (term_map_type == "constant") {
-    rdf_term = handle_term_type(term_type, rdf_term, lang_tag, data_type);
+    std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
+    std::string effective_data_type = resolve_annotation_value(data_type, map);
+    rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
     return rdf_term;
   } else {
     std::cout << "Error: term map type not supported! Valid types are: 'template', 'reference', 'constant'. Received term map type: '" << term_map_type << "'" << " and term map '" << term_map << "'" << std::endl;
