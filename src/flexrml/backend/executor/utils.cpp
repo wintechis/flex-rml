@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -358,6 +359,33 @@ std::string unmaskString(const std::string& input) {
   return output;
 }
 
+std::string infer_literal_datatype(const std::string& rdf_term,
+                                   const std::string& lang_tag,
+                                   const std::string& data_type) {
+  if (lang_tag != "None" || data_type != "None") {
+    return data_type;
+  }
+
+  static const std::regex integer_pattern(R"(^-?(0|[1-9][0-9]*)$)");
+  static const std::regex decimal_pattern(R"(^-?(0|[1-9][0-9]*)\.[0-9]+$)");
+  static const std::regex double_pattern(R"(^-?(0|[1-9][0-9]*)(\.[0-9]+)?[eE][+-]?[0-9]+$)");
+
+  if (rdf_term == "true" || rdf_term == "false") {
+    return "http://www.w3.org/2001/XMLSchema#boolean";
+  }
+  if (std::regex_match(rdf_term, integer_pattern)) {
+    return "http://www.w3.org/2001/XMLSchema#integer";
+  }
+  if (std::regex_match(rdf_term, decimal_pattern)) {
+    return "http://www.w3.org/2001/XMLSchema#decimal";
+  }
+  if (std::regex_match(rdf_term, double_pattern)) {
+    return "http://www.w3.org/2001/XMLSchema#double";
+  }
+
+  return data_type;
+}
+
 std::string create_operator(const std::string& term_map,
                             const std::string& term_map_type,
                             const std::string& term_type,
@@ -400,6 +428,11 @@ std::string create_operator(const std::string& term_map,
   // Handle reference
   else if (term_map_type == "reference") {
     std::string data = map[term_map];
+    std::string effective_data_type = data_type;
+
+    if (term_type == "literal") {
+      effective_data_type = infer_literal_datatype(data, lang_tag, data_type);
+    }
 
     // Replace reference id with actual data
     rdf_term = replace_substring(rdf_term, term_map, data);
@@ -409,7 +442,7 @@ std::string create_operator(const std::string& term_map,
       rdf_term = base_uri + rdf_term;
     }
 
-    rdf_term = handle_term_type(term_type, rdf_term, lang_tag, data_type);
+    rdf_term = handle_term_type(term_type, rdf_term, lang_tag, effective_data_type);
 
     return rdf_term;
   } else if (term_map_type == "constant") {
