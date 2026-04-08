@@ -42,6 +42,14 @@ def parse_error_expected(readme_path: Path) -> bool:
     return match.group(1).strip().lower() == "yes"
 
 
+def parse_default_base_iri(readme_path: Path) -> str | None:
+    content = readme_path.read_text(encoding="utf-8")
+    match = re.search(r"\*\*Default Base IRI\*\*\s*:\s*(\S+)", content, re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).strip()
+
+
 def normalize_output(output: str) -> list[str]:
     lines = []
     for raw_line in output.splitlines():
@@ -115,7 +123,9 @@ def compare_rdf_outputs(expected_output: str, actual_output: str) -> bool:
 
 
 def run_case(case_dir: Path) -> CaseResult:
-    expected_error = parse_error_expected(case_dir / "README.md")
+    readme_path = case_dir / "README.md"
+    expected_error = parse_error_expected(readme_path)
+    default_base_iri = parse_default_base_iri(readme_path)
     with tempfile.NamedTemporaryFile(
         suffix=f"_{case_dir.name}.nq",
         prefix="flexrml_validation_",
@@ -129,8 +139,12 @@ def run_case(case_dir: Path) -> CaseResult:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
 
+    command = [sys.executable, "-m", "flexrml.flexcore", "-m", "mapping.ttl", "-o", str(output_path)]
+    if default_base_iri:
+        command.extend(["-b", default_base_iri])
+
     proc = subprocess.run(
-        [sys.executable, "-m", "flexrml.flexcore", "-m", "mapping.ttl", "-o", str(output_path)],
+        command,
         cwd=case_dir,
         env=env,
         capture_output=True,
