@@ -414,10 +414,21 @@ std::string create_operator(const std::string& term_map,
                             std::unordered_map<std::string, std::string>& map) {
   std::string rdf_term = term_map;
 
+  auto normalize_iri_annotation = [&base_uri](std::string annotation_value) {
+    if (annotation_value == "None") {
+      return annotation_value;
+    }
+    if (!(annotation_value.starts_with("http://") || annotation_value.starts_with("https://"))) {
+      annotation_value = base_uri + annotation_value;
+    }
+    return annotation_value;
+  };
+
   // Handle template
   if (term_map_type == "template") {
     std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
     std::string effective_data_type = resolve_annotation_value(data_type, map);
+    effective_data_type = normalize_iri_annotation(effective_data_type);
 
     // Find all matches in term_map
     std::vector<std::string> matches = extract_substrings(rdf_term);
@@ -452,6 +463,7 @@ std::string create_operator(const std::string& term_map,
     std::string data = map[term_map];
     std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
     std::string effective_data_type = resolve_annotation_value(data_type, map);
+    effective_data_type = normalize_iri_annotation(effective_data_type);
 
     if (term_type == "literal") {
       effective_data_type = infer_literal_datatype(data, effective_lang_tag, effective_data_type);
@@ -471,6 +483,7 @@ std::string create_operator(const std::string& term_map,
   } else if (term_map_type == "constant") {
     std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
     std::string effective_data_type = resolve_annotation_value(data_type, map);
+    effective_data_type = normalize_iri_annotation(effective_data_type);
     rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
     return rdf_term;
   } else {
