@@ -1,0 +1,85 @@
+# Validation Report
+
+- Generated at: `2026-04-08 18:50:03Z`
+- Scope: `all test cases`
+- Passed: `76/76`
+- Failed: `0`
+
+## Results
+
+- `PASS` `RMLTC0000-JSON`: output matches
+- `PASS` `RMLTC0001a-JSON`: output matches
+- `PASS` `RMLTC0001b-JSON`: output matches
+- `PASS` `RMLTC0002a-JSON`: output matches
+- `PASS` `RMLTC0002b-JSON`: output matches
+- `PASS` `RMLTC0002e-JSON`: error observed as expected
+- `PASS` `RMLTC0002g-JSON`: error observed as expected
+- `PASS` `RMLTC0003c-JSON`: output matches
+- `PASS` `RMLTC0004a-JSON`: output matches
+- `PASS` `RMLTC0004b-JSON`: error observed as expected
+- `PASS` `RMLTC0005a-JSON`: output matches
+- `PASS` `RMLTC0006a-JSON`: output matches
+- `PASS` `RMLTC0007a-JSON`: output matches
+- `PASS` `RMLTC0007b-JSON`: output matches
+- `PASS` `RMLTC0007c-JSON`: output matches
+- `PASS` `RMLTC0007d-JSON`: output matches
+- `PASS` `RMLTC0007e-JSON`: output matches
+- `PASS` `RMLTC0007f-JSON`: output matches
+- `PASS` `RMLTC0007g-JSON`: output matches
+- `PASS` `RMLTC0007h-JSON`: error observed as expected
+- `PASS` `RMLTC0008a-JSON`: output matches
+- `PASS` `RMLTC0008b-JSON`: output matches
+- `PASS` `RMLTC0008c-JSON`: output matches
+- `PASS` `RMLTC0009a-JSON`: output matches
+- `PASS` `RMLTC0009b-JSON`: output matches
+- `PASS` `RMLTC0010a-JSON`: output matches
+- `PASS` `RMLTC0010b-JSON`: output matches
+- `PASS` `RMLTC0010c-JSON`: output matches
+- `PASS` `RMLTC0011b-JSON`: output matches
+- `PASS` `RMLTC0012a-JSON`: output matches
+- `PASS` `RMLTC0012b-JSON`: output matches
+- `PASS` `RMLTC0012c-JSON`: error observed as expected
+- `PASS` `RMLTC0012d-JSON`: error observed as expected
+- `PASS` `RMLTC0012e-JSON`: output matches
+- `PASS` `RMLTC0013a-JSON`: output matches
+- `PASS` `RMLTC0015a-JSON`: output matches
+- `PASS` `RMLTC0015b-JSON`: error observed as expected
+- `PASS` `RMLTC0019a-JSON`: output matches
+- `PASS` `RMLTC0019b-JSON`: error observed as expected
+- `PASS` `RMLTC0020a-JSON`: output matches
+- `PASS` `RMLTC0021a-JSON`: output matches
+- `PASS` `RMLTC0022a-JSON`: output matches
+- `PASS` `RMLTC0022b-JSON`: output matches
+- `PASS` `RMLTC0022c-JSON`: output matches
+- `PASS` `RMLTC0022d-JSON`: output matches
+- `PASS` `RMLTC0022e-JSON`: output matches
+- `PASS` `RMLTC0023a-JSON`: error observed as expected
+- `PASS` `RMLTC0023b-JSON`: error observed as expected
+- `PASS` `RMLTC0023c-JSON`: error observed as expected
+- `PASS` `RMLTC0023d-JSON`: error observed as expected
+- `PASS` `RMLTC0023e-JSON`: error observed as expected
+- `PASS` `RMLTC0023f-JSON`: output matches
+- `PASS` `RMLTC0024a-JSON`: error observed as expected
+- `PASS` `RMLTC0025a-JSON`: output matches
+- `PASS` `RMLTC0025b-JSON`: error observed as expected
+- `PASS` `RMLTC0025c-JSON`: output matches
+- `PASS` `RMLTC0026a-JSON`: output matches
+- `PASS` `RMLTC0026b-JSON`: output matches
+- `PASS` `RMLTC0026c-JSON`: output matches
+- `PASS` `RMLTC0026d-JSON`: output matches
+- `PASS` `RMLTC0027a-JSON`: output matches
+- `PASS` `RMLTC0027b-JSON`: output matches
+- `PASS` `RMLTC0027c-JSON`: output matches
+- `PASS` `RMLTC0028a-JSON`: output matches
+- `PASS` `RMLTC0028b-JSON`: output matches
+- `PASS` `RMLTC0028c-JSON`: output matches
+- `PASS` `RMLTC0029a-JSON`: output matches
+- `PASS` `RMLTC0030a-JSON`: output matches
+- `PASS` `RMLTC0030b-JSON`: output matches
+- `PASS` `RMLTC0030c-JSON`: output matches
+- `PASS` `RMLTC0030d-JSON`: output matches
+- `PASS` `RMLTC0030e-JSON`: output matches
+- `PASS` `RMLTC0030f-JSON`: output matches
+- `PASS` `RMLTC0031a-JSON`: output matches
+- `PASS` `RMLTC0031b-JSON`: output matches
+- `PASS` `RMLTC0031c-JSON`: output matches

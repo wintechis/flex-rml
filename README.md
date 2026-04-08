@@ -82,7 +82,16 @@ python3 flexrml.py -m [path]
 More informatioin about available flags can be found using the `-h` flag.
 
 ## Conformance
-#TODO
+
+FlexRML passes all official RML-Core JSON test cases from [`kg-construct/rml-core`](https://github.com/kg-construct/rml-core/tree/main/test-cases).
+
+Place the official test cases in `test_cases/` and run the validation with:
+
+```bash
+PYTHONPATH=src python scripts/validate_test_cases.py
+```
+
+The validator also generates a Markdown report at `validation_report.md`.
 
 ## Microcontroller Compatible Version
 

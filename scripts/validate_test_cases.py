@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -21,6 +22,7 @@ except ImportError:  # pragma: no cover - handled at runtime for missing deps
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_CASES_DIR = ROOT / "test_cases"
+REPORT_PATH = ROOT / "validation_report.md"
 
 
 @dataclass
@@ -208,6 +210,54 @@ def iter_case_dirs(selected: list[str] | None) -> list[Path]:
     return [case_dir for case_dir in case_dirs if case_dir.name in selected_set]
 
 
+def write_markdown_report(results: list[CaseResult], selected: list[str] | None) -> None:
+    passed_count = sum(result.passed for result in results)
+    failed = [result for result in results if not result.passed]
+    scope = ", ".join(selected) if selected else "all test cases"
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+
+    lines = [
+        "# Validation Report",
+        "",
+        f"- Generated at: `{generated_at}`",
+        f"- Scope: `{scope}`",
+        f"- Passed: `{passed_count}/{len(results)}`",
+        f"- Failed: `{len(failed)}`",
+        "",
+        "## Results",
+        "",
+    ]
+
+    for result in results:
+        status = "PASS" if result.passed else "FAIL"
+        lines.append(f"- `{status}` `{result.name}`: {result.reason}")
+
+    if failed:
+        lines.extend([
+            "",
+            "## Failures",
+            "",
+        ])
+        for result in failed:
+            lines.append(f"### `{result.name}`")
+            lines.append("")
+            lines.append(f"- Return code: `{result.return_code}`")
+            lines.append(f"- Reason: {result.reason}")
+            if result.details:
+                lines.append("- Details:")
+                lines.append("```text")
+                lines.append(result.details)
+                lines.append("```")
+            if result.stderr:
+                lines.append("- Stderr:")
+                lines.append("```text")
+                lines.append(result.stderr)
+                lines.append("```")
+            lines.append("")
+
+    REPORT_PATH.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate FlexRML against local RML test cases.")
     parser.add_argument("cases", nargs="*", help="Optional list of case directory names to run.")
@@ -236,6 +286,7 @@ def main() -> int:
                     print(f"    {line}", flush=True)
 
     passed_count = sum(result.passed for result in results)
+    write_markdown_report(results, args.cases or None)
     print(f"\nSummary: {passed_count}/{len(results)} cases passed.")
     return 0 if passed_count == len(results) else 1
 
