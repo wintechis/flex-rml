@@ -148,15 +148,17 @@ def normalize_mapping(rml_str, config):
 
     return normalized_graphs
 
-def convert_to_ra(normalized_graphs_arr, iterators, config):
+def convert_to_ra(normalized_graphs_arr, iterators, base_uris, config):
     if config.lib_ra_converter == None:
         config.lib_ra_converter = config.load_ra_converter()
 
     ra_expressions = []
     ra_expressions_iterators = []
+    ra_expressions_base_uris = []
     for i in range(len(normalized_graphs_arr)):
         normalized_graph = normalized_graphs_arr[i]
         iterator = iterators[i] # Link iterator and ra_expression
+        base_uri = base_uris[i]
         normalized_graph = normalized_graph.encode()
 
         lib = config.lib_ra_converter
@@ -170,8 +172,33 @@ def convert_to_ra(normalized_graphs_arr, iterators, config):
         for result in results_split:
             ra_expressions.append(result)
             ra_expressions_iterators.append(iterator)
+            ra_expressions_base_uris.append(base_uri)
 
-    return ra_expressions, ra_expressions_iterators
+    return ra_expressions, ra_expressions_iterators, ra_expressions_base_uris
+
+def get_base_uris(normalized_graphs_arr, default_base_uri):
+    base_uris = []
+    for normalized_graph in normalized_graphs_arr:
+        triples_map = None
+        graph_base_uri = default_base_uri
+        split_graph = normalized_graph.split("\n")
+
+        for triple_str in split_graph:
+            triple = triple_str.split("|||")
+            if len(triple) == 3 and triple[1] == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" and triple[2] == "http://w3id.org/rml/TriplesMap":
+                triples_map = triple[0]
+                break
+
+        if triples_map is not None:
+            for triple_str in split_graph:
+                triple = triple_str.split("|||")
+                if len(triple) == 3 and triple[0] == triples_map and triple[1] == "http://w3id.org/rml/baseIRI":
+                    graph_base_uri = triple[2]
+                    break
+
+        base_uris.append(graph_base_uri)
+
+    return base_uris
 
 ####################################################################################################################
 ### Handle Functions
@@ -440,10 +467,11 @@ def run_mapping(mapping_config):
             print("Calling functions: ", time.time()-handle_functions_start_time)
 
         iterators = get_iterators(normalized_graphs_arr)
+        base_uris = get_base_uris(normalized_graphs_arr, mapping_config.base_uri)
         
         ### STEP 4: Logical plan generation ###
         convert_to_ra_start_time = time.time()
-        ra_expressions, ra_expressions_iterators = convert_to_ra(normalized_graphs_arr, iterators, mapping_config)
+        ra_expressions, ra_expressions_iterators, ra_expressions_base_uris = convert_to_ra(normalized_graphs_arr, iterators, base_uris, mapping_config)
         ra_str = to_ra_string(ra_expressions)
         if mapping_config.show_output:
             print("Converting to RA: ", time.time()-convert_to_ra_start_time)
@@ -456,20 +484,25 @@ def run_mapping(mapping_config):
         
         # just return the plan
         if mapping_config.generate_plan:
-            print(f"{ra_str}<==>{ra_expressions_iterators}")
+            print(f"{ra_str}<==>{ra_expressions_iterators}<==>{ra_expressions_base_uris}")
         else:
             triple = run_converter(ra_str, mapping_config.output_file_path, mapping_config.base_uri, mapping_config.continue_on_error, mapping_config.threading_enabled, 
-                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, mapping_config.data, ra_expressions_iterators)
+                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, mapping_config.data, ra_expressions_iterators, ra_expressions_base_uris)
             
             return triple
     else:
         # Just execute
         import ast
-        ra_str = mapping_config.plan.split("<==>")[0]
-        ra_expressions_iterators = mapping_config.plan.split("<==>")[1]
+        plan_parts = mapping_config.plan.split("<==>")
+        ra_str = plan_parts[0]
+        ra_expressions_iterators = plan_parts[1]
         ra_expressions_iterators = ast.literal_eval(ra_expressions_iterators)
+        if len(plan_parts) > 2:
+            ra_expressions_base_uris = ast.literal_eval(plan_parts[2])
+        else:
+            ra_expressions_base_uris = []
         triple = run_converter(ra_str, mapping_config.output_file_path, mapping_config.base_uri, mapping_config.continue_on_error, mapping_config.threading_enabled, 
-                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, mapping_config.data, ra_expressions_iterators)
+                        mapping_config.materialize_constants, mapping_config.heuristic_ordering, mapping_config.return_triple, mapping_config.data, ra_expressions_iterators, ra_expressions_base_uris)
         return triple
 
 ####################################################################################################################

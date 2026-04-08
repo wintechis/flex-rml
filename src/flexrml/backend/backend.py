@@ -30,6 +30,7 @@ class Configuration:
         self.keep_in_memory = "false"
         self.return_triple = False
         self.data = {}
+        self.base_uris = []
 
         self.show_output = False
         self.bn_number = 58932
@@ -226,18 +227,19 @@ def parse_ra(ra_expressions):
 ##########################################################################################
 def create_physical_plans(ra_expressions, config):
     physical_plans = []
-    for ra_expression in ra_expressions:
+    for i, ra_expression in enumerate(ra_expressions):
+        plan_base_uri = config.base_uris[i] if i < len(config.base_uris) else config.base_uri
         # Handle simple plan
         if len(ra_expression) == 2:
             # Without graph
             if len(ra_expression[1]) == 4:
                 plan = [["seq_scan", ra_expression[0]["in_relation"], ra_expression[0]["arguments"]],
                         ["format", ra_expression[1]["s_content"], ra_expression[1]["p_content"], ra_expression[1]["o_content"]],
-                        [config.output_file_path], [config.base_uri], [config.continue_on_error]]
+                        [config.output_file_path], [plan_base_uri], [config.continue_on_error]]
             else:
                 plan = [["seq_scan", ra_expression[0]["in_relation"], ra_expression[0]["arguments"]],
                         ["format", ra_expression[1]["s_content"], ra_expression[1]["p_content"], ra_expression[1]["o_content"], ra_expression[1]["g_content"]],
-                        [config.output_file_path], [config.base_uri], [config.continue_on_error]]
+                        [config.output_file_path], [plan_base_uri], [config.continue_on_error]]
             physical_plans.append(plan)
         elif len(ra_expression) == 4:
             if len(ra_expression[3]) == 4:
@@ -245,13 +247,13 @@ def create_physical_plans(ra_expressions, config):
                         ["seq_scan", ra_expression[1]["in_relation"], ra_expression[1]["arguments"], ra_expression[1]["name"]],
                         ["hash_join", ra_expression[2]["arguments"]],
                         ["format", ra_expression[3]["s_content"], ra_expression[3]["p_content"], ra_expression[3]["o_content"]],
-                        [config.output_file_path], [config.base_uri], [config.continue_on_error]]
+                        [config.output_file_path], [plan_base_uri], [config.continue_on_error]]
             else:
                 plan = [["seq_scan", ra_expression[0]["in_relation"], ra_expression[0]["arguments"], ra_expression[0]["name"]],
                         ["seq_scan", ra_expression[1]["in_relation"], ra_expression[1]["arguments"], ra_expression[1]["name"]],
                         ["hash_join", ra_expression[2]["arguments"]],
                         ["format", ra_expression[3]["s_content"], ra_expression[3]["p_content"], ra_expression[3]["o_content"], ra_expression[3]["g_content"]],
-                        [config.output_file_path], [config.base_uri], [config.continue_on_error]]
+                        [config.output_file_path], [plan_base_uri], [config.continue_on_error]]
             physical_plans.append(plan)
         else:
             print("Unsupported length of ra expression!. Got: ", len(ra_expression))
@@ -696,7 +698,7 @@ def konverter_from_file():
 ##########################################################################################
 
 def run_converter(ra_expressions: str, output_file_path: str, base_uri: str, continue_on_error: str, threading_enabled: str, 
-                  materialize_constants: str, heuristic_ordering: str, return_triple: bool, data= {}, iterators = []) -> None:
+                  materialize_constants: str, heuristic_ordering: str, return_triple: bool, data= {}, iterators = [], base_uris = []) -> None:
     """
     Function imported in other projects using the konverter backend.
     Input: The ra_expression as string.
@@ -711,6 +713,7 @@ def run_converter(ra_expressions: str, output_file_path: str, base_uri: str, con
     config.heuristic_ordering = heuristic_ordering
     config.output_file_path = output_file_path
     config.iterators = iterators
+    config.base_uris = base_uris
     config.return_triple = return_triple
 
     # In compiled version this is somehow needed.
