@@ -81,6 +81,16 @@ python3 flexrml.py -m [path]
 
 More informatioin about available flags can be found using the `-h` flag.
 
+To validate an input mapping against the official RML-Core SHACL shape bundled with FlexRML before execution, use:
+
+```bash
+python -m flexrml.flexcore -m mapping.ttl --validate-shacl
+```
+
+The bundled SHACL shape at `src/flexrml/shapes/core.ttl` is third-party material
+from `kg-construct/rml-core` and remains licensed under CC BY 4.0. See
+`THIRD_PARTY_NOTICES.txt` for attribution details.
+
 ## Conformance
 
 FlexRML passes all official RML-Core JSON test cases from [`kg-construct/rml-core`](https://github.com/kg-construct/rml-core/tree/main/test-cases).

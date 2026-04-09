@@ -94,6 +94,10 @@ echo ""
 PYTHONPATH=./src python -m nuitka \
   --onefile \
   --follow-imports \
+  --include-package=pyshacl \
+  --include-package=rdflib.plugins.stores \
+  --include-package=rdflib.plugins.parsers \
+  --include-package=rdflib.plugins.serializers \
   --include-data-file=src/flexrml/frontend/librdfparser.so=flexrml/frontend/librdfparser.so \
   --include-data-file=src/flexrml/frontend/libnormalizer.so=flexrml/frontend/libnormalizer.so \
   --include-data-file=src/flexrml/frontend/libraconverter.so=flexrml/frontend/libraconverter.so \
@@ -101,6 +105,7 @@ PYTHONPATH=./src python -m nuitka \
   --include-data-file=src/flexrml/backend/libexecutor.so=flexrml/backend/libexecutor.so \
   --include-data-file=src/flexrml/backend/librapartitioner.so=flexrml/backend/librapartitioner.so \
   --include-data-file=src/flexrml/backend/libthreadexecutor.so=flexrml/backend/libthreadexecutor.so \
+  --include-data-file=src/flexrml/shapes/core.ttl=flexrml/shapes/core.ttl \
   --no-deployment-flag=self-execution \
   --output-filename=flexrml \
   --main=src/flexrml/flexcore.py

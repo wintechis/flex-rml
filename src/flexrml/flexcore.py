@@ -11,6 +11,7 @@ from flexrml.backend.backend import run_converter
 #############################################
 ## DEFAULT VALUES
 BASE_URI = "http://example.com/base/"
+SHACL_CORE_SHAPE = None
 
 #############################################
 
@@ -19,6 +20,8 @@ def package_root() -> Path:
     if here.name == "flexrml":
         return here
     return here / "flexrml"
+
+SHACL_CORE_SHAPE = package_root() / "shapes" / "core.ttl"
 
 def resource_path(*parts: str) -> str:
     return str(package_root().joinpath(*parts))
@@ -35,6 +38,7 @@ class Configuration:
         self.heuristic_ordering = "true"
         self.generate_plan = True
         self.data = None
+        self.validate_shacl = False
 
         ##########################
         ## Internal Config
@@ -83,6 +87,82 @@ class Configuration:
         lib.resolve_rml_functions.argtypes = [ctypes.c_char_p]
         lib.resolve_rml_functions.restype = ctypes.c_char_p
         return lib
+
+
+def _import_validation_dependencies():
+    try:
+        from pyshacl import validate
+        from rdflib import Graph
+        from rdflib.util import guess_format
+    except ImportError as exc:
+        print(
+            "SHACL validation requires the optional dependencies 'pyshacl' and 'rdflib'. "
+            "Install the current project dependencies and retry."
+        )
+        sys.exit(1)
+
+    return validate, Graph, guess_format
+
+
+def _parse_graph(source):
+    _, Graph, guess_format = _import_validation_dependencies()
+
+    parse_attempts = []
+
+    try:
+        is_existing_file = isinstance(source, (str, os.PathLike)) and Path(source).is_file()
+    except OSError:
+        is_existing_file = False
+
+    if is_existing_file:
+        source_path = Path(source)
+        guessed_format = guess_format(source_path.name)
+        if guessed_format:
+            parse_attempts.append({"location": str(source_path), "format": guessed_format})
+
+        for fallback_format in ("turtle", "trig", "n3", "nt", "xml"):
+            if fallback_format != guessed_format:
+                parse_attempts.append({"location": str(source_path), "format": fallback_format})
+    else:
+        for fallback_format in ("turtle", "trig", "n3", "nt", "xml"):
+            parse_attempts.append({"data": source, "format": fallback_format})
+
+    last_error = None
+    for parse_kwargs in parse_attempts:
+        graph = Graph()
+        try:
+            graph.parse(**parse_kwargs)
+            return graph
+        except Exception as exc:
+            last_error = exc
+
+    raise ValueError(f"Unable to parse the input mapping as RDF: {last_error}")
+
+
+def validate_rml_with_shacl(source):
+    validate, _, _ = _import_validation_dependencies()
+
+    try:
+        if not SHACL_CORE_SHAPE.is_file():
+            raise FileNotFoundError(f"Bundled SHACL shape not found: {SHACL_CORE_SHAPE}")
+
+        data_graph = _parse_graph(source)
+        conforms, _, results_text = validate(
+            data_graph=data_graph,
+            shacl_graph=str(SHACL_CORE_SHAPE),
+            inference="none",
+            abort_on_first=False,
+            allow_infos=True,
+            allow_warnings=True,
+        )
+    except Exception as exc:
+        print(f"SHACL validation failed before execution: {exc}")
+        sys.exit(1)
+
+    if not conforms:
+        print("RML SHACL validation failed against the official RML-Core shape.")
+        print(results_text)
+        sys.exit(1)
 
 ####################################################################################################################
 
@@ -264,6 +344,12 @@ def run_mapping(mapping_config):
     if mapping_config.plan == "":
         ############ Generate Plan and Execute ############
         ### STEP 1: Parse & Validate ###
+        if mapping_config.validate_shacl:
+            shacl_validation_start_time = time.time()
+            validate_rml_with_shacl(mapping_config.mapping_source)
+            if mapping_config.show_output:
+                print("SHACL validation: ", time.time() - shacl_validation_start_time)
+
         load_rml_start_time = time.time()
         rml_str = load_rml(mapping_config.mapping_source, mapping_config)
         if mapping_config.show_output:
@@ -507,7 +593,7 @@ def run_mapping(mapping_config):
 
 ####################################################################################################################
 # Function to use as library
-def execute(mapping_source = None, plan = None, base_uri = BASE_URI, generate_plan = False, use_threading = True, data = {}):
+def execute(mapping_source = None, plan = None, base_uri = BASE_URI, generate_plan = False, use_threading = True, data = {}, validate_shacl = False):
     config = Configuration()
 
     if mapping_source:
@@ -521,6 +607,7 @@ def execute(mapping_source = None, plan = None, base_uri = BASE_URI, generate_pl
     config.base_uri = base_uri
     config.threading_enabled = str(use_threading).lower()
     config.data = data
+    config.validate_shacl = validate_shacl
 
     triple = run_mapping(config)
 
@@ -543,6 +630,7 @@ def main():
     parser.add_argument("--no-threading", action='store_false', help="Disables multithreading during execution.")
     parser.add_argument("--no-const-folding", action='store_false', help="Disables constant folding optimization.")
     parser.add_argument("--no-ordering", action='store_false', help="Disables heuristic ordering optimization.")
+    parser.add_argument("--validate-shacl", action='store_true', help="Validate the input RML mapping with the official bundled RML-Core SHACL shape before execution.")
 
     args = parser.parse_args()
 
@@ -584,6 +672,12 @@ def main():
 
     if args.generate_plan == False:
         config.generate_plan = False
+
+    if args.validate_shacl:
+        if config.plan:
+            print("Error: --validate-shacl can only be used with --mapping, not with --plan.")
+            sys.exit(1)
+        config.validate_shacl = True
 
     config.return_triple = False # Do not return triple, just display
 

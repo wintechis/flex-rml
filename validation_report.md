@@ -1,8 +1,9 @@
 # Validation Report
 
 - FlexRML version: `2.2.0`
-- Generated at: `2026-04-08 19:05:11Z`
+- Generated at: `2026-04-09 08:27:08Z`
 - Scope: `all test cases`
+- Execution mode: `standalone binary`
 - Passed: `76/76`
 - Failed: `0`
 

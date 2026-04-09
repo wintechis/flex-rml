@@ -24,6 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 TEST_CASES_DIR = ROOT / "test_cases"
 REPORT_PATH = ROOT / "validation_report.md"
 PYPROJECT_PATH = ROOT / "pyproject.toml"
+STANDALONE_BINARY = ROOT / "flexrml"
+
+# Toggle this to validate test cases with the built standalone binary instead
+# of `python -m flexrml.flexcore`.
+USE_STANDALONE_BINARY = False
 
 
 @dataclass
@@ -35,6 +40,27 @@ class CaseResult:
     reason: str
     details: str = ""
     stderr: str = ""
+
+
+def build_flexrml_command(output_path: Path, default_base_iri: str | None) -> tuple[list[str], dict[str, str]]:
+    if USE_STANDALONE_BINARY:
+        if not STANDALONE_BINARY.is_file():
+            raise FileNotFoundError(
+                f"Standalone binary not found at {STANDALONE_BINARY}. Build it first or set "
+                "USE_STANDALONE_BINARY = False."
+            )
+
+        command = [str(STANDALONE_BINARY), "-m", "mapping.ttl", "-o", str(output_path), "--validate-shacl"]
+        env = os.environ.copy()
+    else:
+        command = [sys.executable, "-m", "flexrml.flexcore", "-m", "mapping.ttl", "-o", str(output_path), "--validate-shacl"]
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT / "src")
+
+    if default_base_iri:
+        command.extend(["-b", default_base_iri])
+
+    return command, env
 
 
 def parse_error_expected(readme_path: Path) -> bool:
@@ -142,12 +168,7 @@ def run_case(case_dir: Path) -> CaseResult:
     if output_path.exists():
         output_path.unlink()
 
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT / "src")
-
-    command = [sys.executable, "-m", "flexrml.flexcore", "-m", "mapping.ttl", "-o", str(output_path)]
-    if default_base_iri:
-        command.extend(["-b", default_base_iri])
+    command, env = build_flexrml_command(output_path, default_base_iri)
 
     proc = subprocess.run(
         command,
@@ -236,6 +257,7 @@ def write_markdown_report(results: list[CaseResult], selected: list[str] | None)
         f"- FlexRML version: `{version}`",
         f"- Generated at: `{generated_at}`",
         f"- Scope: `{scope}`",
+        f"- Execution mode: `{'standalone binary' if USE_STANDALONE_BINARY else 'python module'}`",
         f"- Passed: `{passed_count}/{len(results)}`",
         f"- Failed: `{len(failed)}`",
         "",
