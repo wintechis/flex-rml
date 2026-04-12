@@ -10,6 +10,7 @@ from jsonpath_ng import parse
 import io
 import csv
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 def package_root() -> Path:
     here = Path(__file__).resolve().parent
@@ -499,6 +500,111 @@ def preprocess_json(in_relation, json_path_expr_dict, data=None):
     return buf.getvalue()
 
 
+def _split_xpath(xpath_expr):
+    return [part for part in xpath_expr.strip().split("/") if part]
+
+
+def _element_text(element):
+    text = "".join(element.itertext()).strip()
+    return text
+
+
+def _select_xpath_nodes(root, xpath_expr):
+    parts = _split_xpath(xpath_expr)
+    if not parts:
+        return []
+
+    nodes = [root]
+    if parts and parts[0] == root.tag:
+        parts = parts[1:]
+
+    for part in parts:
+        next_nodes = []
+        for node in nodes:
+            next_nodes.extend(list(node.findall(part)))
+        nodes = next_nodes
+        if not nodes:
+            break
+
+    return nodes
+
+
+def _flatten_xml_element(element, parent_key=""):
+    row = {}
+
+    text = _element_text(element)
+    if text and not list(element):
+        row[parent_key or element.tag] = text
+
+    for attr_name, attr_value in element.attrib.items():
+        attr_key = f"{parent_key}.@{attr_name}" if parent_key else f"@{attr_name}"
+        row[attr_key] = attr_value
+
+    children = list(element)
+    if not children:
+        return row
+
+    grouped_children = defaultdict(list)
+    for child in children:
+        grouped_children[child.tag].append(child)
+
+    for child_tag, child_elements in grouped_children.items():
+        child_key = f"{parent_key}.{child_tag}" if parent_key else child_tag
+        if len(child_elements) == 1:
+            row.update(_flatten_xml_element(child_elements[0], child_key))
+            continue
+
+        values = []
+        for child_element in child_elements:
+            child_text = _element_text(child_element)
+            if child_text and not list(child_element) and not child_element.attrib:
+                values.append(child_text)
+            else:
+                nested = _flatten_xml_element(child_element, child_key)
+                for nested_key, nested_value in nested.items():
+                    row.setdefault(nested_key, nested_value)
+        if values:
+            row[child_key] = "|".join(values)
+
+    return row
+
+
+def preprocess_xml(in_relation, iterator_config, data=None):
+    if data is None:
+        with open(in_relation, "r", encoding="utf-8") as f:
+            data = f.read()
+
+    root = ET.fromstring(data)
+    xpath_expr = iterator_config["iterator"]
+    rows = [_flatten_xml_element(node) for node in _select_xpath_nodes(root, xpath_expr)]
+    rows = [row for row in rows if row]
+
+    if not rows:
+        return ""
+
+    fieldnames = sorted({key for row in rows for key in row.keys()})
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+def preprocess_input(in_relation, iterator_config, data=None):
+    if not isinstance(iterator_config, dict):
+        return preprocess_json(in_relation, {in_relation: iterator_config}, data)
+
+    reference_formulation = iterator_config.get("reference_formulation")
+
+    if reference_formulation == "http://w3id.org/rml/JSONPath":
+        return preprocess_json(in_relation, {in_relation: iterator_config["iterator"]}, data)
+    if reference_formulation == "http://w3id.org/rml/XPath":
+        return preprocess_xml(in_relation, iterator_config, data)
+
+    print(f"Unsupported reference formulation for source '{in_relation}': {reference_formulation}")
+    sys.exit(1)
+
+
 def start_conversion(ra_expressions, config = None):
     """
     Main function for running the mapping
@@ -555,7 +661,7 @@ def start_conversion(ra_expressions, config = None):
                 continue
             
             # Case: Transformation needed.
-            csv_str = preprocess_json(in_relation, iterators, in_memory_data_value)
+            csv_str = preprocess_input(in_relation, iterator, in_memory_data_value)
 
             loaded_relations.add(in_relation)
             in_memory_data += f"|||===|||{in_relation}===|||==={csv_str}"

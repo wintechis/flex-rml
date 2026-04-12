@@ -315,6 +315,7 @@ def get_iterators(normalized_graphs_arr):
     for normalized_graph in normalized_graphs_arr:
         path = None
         iterator = None
+        reference_formulation = None
         tmp_iterators = {}
         split_graph = normalized_graph.split("\n")
         for triple_str in split_graph:
@@ -324,6 +325,9 @@ def get_iterators(normalized_graphs_arr):
                 logical_source_node = triple[0]
 
                 for triple_str2 in split_graph:
+                    if f"{logical_source_node}|||http://w3id.org/rml/referenceFormulation|||" in triple_str2:
+                        triple = triple_str2.split("|||")
+                        reference_formulation = triple[2]
                     if f"{logical_source_node}|||http://w3id.org/rml/source|||" in triple_str2:
                         triple = triple_str2.split("|||")
                         source_node = triple[2]
@@ -332,7 +336,10 @@ def get_iterators(normalized_graphs_arr):
                             if f"{source_node}|||http://w3id.org/rml/path|||" in triple_str3:
                                 triple = triple_str3.split("|||")
                                 path = triple[2]
-                tmp_iterators[path] = iterator
+                tmp_iterators[path] = {
+                    "iterator": iterator,
+                    "reference_formulation": reference_formulation,
+                }
         iterators.append(tmp_iterators)
     return iterators
 
