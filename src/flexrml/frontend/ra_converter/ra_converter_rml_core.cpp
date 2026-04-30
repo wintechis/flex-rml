@@ -898,6 +898,17 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
     } else if (term_map_type == "function") {
       std::vector<std::string> res = extract_substrings(term_map);
       unique_attributes.insert(res.begin(), res.end());
+      std::vector<std::string> parts = split_line_at_char(term_map, ";;");
+      for (size_t i = 1; i + 2 < parts.size(); i += 3) {
+        const std::string& input_kind = parts[i + 1];
+        const std::string& input_value = parts[i + 2];
+        if (input_kind == "reference") {
+          unique_attributes.insert(input_value);
+        } else if (input_kind == "template") {
+          std::vector<std::string> input_attrs = extract_substrings(input_value);
+          unique_attributes.insert(input_attrs.begin(), input_attrs.end());
+        }
+      }
     }
   };
 

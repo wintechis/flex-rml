@@ -85,6 +85,44 @@ void addElements(std::vector<NTriple>& triples, const std::vector<NTriple>& to_a
   triples.insert(triples.end(), to_add.begin(), to_add.end());
 }
 
+std::vector<NTriple> infer_triples_map_types(const std::vector<NTriple>& input_triples) {
+  std::vector<NTriple> triples = input_triples;
+
+  const std::string rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+  const std::string triples_map_type = "http://w3id.org/rml/TriplesMap";
+  const std::string logical_source_predicate = "http://w3id.org/rml/logicalSource";
+  const std::string subject_map_predicate = "http://w3id.org/rml/subjectMap";
+  const std::string predicate_object_map_predicate = "http://w3id.org/rml/predicateObjectMap";
+
+  std::unordered_set<std::string> explicit_triple_maps;
+  std::unordered_set<std::string> logical_source_subjects;
+  std::unordered_set<std::string> subject_map_subjects;
+  std::unordered_set<std::string> predicate_object_map_subjects;
+
+  for (const auto& triple : triples) {
+    if (triple.predicate == rdf_type && triple.object == triples_map_type) {
+      explicit_triple_maps.insert(triple.subject);
+    } else if (triple.predicate == logical_source_predicate) {
+      logical_source_subjects.insert(triple.subject);
+    } else if (triple.predicate == subject_map_predicate) {
+      subject_map_subjects.insert(triple.subject);
+    } else if (triple.predicate == predicate_object_map_predicate) {
+      predicate_object_map_subjects.insert(triple.subject);
+    }
+  }
+
+  for (const auto& subject : logical_source_subjects) {
+    if (explicit_triple_maps.contains(subject)) {
+      continue;
+    }
+    if (subject_map_subjects.contains(subject) && predicate_object_map_subjects.contains(subject)) {
+      triples.push_back({subject, rdf_type, triples_map_type});
+    }
+  }
+
+  return triples;
+}
+
 std::vector<std::string> extract_triple_map_nodes(const std::vector<NTriple>& triples) {
   std::vector<std::string> triple_maps;
 
@@ -656,7 +694,8 @@ std::string rdf_string_to_vector(const std::vector<NTriple>& triples) {
 std::vector<std::vector<NTriple>> normalize_mapping(const std::vector<NTriple>& rml_vector, const int& init_bnode_counter) {
   int bnode_counter = init_bnode_counter;
 
-  const std::vector<NTriple> rml_vector_expanded_classes = expand_classes(rml_vector, bnode_counter);
+  const std::vector<NTriple> rml_vector_with_triples_map_types = infer_triples_map_types(rml_vector);
+  const std::vector<NTriple> rml_vector_expanded_classes = expand_classes(rml_vector_with_triples_map_types, bnode_counter);
   const std::vector<NTriple> rml_vector_expanded_constants = expand_constants(rml_vector_expanded_classes, bnode_counter);
   const std::vector<NTriple> rml_vector_expanded_poms = expand_predicate_object_maps(rml_vector_expanded_constants, bnode_counter);
   const std::vector<NTriple> rml_vector_separated_poms = separate_predicate_object_maps(rml_vector_expanded_poms);

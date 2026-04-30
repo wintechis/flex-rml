@@ -149,6 +149,8 @@ std::string clean_blank_node(std::string_view raw) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 std::unordered_map<std::string, std::string> uri_map;
 
+std::vector<std::string> extract_substrings(const std::string& str);
+
 static std::string transform_string(const std::string& input) {
   static constexpr std::string_view digit_map[10] = {
       "A01f", "B08f", "C997", "D745", "EEAF",
@@ -223,7 +225,52 @@ std::string generate_random_string(std::size_t length) {
   return result;
 }
 
-std::string handle_function_call(std::string function_signature, int line_count, std::string realation_name) {
+std::string resolve_function_input(const std::vector<std::string>& commands,
+                                   std::size_t input_index,
+                                   std::unordered_map<std::string, std::string>& row) {
+  const std::size_t offset = 1 + input_index * 3;
+  if (offset + 2 >= commands.size()) {
+    return "";
+  }
+
+  const std::string& input_kind = commands[offset + 1];
+  const std::string& input_value = commands[offset + 2];
+
+  if (input_kind == "constant") {
+    return input_value;
+  }
+
+  if (input_kind == "reference") {
+    auto it = row.find(input_value);
+    if (it == row.end()) {
+      std::cout << "Error: Function input reference not found: '" << input_value << "'" << std::endl;
+      exit(1);
+    }
+    return it->second;
+  }
+
+  if (input_kind == "template") {
+    std::string resolved = input_value;
+    std::vector<std::string> matches = extract_substrings(resolved);
+    for (const auto& match : matches) {
+      auto it = row.find(match);
+      if (it == row.end()) {
+        std::cout << "Error: Function input template reference not found: '" << match << "'" << std::endl;
+        exit(1);
+      }
+      resolved = replace_substring(resolved, "{" + match + "}", it->second);
+    }
+    return resolved;
+  }
+
+  std::cout << "Error: Unsupported function input kind: '" << input_kind << "'" << std::endl;
+  exit(1);
+}
+
+std::string handle_function_call(std::string function_signature,
+                                 int line_count,
+                                 std::string realation_name,
+                                 std::unordered_map<std::string, std::string>& row) {
   // 1. Split command
   const std::vector<std::string> commands = split_by_substring(function_signature, ";;");
   const std::string function_type = commands[0];
@@ -236,9 +283,20 @@ std::string handle_function_call(std::string function_signature, int line_count,
     constexpr const std::size_t length = 40;
     std::string random_string = generate_random_string(length);
     return random_string;
+  } else if (function_type == "==FUNC==ALWAYS_RETURNS_ABC") {
+    return "ABC";
+  } else if (function_type == "==FUNC==TO_UPPER_CASE") {
+    std::string value = resolve_function_input(commands, 0, row);
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+      return static_cast<char>(std::toupper(c));
+    });
+    return value;
+  } else if (function_type == "==FUNC==STRING_LENGTH") {
+    const std::string value = resolve_function_input(commands, 0, row);
+    return std::to_string(value.size());
   } else if (function_type == "==FUNC==GENERATE_IRI") {
     // Assume only one input
-    const std::string base_iri = commands[3];
+    const std::string base_iri = resolve_function_input(commands, 0, row);
 
     std::string to_add = transform_string(std::to_string(line_count) + realation_name);
 

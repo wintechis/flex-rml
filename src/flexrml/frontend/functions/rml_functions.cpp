@@ -114,8 +114,11 @@ static std::string graph_vector_to_string(const std::vector<NTriple>& triples) {
 
 static bool is_supported_function(std::string_view function_name, std::string& internal_name_out) {
   constexpr const char* IDLAB_RANDOM_FUNCTION = "https://w3id.org/imec/idlab/function#random";
+  constexpr const char* IDLAB_ALWAYS_RETURNS_ABC = "https://w3id.org/imec/idlab/function#alwaysReturnsABC";
+  constexpr const char* IDLAB_TO_UPPER_CASE_URL = "https://w3id.org/imec/idlab/function#toUpperCaseURL";
   constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
-  // constexpr const char* GREL_TO_UPPER_CASE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#toUpperCase";
+  constexpr const char* GREL_TO_UPPER_CASE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#toUpperCase";
+  constexpr const char* GREL_STRING_LENGTH = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_length";
   constexpr const char* IDLAB_GENERATE_UNIQUE_IRI = "https://w3id.org/imec/idlab/function#generateUniqueIRI";
 
   if (function_name == GREL_DATE_NOW) {
@@ -123,6 +126,18 @@ static bool is_supported_function(std::string_view function_name, std::string& i
     return true;
   } else if (function_name == IDLAB_RANDOM_FUNCTION) {
     internal_name_out = "==FUNC==RANDOM";
+    return true;
+  } else if (function_name == IDLAB_ALWAYS_RETURNS_ABC) {
+    internal_name_out = "==FUNC==ALWAYS_RETURNS_ABC";
+    return true;
+  } else if (function_name == IDLAB_TO_UPPER_CASE_URL) {
+    internal_name_out = "==FUNC==TO_UPPER_CASE";
+    return true;
+  } else if (function_name == GREL_TO_UPPER_CASE) {
+    internal_name_out = "==FUNC==TO_UPPER_CASE";
+    return true;
+  } else if (function_name == GREL_STRING_LENGTH) {
+    internal_name_out = "==FUNC==STRING_LENGTH";
     return true;
   } else if (function_name == IDLAB_GENERATE_UNIQUE_IRI) {
     internal_name_out = "==FUNC==GENERATE_IRI";
