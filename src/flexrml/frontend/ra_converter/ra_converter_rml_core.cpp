@@ -420,6 +420,13 @@ std::vector<Graph> get_graph(const std::vector<NTriple>& triples,
     graphs.push_back(result);
   }
 
+  results = find_matching_objects(triples, graph_node, "function");
+  if (results.size() == 1) {
+    result.term_map_type = "function";
+    result.term_map = results[0];
+    graphs.push_back(result);
+  }
+
   // Check if graph is available at object
   std::vector<std::string> pom_graph_nodes = find_matching_objects(
       triples, pom, "http://w3id.org/rml/graphMap");
@@ -462,6 +469,13 @@ std::vector<Graph> get_graph(const std::vector<NTriple>& triples,
     if (results[0] != "http://www.w3.org/ns/r2rml#defaultGraph") {
       result2.term_map = results[0];
     }
+    graphs.push_back(result2);
+  }
+
+  results = find_matching_objects(triples, pom_graph_node, "function");
+  if (results.size() == 1) {
+    result2.term_map_type = "function";
+    result2.term_map = results[0];
     graphs.push_back(result2);
   }
 
@@ -999,6 +1013,30 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
   return projected_attributes;
 }
 
+void collect_graph_projected_attributes(std::set<std::string>& unique_attributes,
+                                        const std::vector<Graph>& graphs) {
+  for (const auto& graph : graphs) {
+    if (graph.term_map_type == "template") {
+      std::vector<std::string> res = extract_substrings(graph.term_map);
+      unique_attributes.insert(res.begin(), res.end());
+    } else if (graph.term_map_type == "reference") {
+      unique_attributes.insert(graph.term_map);
+    } else if (graph.term_map_type == "function") {
+      std::vector<std::string> parts = split_line_at_char(replace_all(graph.term_map, "%3B%3B", ";;"), ";;");
+      for (size_t i = 1; i + 2 < parts.size(); i += 3) {
+        const std::string& input_kind = parts[i + 1];
+        const std::string& input_value = parts[i + 2];
+        if (input_kind == "reference") {
+          unique_attributes.insert(input_value);
+        } else if (input_kind == "template") {
+          std::vector<std::string> input_attrs = extract_substrings(input_value);
+          unique_attributes.insert(input_attrs.begin(), input_attrs.end());
+        }
+      }
+    }
+  }
+}
+
 std::string replace_substring(const std::string& original,
                               const std::string& toReplace,
                               const std::string& replacement) {
@@ -1045,6 +1083,9 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   Object empty_obj;
   empty_obj.join_condition = obj.join_condition;  // copy join condition for projection
   std::vector<std::string> proj_attributes1 = get_projected_attributes(subj, pred, empty_obj);
+  std::set<std::string> proj_attributes1_set(proj_attributes1.begin(), proj_attributes1.end());
+  collect_graph_projected_attributes(proj_attributes1_set, graphs);
+  proj_attributes1.assign(proj_attributes1_set.begin(), proj_attributes1_set.end());
 
   // Get projected attributeds of input 2
   Subject empty_subj;
@@ -1228,6 +1269,9 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
 
   // Get projected attributes
   std::vector<std::string> proj_attributes = get_projected_attributes(subj, pred, obj);
+  std::set<std::string> proj_attributes_set(proj_attributes.begin(), proj_attributes.end());
+  collect_graph_projected_attributes(proj_attributes_set, graphs);
+  proj_attributes.assign(proj_attributes_set.begin(), proj_attributes_set.end());
 
   // Generate Create //
 
