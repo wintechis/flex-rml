@@ -294,6 +294,20 @@ std::string handle_function_call(std::string function_signature,
   } else if (function_type == "==FUNC==STRING_LENGTH") {
     const std::string value = resolve_function_input(commands, 0, row);
     return std::to_string(value.size());
+  } else if (function_type == "==FUNC==STRING_SUBSTRING") {
+    const std::string value = resolve_function_input(commands, 0, row);
+    const std::string start_value = resolve_function_input(commands, 1, row);
+    std::size_t start = 0;
+    try {
+      start = static_cast<std::size_t>(std::stoll(start_value));
+    } catch (const std::exception&) {
+      std::cout << "Error: Invalid substring start index: '" << start_value << "'" << std::endl;
+      exit(1);
+    }
+    if (start >= value.size()) {
+      return "";
+    }
+    return value.substr(start);
   } else if (function_type == "==FUNC==GENERATE_IRI") {
     // Assume only one input
     const std::string base_iri = resolve_function_input(commands, 0, row);

@@ -119,6 +119,7 @@ static bool is_supported_function(std::string_view function_name, std::string& i
   constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
   constexpr const char* GREL_TO_UPPER_CASE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#toUpperCase";
   constexpr const char* GREL_STRING_LENGTH = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_length";
+  constexpr const char* GREL_STRING_SUBSTRING = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_substring";
   constexpr const char* IDLAB_GENERATE_UNIQUE_IRI = "https://w3id.org/imec/idlab/function#generateUniqueIRI";
 
   if (function_name == GREL_DATE_NOW) {
@@ -138,6 +139,9 @@ static bool is_supported_function(std::string_view function_name, std::string& i
     return true;
   } else if (function_name == GREL_STRING_LENGTH) {
     internal_name_out = "==FUNC==STRING_LENGTH";
+    return true;
+  } else if (function_name == GREL_STRING_SUBSTRING) {
+    internal_name_out = "==FUNC==STRING_SUBSTRING";
     return true;
   } else if (function_name == IDLAB_GENERATE_UNIQUE_IRI) {
     internal_name_out = "==FUNC==GENERATE_IRI";
@@ -185,6 +189,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
   constexpr const char* RML_INPUT = "http://w3id.org/rml/input";
   constexpr const char* RML_PARAMETER = "http://w3id.org/rml/parameter";
   constexpr const char* RML_INPUT_VALUE_MAP = "http://w3id.org/rml/inputValueMap";
+  constexpr const char* RML_INPUT_VALUE = "http://w3id.org/rml/inputValue";
 
   constexpr const char* RML_REFERENCE = "http://w3id.org/rml/reference";
   constexpr const char* RML_CONSTANT = "http://w3id.org/rml/constant";
@@ -198,6 +203,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
     std::unordered_map<std::string_view, std::vector<std::string_view>> inputs_by_exec_node;
     std::unordered_map<std::string_view, std::string_view> parameter_by_input_node;
     std::unordered_map<std::string_view, std::string_view> value_map_by_input_node;
+    std::unordered_map<std::string_view, std::string_view> input_value_by_input_node;
     std::unordered_map<std::string_view, std::string_view> reference_by_value_map;
     std::unordered_map<std::string_view, std::string_view> constant_by_value_map;
     std::unordered_map<std::string_view, std::string_view> template_by_value_map;
@@ -206,6 +212,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
     inputs_by_exec_node.reserve(rdf_vector.size());
     parameter_by_input_node.reserve(rdf_vector.size());
     value_map_by_input_node.reserve(rdf_vector.size());
+    input_value_by_input_node.reserve(rdf_vector.size());
     reference_by_value_map.reserve(rdf_vector.size());
     constant_by_value_map.reserve(rdf_vector.size());
     template_by_value_map.reserve(rdf_vector.size());
@@ -223,6 +230,8 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
         parameter_by_input_node.emplace(subj, obj);
       } else if (pred == RML_INPUT_VALUE_MAP) {
         value_map_by_input_node.emplace(subj, obj);
+      } else if (pred == RML_INPUT_VALUE) {
+        input_value_by_input_node.emplace(subj, obj);
       } else if (pred == RML_REFERENCE) {
         reference_by_value_map.emplace(subj, obj);
       } else if (pred == RML_CONSTANT) {
@@ -282,7 +291,15 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
 
           auto vmit = value_map_by_input_node.find(input_node);
           if (vmit == value_map_by_input_node.end()) {
-            std::cerr << "rml:input node has no rml:inputValueMap: " << input_node << "\n";
+            auto ivit = input_value_by_input_node.find(input_node);
+            if (ivit != input_value_by_input_node.end()) {
+              fi.kind = "constant";
+              fi.value = std::string(ivit->second);
+              parsed.inputs.push_back(std::move(fi));
+              continue;
+            }
+
+            std::cerr << "rml:input node has no rml:inputValueMap or rml:inputValue: " << input_node << "\n";
             g_result_str.clear();
             return g_result_str.c_str();
           }
@@ -376,10 +393,13 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
         for (std::string_view input_node : input_nodes_to_drop) {
           if (tj.subject == input_node) {
             if (tj.predicate == RML_PARAMETER ||
-                tj.predicate == RML_INPUT_VALUE_MAP) {
-              drop[j] = 1;
-            }
+              tj.predicate == RML_INPUT_VALUE_MAP) {
+            drop[j] = 1;
           }
+          if (tj.predicate == RML_INPUT_VALUE) {
+            drop[j] = 1;
+          }
+        }
         }
 
         for (std::string_view value_map_node : value_map_nodes_to_drop) {
