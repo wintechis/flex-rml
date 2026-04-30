@@ -263,6 +263,16 @@ std::string resolve_function_input(const std::vector<std::string>& commands,
     return resolved;
   }
 
+  if (input_kind == "function") {
+    std::string nested_function = input_value;
+    size_t pos = 0;
+    while ((pos = nested_function.find("%3B%3B", pos)) != std::string::npos) {
+      nested_function.replace(pos, 6, ";;");
+      pos += 2;
+    }
+    return handle_function_call(nested_function, 0, "", row);
+  }
+
   std::cout << "Error: Unsupported function input kind: '" << input_kind << "'" << std::endl;
   exit(1);
 }
@@ -285,11 +295,24 @@ std::string handle_function_call(std::string function_signature,
     return random_string;
   } else if (function_type == "==FUNC==ALWAYS_RETURNS_ABC") {
     return "ABC";
+  } else if (function_type == "==FUNC==EQUAL") {
+    return resolve_function_input(commands, 0, row) == resolve_function_input(commands, 1, row) ? "true" : "false";
   } else if (function_type == "==FUNC==TO_UPPER_CASE") {
     std::string value = resolve_function_input(commands, 0, row);
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
       return static_cast<char>(std::toupper(c));
     });
+    return value;
+  } else if (function_type == "==FUNC==TO_UPPER_CASE_URL") {
+    std::string value = resolve_function_input(commands, 0, row);
+    const bool has_scheme = value.starts_with("http://") || value.starts_with("https://") ||
+                            value.starts_with("HTTP://") || value.starts_with("HTTPS://");
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+      return static_cast<char>(std::toupper(c));
+    });
+    if (!has_scheme) {
+      value = "http://" + value;
+    }
     return value;
   } else if (function_type == "==FUNC==STRING_LENGTH") {
     const std::string value = resolve_function_input(commands, 0, row);
@@ -311,6 +334,45 @@ std::string handle_function_call(std::string function_signature,
       return "";
     }
     return value.substr(start);
+  } else if (function_type == "==FUNC==STRING_REPLACE") {
+    std::string value = resolve_function_input(commands, 0, row);
+    const std::string find_value = resolve_function_input(commands, 1, row);
+    const std::string replace_value = resolve_function_input(commands, 2, row);
+    if (find_value.empty()) {
+      return value;
+    }
+    size_t pos = 0;
+    while ((pos = value.find(find_value, pos)) != std::string::npos) {
+      value.replace(pos, find_value.length(), replace_value);
+      pos += replace_value.length();
+    }
+    return value;
+  } else if (function_type == "==FUNC==ESCAPE") {
+    const std::string value = resolve_function_input(commands, 0, row);
+    const std::string mode = resolve_function_input(commands, 1, row);
+    if (mode != "html") {
+      std::cout << "Error: Unsupported escape mode: '" << mode << "'" << std::endl;
+      exit(1);
+    }
+
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const char c : value) {
+      if (c == '&') {
+        escaped += "&amp;";
+      } else if (c == '<') {
+        escaped += "&lt;";
+      } else if (c == '>') {
+        escaped += "&gt;";
+      } else if (c == '"') {
+        escaped += "&quot;";
+      } else if (c == '\'') {
+        escaped += "&#39;";
+      } else {
+        escaped.push_back(c);
+      }
+    }
+    return escaped;
   } else if (function_type == "==FUNC==GENERATE_IRI") {
     // Assume only one input
     const std::string base_iri = resolve_function_input(commands, 0, row);

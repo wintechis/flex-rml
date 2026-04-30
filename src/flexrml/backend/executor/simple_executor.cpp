@@ -230,6 +230,10 @@ int execute_simple_with_graph(const std::string& input_file_name,
     if (s_content_copy[0] == "NULL" || p_content_copy[0] == "NULL" || o_content_copy[0] == "NULL" || g_content_copy[0] == "NULL") {
       continue;
     }
+    if (o_content_copy.size() > 5 && o_content_copy[5] != "None" &&
+        handle_function_call(o_content_copy[5], line_count, input_file_name, row) != "true") {
+      continue;
+    }
 
     ////// CREATE //////
     try {
@@ -493,6 +497,10 @@ int execute_simple(const std::string& input_file_name,
     if (s_content_copy[0] == "NULL" || p_content_copy[0] == "NULL" || o_content_copy[0] == "NULL") {
       continue;
     }
+    if (o_content_copy.size() > 5 && o_content_copy[5] != "None" &&
+        handle_function_call(o_content_copy[5], line_count, input_file_name, row) != "true") {
+      continue;
+    }
 
     ////// CREATE //////
     try {
@@ -640,6 +648,10 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
       o_content_copy[1] = "constant";
     }
     if (s_content_copy[0] == "NULL" || p_content_copy[0] == "NULL" || o_content_copy[0] == "NULL") {
+      continue;
+    }
+    if (o_content_copy.size() > 5 && o_content_copy[5] != "None" &&
+        handle_function_call(o_content_copy[5], line_count, input_file_name, row) != "true") {
       continue;
     }
 

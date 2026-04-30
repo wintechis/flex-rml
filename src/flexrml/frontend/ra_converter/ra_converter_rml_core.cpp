@@ -29,6 +29,7 @@ struct Subject {
   std::string term_map_type;  // template, constant, reference
   std::string term_type;      // iri, blanknode, literal
   std::string term_map;       // contains value
+  std::string condition = "None";
 };
 
 struct Predicate {
@@ -247,6 +248,15 @@ std::vector<std::string> split_line_at_char(const std::string& line, const std::
   parts.push_back(line.substr(start));
 
   return parts;
+}
+
+std::string replace_all(std::string value, const std::string& from, const std::string& to) {
+  size_t pos = 0;
+  while ((pos = value.find(from, pos)) != std::string::npos) {
+    value.replace(pos, from.length(), to);
+    pos += to.length();
+  }
+  return value;
 }
 
 std::vector<std::string> find_matching_subjects(
@@ -470,6 +480,14 @@ Subject get_subject(const std::vector<NTriple>& triples,
   result.term_type = "iri";
   result.term_map = "";
 
+  std::vector<std::string> condition_nodes = find_matching_objects(triples, subject_node, "http://w3id.org/rml/condition");
+  if (condition_nodes.size() == 1) {
+    std::vector<std::string> condition_functions = find_matching_objects(triples, condition_nodes[0], "function");
+    if (condition_functions.size() == 1) {
+      result.condition = condition_functions[0];
+    }
+  }
+
   // check if term typ is given
   std::vector<std::string> results = find_matching_objects(triples, subject_node, "http://w3id.org/rml/termType");
   if (results.size() == 1) {
@@ -549,6 +567,14 @@ Predicate get_predicate(const std::vector<NTriple>& triples, const std::string& 
   results = find_matching_objects(triples, predicate_node, "http://w3id.org/rml/reference");
   if (results.size() == 1) {
     result.term_map_type = "reference";
+    result.term_map = results[0];
+    return result;
+  }
+
+  // Check if function
+  results = find_matching_objects(triples, predicate_node, "function");
+  if (results.size() == 1) {
+    result.term_map_type = "function";
     result.term_map = results[0];
     return result;
   }
@@ -898,7 +924,7 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
     } else if (term_map_type == "function") {
       std::vector<std::string> res = extract_substrings(term_map);
       unique_attributes.insert(res.begin(), res.end());
-      std::vector<std::string> parts = split_line_at_char(term_map, ";;");
+      std::vector<std::string> parts = split_line_at_char(replace_all(term_map, "%3B%3B", ";;"), ";;");
       for (size_t i = 1; i + 2 < parts.size(); i += 3) {
         const std::string& input_kind = parts[i + 1];
         const std::string& input_value = parts[i + 2];
@@ -935,6 +961,9 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
   // Handle Subject
   if (!subj.term_map_type.empty()) {
     collect_term_map_attributes(subj.term_map_type, subj.term_map);
+  }
+  if (subj.condition != "None") {
+    collect_term_map_attributes("function", subj.condition);
   }
 
   // Handle Predicate
@@ -1124,7 +1153,7 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   // Generate create projection
   std::string subj_create = "create(" + subj.term_map + "," + subj.term_map_type + "," + subj.term_type + ") -> S";
   std::string pred_create = "create(" + pred.term_map + "," + pred.term_map_type + "," + pred.term_type + ") -> P";
-  std::string obj_create = "create(" + obj.term_map + "," + obj.term_map_type + "," + obj.term_type + "," + obj.lang_tag + "," + obj.data_type + ") -> O";
+  std::string obj_create = "create(" + obj.term_map + "," + obj.term_map_type + "," + obj.term_type + "," + obj.lang_tag + "," + obj.data_type + "," + subj.condition + ") -> O";
 
   std::string graph_create1 = "";
   std::string graph_create2 = "";
@@ -1217,7 +1246,7 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
   // Generate create projection
   std::string create_val = "pi[create(" + subj.term_map + "," + subj.term_map_type + "," + subj.term_type + ") -> S," +
                            "create(" + pred.term_map + "," + pred.term_map_type + "," + pred.term_type + ") -> P," +
-                           "create(" + obj.term_map + "," + obj.term_map_type + "," + obj.term_type + "," + obj.lang_tag + "," + obj.data_type + ") -> O";
+                           "create(" + obj.term_map + "," + obj.term_map_type + "," + obj.term_type + "," + obj.lang_tag + "," + obj.data_type + "," + subj.condition + ") -> O";
 
   if (graphs.size() == 1 && !graphs[0].term_map.empty()) {
     create_val += ", create(" + graphs[0].term_map + "," + graphs[0].term_map_type + "," + graphs[0].term_type + ") -> G]";

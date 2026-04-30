@@ -27,7 +27,7 @@ struct NTriple {
 
 struct FunctionInput {
   std::string parameter;  // e.g. ...#valueParam
-  std::string kind;       // "reference", "constant", "template"
+  std::string kind;       // "reference", "constant", "template", "function"
   std::string value;      // e.g. Name
 };
 
@@ -94,6 +94,15 @@ std::vector<std::string> split_by_substring(const std::string& str, const std::s
   return result;
 }
 
+static std::string replace_all(std::string value, const std::string& from, const std::string& to) {
+  size_t pos = 0;
+  while ((pos = value.find(from, pos)) != std::string::npos) {
+    value.replace(pos, from.length(), to);
+    pos += to.length();
+  }
+  return value;
+}
+
 static std::string graph_vector_to_string(const std::vector<NTriple>& triples) {
   std::string out;
   out.reserve(triples.size() * 64);
@@ -115,11 +124,14 @@ static std::string graph_vector_to_string(const std::vector<NTriple>& triples) {
 static bool is_supported_function(std::string_view function_name, std::string& internal_name_out) {
   constexpr const char* IDLAB_RANDOM_FUNCTION = "https://w3id.org/imec/idlab/function#random";
   constexpr const char* IDLAB_ALWAYS_RETURNS_ABC = "https://w3id.org/imec/idlab/function#alwaysReturnsABC";
+  constexpr const char* IDLAB_EQUAL = "https://w3id.org/imec/idlab/function#equal";
   constexpr const char* IDLAB_TO_UPPER_CASE_URL = "https://w3id.org/imec/idlab/function#toUpperCaseURL";
   constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
   constexpr const char* GREL_TO_UPPER_CASE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#toUpperCase";
   constexpr const char* GREL_STRING_LENGTH = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_length";
   constexpr const char* GREL_STRING_SUBSTRING = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_substring";
+  constexpr const char* GREL_STRING_REPLACE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_replace";
+  constexpr const char* GREL_ESCAPE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#escape";
   constexpr const char* IDLAB_GENERATE_UNIQUE_IRI = "https://w3id.org/imec/idlab/function#generateUniqueIRI";
 
   if (function_name == GREL_DATE_NOW) {
@@ -131,8 +143,11 @@ static bool is_supported_function(std::string_view function_name, std::string& i
   } else if (function_name == IDLAB_ALWAYS_RETURNS_ABC) {
     internal_name_out = "==FUNC==ALWAYS_RETURNS_ABC";
     return true;
+  } else if (function_name == IDLAB_EQUAL) {
+    internal_name_out = "==FUNC==EQUAL";
+    return true;
   } else if (function_name == IDLAB_TO_UPPER_CASE_URL) {
-    internal_name_out = "==FUNC==TO_UPPER_CASE";
+    internal_name_out = "==FUNC==TO_UPPER_CASE_URL";
     return true;
   } else if (function_name == GREL_TO_UPPER_CASE) {
     internal_name_out = "==FUNC==TO_UPPER_CASE";
@@ -142,6 +157,12 @@ static bool is_supported_function(std::string_view function_name, std::string& i
     return true;
   } else if (function_name == GREL_STRING_SUBSTRING) {
     internal_name_out = "==FUNC==STRING_SUBSTRING";
+    return true;
+  } else if (function_name == GREL_STRING_REPLACE) {
+    internal_name_out = "==FUNC==STRING_REPLACE";
+    return true;
+  } else if (function_name == GREL_ESCAPE) {
+    internal_name_out = "==FUNC==ESCAPE";
     return true;
   } else if (function_name == IDLAB_GENERATE_UNIQUE_IRI) {
     internal_name_out = "==FUNC==GENERATE_IRI";
@@ -163,6 +184,130 @@ static void debug_print_parsed_function(const ParsedFunctionExecution& pf) {
     std::cout << "    kind: " << in.kind << "\n";
     std::cout << "    value: " << in.value << "\n";
   }
+}
+
+static bool encode_function_execution(
+    std::string_view execution_node,
+    const std::unordered_map<std::string_view, std::string_view>& function_by_exec_node,
+    const std::unordered_map<std::string_view, std::vector<std::string_view>>& inputs_by_exec_node,
+    const std::unordered_map<std::string_view, std::string_view>& parameter_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& value_map_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& input_value_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& reference_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& constant_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& template_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& execution_by_value_map,
+    std::string& encoded_out);
+
+static bool append_function_inputs(
+    std::string_view execution_node,
+    std::string& encoded_function,
+    const std::unordered_map<std::string_view, std::vector<std::string_view>>& inputs_by_exec_node,
+    const std::unordered_map<std::string_view, std::string_view>& parameter_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& value_map_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& input_value_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& reference_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& constant_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& template_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& execution_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& function_by_exec_node) {
+  auto inputs_it = inputs_by_exec_node.find(execution_node);
+  if (inputs_it == inputs_by_exec_node.end()) {
+    return true;
+  }
+
+  for (std::string_view input_node : inputs_it->second) {
+    std::string parameter;
+    auto pit = parameter_by_input_node.find(input_node);
+    if (pit != parameter_by_input_node.end()) {
+      parameter = std::string(pit->second);
+    }
+
+    std::string kind;
+    std::string value;
+
+    auto vmit = value_map_by_input_node.find(input_node);
+    if (vmit == value_map_by_input_node.end()) {
+      auto ivit = input_value_by_input_node.find(input_node);
+      if (ivit != input_value_by_input_node.end()) {
+        kind = "constant";
+        value = std::string(ivit->second);
+      } else {
+        std::cerr << "rml:input node has no rml:inputValueMap or rml:inputValue: " << input_node << "\n";
+        return false;
+      }
+    } else {
+      std::string_view value_map_node = vmit->second;
+
+      auto rit = reference_by_value_map.find(value_map_node);
+      auto cit = constant_by_value_map.find(value_map_node);
+      auto tit = template_by_value_map.find(value_map_node);
+      auto eit = execution_by_value_map.find(value_map_node);
+
+      if (rit != reference_by_value_map.end()) {
+        kind = "reference";
+        value = std::string(rit->second);
+      } else if (cit != constant_by_value_map.end()) {
+        kind = "constant";
+        value = std::string(cit->second);
+      } else if (tit != template_by_value_map.end()) {
+        kind = "template";
+        value = std::string(tit->second);
+      } else if (eit != execution_by_value_map.end()) {
+        kind = "function";
+        if (!encode_function_execution(eit->second, function_by_exec_node, inputs_by_exec_node,
+                                       parameter_by_input_node, value_map_by_input_node,
+                                       input_value_by_input_node, reference_by_value_map,
+                                       constant_by_value_map, template_by_value_map,
+                                       execution_by_value_map, value)) {
+          return false;
+        }
+      } else {
+        std::cerr << "inputValueMap has no supported value: " << value_map_node << "\n";
+        return false;
+      }
+    }
+
+    encoded_function += ";;";
+    encoded_function += parameter;
+    encoded_function += ";;";
+    encoded_function += kind;
+    encoded_function += ";;";
+    encoded_function += value;
+  }
+
+  return true;
+}
+
+static bool encode_function_execution(
+    std::string_view execution_node,
+    const std::unordered_map<std::string_view, std::string_view>& function_by_exec_node,
+    const std::unordered_map<std::string_view, std::vector<std::string_view>>& inputs_by_exec_node,
+    const std::unordered_map<std::string_view, std::string_view>& parameter_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& value_map_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& input_value_by_input_node,
+    const std::unordered_map<std::string_view, std::string_view>& reference_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& constant_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& template_by_value_map,
+    const std::unordered_map<std::string_view, std::string_view>& execution_by_value_map,
+    std::string& encoded_out) {
+  auto fit = function_by_exec_node.find(execution_node);
+  if (fit == function_by_exec_node.end()) {
+    std::cerr << "rml:functionExecution target has no rml:function: " << execution_node << "\n";
+    return false;
+  }
+
+  std::string internal_function_name;
+  if (!is_supported_function(fit->second, internal_function_name)) {
+    std::cerr << "Called function is not supported: " << fit->second << "\n";
+    return false;
+  }
+
+  encoded_out = internal_function_name;
+  return append_function_inputs(execution_node, encoded_out, inputs_by_exec_node, parameter_by_input_node,
+                                value_map_by_input_node, input_value_by_input_node, reference_by_value_map,
+                                constant_by_value_map, template_by_value_map, execution_by_value_map,
+                                function_by_exec_node);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -207,6 +352,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
     std::unordered_map<std::string_view, std::string_view> reference_by_value_map;
     std::unordered_map<std::string_view, std::string_view> constant_by_value_map;
     std::unordered_map<std::string_view, std::string_view> template_by_value_map;
+    std::unordered_map<std::string_view, std::string_view> execution_by_value_map;
 
     function_by_exec_node.reserve(rdf_vector.size());
     inputs_by_exec_node.reserve(rdf_vector.size());
@@ -216,6 +362,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
     reference_by_value_map.reserve(rdf_vector.size());
     constant_by_value_map.reserve(rdf_vector.size());
     template_by_value_map.reserve(rdf_vector.size());
+    execution_by_value_map.reserve(rdf_vector.size());
 
     for (const auto& t : rdf_vector) {
       std::string_view subj(t.subject);
@@ -224,6 +371,8 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
 
       if (pred == RML_FUNCTION) {
         function_by_exec_node.emplace(subj, obj);
+      } else if (pred == RML_FUNCTION_EXECUTION) {
+        execution_by_value_map.emplace(subj, obj);
       } else if (pred == RML_INPUT) {
         inputs_by_exec_node[subj].push_back(obj);
       } else if (pred == RML_PARAMETER) {
@@ -309,6 +458,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
           auto rit = reference_by_value_map.find(value_map_node);
           auto cit = constant_by_value_map.find(value_map_node);
           auto tit = template_by_value_map.find(value_map_node);
+          auto eit = execution_by_value_map.find(value_map_node);
 
           if (rit != reference_by_value_map.end()) {
             fi.kind = "reference";
@@ -319,6 +469,18 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
           } else if (tit != template_by_value_map.end()) {
             fi.kind = "template";
             fi.value = std::string(tit->second);
+          } else if (eit != execution_by_value_map.end()) {
+            std::string nested_function;
+            if (!encode_function_execution(eit->second, function_by_exec_node, inputs_by_exec_node,
+                                           parameter_by_input_node, value_map_by_input_node,
+                                           input_value_by_input_node, reference_by_value_map,
+                                           constant_by_value_map, template_by_value_map,
+                                           execution_by_value_map, nested_function)) {
+              g_result_str.clear();
+              return g_result_str.c_str();
+            }
+            fi.kind = "function";
+            fi.value = replace_all(nested_function, ";;", "%3B%3B");
           } else {
             std::cerr << "inputValueMap has no supported value: " << value_map_node << "\n";
             g_result_str.clear();
