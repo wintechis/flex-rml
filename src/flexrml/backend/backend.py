@@ -569,6 +569,52 @@ def _flatten_xml_element(element, parent_key=""):
     return row
 
 
+def _set_xml_value(row, key, value):
+    if key in row:
+        row[key] = f"{row[key]}|{value}"
+    else:
+        row[key] = value
+
+
+def _flatten_xml_xpath_descendants(element, path, row):
+    for attr_name, attr_value in element.attrib.items():
+        _set_xml_value(row, f"{path}/@{attr_name}", attr_value)
+
+    children = list(element)
+    text = _element_text(element)
+    if text and not children:
+        _set_xml_value(row, path, text)
+        return
+
+    for child in children:
+        _flatten_xml_xpath_descendants(child, f"{path}/{child.tag}", row)
+
+
+def _flatten_xml_relative_context(element, parent_map):
+    row = {}
+    child_on_path = element
+    current = element
+    levels_up = 0
+
+    while current in parent_map:
+        levels_up += 1
+        ancestor = parent_map[current]
+        prefix = "../" * levels_up
+
+        for attr_name, attr_value in ancestor.attrib.items():
+            _set_xml_value(row, f"{prefix}@{attr_name}", attr_value)
+
+        for child in list(ancestor):
+            if child is child_on_path:
+                continue
+            _flatten_xml_xpath_descendants(child, f"{prefix}{child.tag}", row)
+
+        child_on_path = ancestor
+        current = ancestor
+
+    return row
+
+
 def preprocess_xml(in_relation, iterator_config, data=None):
     if data is None:
         with open(in_relation, "r", encoding="utf-8") as f:
@@ -576,7 +622,12 @@ def preprocess_xml(in_relation, iterator_config, data=None):
 
     root = ET.fromstring(data)
     xpath_expr = iterator_config["iterator"]
-    rows = [_flatten_xml_element(node) for node in _select_xpath_nodes(root, xpath_expr)]
+    parent_map = {child: parent for parent in root.iter() for child in list(parent)}
+    rows = []
+    for node in _select_xpath_nodes(root, xpath_expr):
+        row = _flatten_xml_element(node)
+        row.update(_flatten_xml_relative_context(node, parent_map))
+        rows.append(row)
     rows = [row for row in rows if row]
 
     if not rows:
