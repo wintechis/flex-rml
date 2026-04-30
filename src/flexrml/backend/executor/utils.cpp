@@ -304,7 +304,10 @@ std::string handle_function_call(std::string function_signature,
       std::cout << "Error: Invalid substring start index: '" << start_value << "'" << std::endl;
       exit(1);
     }
-    if (start >= value.size()) {
+    if (start > value.size()) {
+      return "NULL";
+    }
+    if (start == value.size()) {
       return "";
     }
     return value.substr(start);
