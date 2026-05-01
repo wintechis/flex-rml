@@ -636,6 +636,11 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
         lang_tags = find_matching_objects(triples, lang_map_nodes[0], "http://w3id.org/rml/template");
         if (lang_tags.size() == 1) {
           result.lang_tag = lang_tags[0];
+        } else {
+          lang_tags = find_matching_objects(triples, lang_map_nodes[0], "function");
+          if (lang_tags.size() == 1) {
+            result.lang_tag = lang_tags[0];
+          }
         }
       }
     }
