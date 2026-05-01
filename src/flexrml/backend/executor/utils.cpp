@@ -546,6 +546,10 @@ std::string resolve_annotation_value(const std::string& annotation,
     return annotation;
   }
 
+  if (annotation.starts_with("==FUNC==")) {
+    return handle_function_call(annotation, 0, "", map);
+  }
+
   std::string resolved = annotation;
   std::vector<std::string> matches = extract_substrings(resolved);
   if (!matches.empty()) {

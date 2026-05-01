@@ -655,6 +655,11 @@ Object get_object_wo_join(const std::vector<NTriple>& triples,
         data_type = find_matching_objects(triples, data_type_map_nodes[0], "http://w3id.org/rml/reference");
         if (data_type.size() == 1) {
           result.data_type = data_type[0];
+        } else {
+          data_type = find_matching_objects(triples, data_type_map_nodes[0], "function");
+          if (data_type.size() == 1) {
+            result.data_type = data_type[0];
+          }
         }
       }
     }
@@ -952,8 +957,13 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
     }
   };
 
-  auto collect_annotation_attributes = [&unique_attributes](const std::string& annotation) {
+  auto collect_annotation_attributes = [&unique_attributes, &collect_term_map_attributes](const std::string& annotation) {
     if (annotation.empty() || annotation == "None") {
+      return;
+    }
+
+    if (annotation.starts_with("==FUNC==")) {
+      collect_term_map_attributes("function", annotation);
       return;
     }
 
