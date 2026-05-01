@@ -297,6 +297,12 @@ std::string handle_function_call(std::string function_signature,
     return "ABC";
   } else if (function_type == "==FUNC==EQUAL") {
     return resolve_function_input(commands, 0, row) == resolve_function_input(commands, 1, row) ? "true" : "false";
+  } else if (function_type == "==FUNC==ADD") {
+    const double left = std::stod(resolve_function_input(commands, 0, row));
+    const double right = std::stod(resolve_function_input(commands, 1, row));
+    std::ostringstream out;
+    out << std::defaultfloat << (left + right);
+    return out.str();
   } else if (function_type == "==FUNC==TO_UPPER_CASE") {
     std::string value = resolve_function_input(commands, 0, row);
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {

@@ -126,6 +126,7 @@ static bool is_supported_function(std::string_view function_name, std::string& i
   constexpr const char* IDLAB_ALWAYS_RETURNS_ABC = "https://w3id.org/imec/idlab/function#alwaysReturnsABC";
   constexpr const char* IDLAB_EQUAL = "https://w3id.org/imec/idlab/function#equal";
   constexpr const char* IDLAB_TO_UPPER_CASE_URL = "https://w3id.org/imec/idlab/function#toUpperCaseURL";
+  constexpr const char* EX_ADD = "http://example.com/add";
   constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
   constexpr const char* GREL_TO_UPPER_CASE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#toUpperCase";
   constexpr const char* GREL_STRING_LENGTH = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_length";
@@ -148,6 +149,9 @@ static bool is_supported_function(std::string_view function_name, std::string& i
     return true;
   } else if (function_name == IDLAB_TO_UPPER_CASE_URL) {
     internal_name_out = "==FUNC==TO_UPPER_CASE_URL";
+    return true;
+  } else if (function_name == EX_ADD) {
+    internal_name_out = "==FUNC==ADD";
     return true;
   } else if (function_name == GREL_TO_UPPER_CASE) {
     internal_name_out = "==FUNC==TO_UPPER_CASE";
