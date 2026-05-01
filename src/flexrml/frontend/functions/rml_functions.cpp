@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -176,6 +177,65 @@ static bool is_supported_function(std::string_view function_name, std::string& i
   return false;
 }
 
+static bool is_supported_parameter(const std::string& internal_function_name,
+                                   const std::string& parameter) {
+  static const std::unordered_map<std::string, std::unordered_set<std::string>> supported_parameters = {
+      {"==FUNC==TO_UPPER_CASE", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam"}},
+      {"==FUNC==TO_UPPER_CASE_URL", {"https://w3id.org/imec/idlab/function#str"}},
+      {"==FUNC==STRING_LENGTH", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam"}},
+      {"==FUNC==STRING_SUBSTRING", {
+                                      "http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam",
+                                      "http://users.ugent.be/~bjdmeest/function/grel.ttl#p_int_i_from",
+                                  }},
+      {"==FUNC==STRING_REPLACE", {
+                                    "http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam",
+                                    "http://users.ugent.be/~bjdmeest/function/grel.ttl#param_find",
+                                    "http://users.ugent.be/~bjdmeest/function/grel.ttl#param_replace",
+                                }},
+      {"==FUNC==ESCAPE", {
+                            "http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam",
+                            "http://users.ugent.be/~bjdmeest/function/grel.ttl#modeParam",
+                        }},
+      {"==FUNC==EQUAL", {
+                           "http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam",
+                           "http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam2",
+                       }},
+      {"==FUNC==ADD", {
+                         "http://example.com/numericValueParam",
+                         "http://example.com/numericValueParam2",
+                     }},
+  };
+
+  auto it = supported_parameters.find(internal_function_name);
+  if (it == supported_parameters.end()) {
+    return true;
+  }
+
+  return it->second.contains(parameter);
+}
+
+static bool is_supported_return(const std::string& internal_function_name,
+                                const std::string& return_value) {
+  static const std::unordered_map<std::string, std::unordered_set<std::string>> supported_returns = {
+      {"==FUNC==ALWAYS_RETURNS_ABC", {"https://w3id.org/imec/idlab/function#_stringOut"}},
+      {"==FUNC==EQUAL", {"https://w3id.org/imec/idlab/function#_boolOut"}},
+      {"==FUNC==TO_UPPER_CASE_URL", {"https://w3id.org/imec/idlab/function#_stringOut"}},
+      {"==FUNC==ADD", {"http://example.com/sumOut"}},
+      {"==FUNC==TO_UPPER_CASE", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#stringOut"}},
+      {"==FUNC==STRING_LENGTH", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#output_number"}},
+      {"==FUNC==STRING_SUBSTRING", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#stringOut"}},
+      {"==FUNC==STRING_REPLACE", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#stringOut"}},
+      {"==FUNC==ESCAPE", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#stringOut"}},
+  };
+
+  auto it = supported_returns.find(internal_function_name);
+  if (it == supported_returns.end()) {
+    return true;
+  }
+
+  return it->second.contains(return_value);
+}
+
 static void debug_print_parsed_function(const ParsedFunctionExecution& pf) {
   std::cout << "Parsed function execution:\n";
   std::cout << "  source_node: " << pf.source_node << "\n";
@@ -225,6 +285,12 @@ static bool append_function_inputs(
     auto pit = parameter_by_input_node.find(input_node);
     if (pit != parameter_by_input_node.end()) {
       parameter = std::string(pit->second);
+    }
+
+    if (!is_supported_parameter(split_by_substring(encoded_function, ";;")[0], parameter)) {
+      std::cerr << "Unsupported parameter for function " << split_by_substring(encoded_function, ";;")[0]
+                << ": " << parameter << "\n";
+      return false;
     }
 
     std::string kind;
@@ -357,6 +423,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
     std::unordered_map<std::string_view, std::string_view> constant_by_value_map;
     std::unordered_map<std::string_view, std::string_view> template_by_value_map;
     std::unordered_map<std::string_view, std::string_view> execution_by_value_map;
+    std::unordered_map<std::string_view, std::string_view> return_by_source_node;
 
     function_by_exec_node.reserve(rdf_vector.size());
     inputs_by_exec_node.reserve(rdf_vector.size());
@@ -367,6 +434,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
     constant_by_value_map.reserve(rdf_vector.size());
     template_by_value_map.reserve(rdf_vector.size());
     execution_by_value_map.reserve(rdf_vector.size());
+    return_by_source_node.reserve(rdf_vector.size());
 
     for (const auto& t : rdf_vector) {
       std::string_view subj(t.subject);
@@ -377,6 +445,8 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
         function_by_exec_node.emplace(subj, obj);
       } else if (pred == RML_FUNCTION_EXECUTION) {
         execution_by_value_map.emplace(subj, obj);
+      } else if (pred == RML_RETURN) {
+        return_by_source_node.emplace(subj, obj);
       } else if (pred == RML_INPUT) {
         inputs_by_exec_node[subj].push_back(obj);
       } else if (pred == RML_PARAMETER) {
@@ -425,6 +495,15 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
         return g_result_str.c_str();
       }
 
+      auto return_it = return_by_source_node.find(std::string_view(function_value_source_node));
+      if (return_it != return_by_source_node.end() &&
+          !is_supported_return(internal_function_name, std::string(return_it->second))) {
+        std::cerr << "Unsupported return for function " << internal_function_name
+                  << ": " << return_it->second << "\n";
+        g_result_str.clear();
+        return g_result_str.c_str();
+      }
+
       ParsedFunctionExecution parsed;
       parsed.source_node = function_value_source_node;
       parsed.execution_node = execution_node;
@@ -440,6 +519,13 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
           auto pit = parameter_by_input_node.find(input_node);
           if (pit != parameter_by_input_node.end()) {
             fi.parameter = std::string(pit->second);
+          }
+
+          if (!is_supported_parameter(internal_function_name, fi.parameter)) {
+            std::cerr << "Unsupported parameter for function " << internal_function_name
+                      << ": " << fi.parameter << "\n";
+            g_result_str.clear();
+            return g_result_str.c_str();
           }
 
           auto vmit = value_map_by_input_node.find(input_node);

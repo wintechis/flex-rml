@@ -293,6 +293,9 @@ def handle_functions(normalized_graphs_arr, config):
     # Call Cpp
     results = lib.resolve_rml_functions(input_str)
     results = results.decode()
+    if results.strip() == "":
+        print("Error: Function resolution failed.")
+        sys.exit(1)
 
     # Split back to graphs
     graph_str = results.strip().split("===")

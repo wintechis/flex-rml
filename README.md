@@ -93,7 +93,7 @@ from `kg-construct/rml-core` and remains licensed under CC BY 4.0. See
 
 ## Conformance
 
-FlexRML passes all official [`RML-Core test cases`](https://github.com/kg-construct/rml-core/tree/main/test-cases) and 18/20 [`RML-FNML test cases`](https://github.com/kg-construct/rml-fnml/tree/main/test-cases).
+FlexRML passes all official [`RML-Core test cases`](https://github.com/kg-construct/rml-core/tree/main/test-cases) and all official [`RML-FNML test cases`](https://github.com/kg-construct/rml-fnml/tree/main/test-cases).
 
 Place the official test cases in `test_cases/` and run the validation with:
 

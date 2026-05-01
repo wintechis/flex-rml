@@ -1,11 +1,11 @@
 # Validation Report
 
 - FlexRML version: `2.2.0`
-- Generated at: `2026-05-01 06:52:42Z`
+- Generated at: `2026-05-01 07:03:58Z`
 - Scope: `all test cases`
 - Execution mode: `python module`
-- Passed: `94/96`
-- Failed: `2`
+- Passed: `96/96`
+- Failed: `0`
 
 ## Results
 
@@ -27,8 +27,8 @@
 - `PASS` `RMLFNMLTC0081-CSV`: output matches
 - `PASS` `RMLFNMLTC0101-CSV`: error observed as expected
 - `PASS` `RMLFNMLTC0102-CSV`: error observed as expected
-- `FAIL` `RMLFNMLTC0103-CSV`: expected an error, but execution succeeded
-- `FAIL` `RMLFNMLTC0104-CSV`: expected an error, but execution succeeded
+- `PASS` `RMLFNMLTC0103-CSV`: error observed as expected
+- `PASS` `RMLFNMLTC0104-CSV`: error observed as expected
 - `PASS` `RMLTC0000-JSON`: output matches
 - `PASS` `RMLTC0001a-JSON`: output matches
 - `PASS` `RMLTC0001b-JSON`: output matches
@@ -105,15 +105,3 @@
 - `PASS` `RMLTC0031a-JSON`: output matches
 - `PASS` `RMLTC0031b-JSON`: output matches
 - `PASS` `RMLTC0031c-JSON`: output matches
-
-## Failures
-
-### `RMLFNMLTC0103-CSV`
-
-- Return code: `0`
-- Reason: expected an error, but execution succeeded
-
-### `RMLFNMLTC0104-CSV`
-
-- Return code: `0`
-- Reason: expected an error, but execution succeeded
