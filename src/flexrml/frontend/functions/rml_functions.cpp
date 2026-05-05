@@ -127,7 +127,10 @@ static bool is_supported_function(std::string_view function_name, std::string& i
   constexpr const char* IDLAB_ALWAYS_RETURNS_ABC = "https://w3id.org/imec/idlab/function#alwaysReturnsABC";
   constexpr const char* IDLAB_EQUAL = "https://w3id.org/imec/idlab/function#equal";
   constexpr const char* IDLAB_TO_UPPER_CASE_URL = "https://w3id.org/imec/idlab/function#toUpperCaseURL";
-  constexpr const char* EX_ADD = "http://example.com/add";
+  constexpr const char* FLEXRML_ADD = "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#add";
+  constexpr const char* FLEXRML_MULTIPLY = "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#multiply";
+  constexpr const char* FLEXRML_DIVIDE = "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#divide";
+  constexpr const char* FLEXRML_TO_BOOL = "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#toBool";
   constexpr const char* GREL_DATE_NOW = "http://users.ugent.be/~bjdmeest/function/grel.ttl#date_now";
   constexpr const char* GREL_TO_UPPER_CASE = "http://users.ugent.be/~bjdmeest/function/grel.ttl#toUpperCase";
   constexpr const char* GREL_STRING_LENGTH = "http://users.ugent.be/~bjdmeest/function/grel.ttl#string_length";
@@ -151,8 +154,17 @@ static bool is_supported_function(std::string_view function_name, std::string& i
   } else if (function_name == IDLAB_TO_UPPER_CASE_URL) {
     internal_name_out = "==FUNC==TO_UPPER_CASE_URL";
     return true;
-  } else if (function_name == EX_ADD) {
+  } else if (function_name == FLEXRML_ADD) {
     internal_name_out = "==FUNC==ADD";
+    return true;
+  } else if (function_name == FLEXRML_MULTIPLY) {
+    internal_name_out = "==FUNC==MULTIPLY";
+    return true;
+  } else if (function_name == FLEXRML_DIVIDE) {
+    internal_name_out = "==FUNC==DIVIDE";
+    return true;
+  } else if (function_name == FLEXRML_TO_BOOL) {
+    internal_name_out = "==FUNC==TO_BOOL";
     return true;
   } else if (function_name == GREL_TO_UPPER_CASE) {
     internal_name_out = "==FUNC==TO_UPPER_CASE";
@@ -201,9 +213,18 @@ static bool is_supported_parameter(const std::string& internal_function_name,
                            "http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam2",
                        }},
       {"==FUNC==ADD", {
-                         "http://example.com/numericValueParam",
-                         "http://example.com/numericValueParam2",
+                         "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#numericValueParam",
+                         "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#numericValueParam2",
                      }},
+      {"==FUNC==MULTIPLY", {
+                              "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#numericValueParam",
+                              "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#numericValueParam2",
+                          }},
+      {"==FUNC==DIVIDE", {
+                            "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#numericValueParam",
+                            "https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#numericValueParam2",
+                        }},
+      {"==FUNC==TO_BOOL", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam"}},
   };
 
   auto it = supported_parameters.find(internal_function_name);
@@ -220,7 +241,10 @@ static bool is_supported_return(const std::string& internal_function_name,
       {"==FUNC==ALWAYS_RETURNS_ABC", {"https://w3id.org/imec/idlab/function#_stringOut"}},
       {"==FUNC==EQUAL", {"https://w3id.org/imec/idlab/function#_boolOut"}},
       {"==FUNC==TO_UPPER_CASE_URL", {"https://w3id.org/imec/idlab/function#_stringOut"}},
-      {"==FUNC==ADD", {"http://example.com/sumOut"}},
+      {"==FUNC==ADD", {"https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#sumOut"}},
+      {"==FUNC==MULTIPLY", {"https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#multiplyResultOut"}},
+      {"==FUNC==DIVIDE", {"https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#divideResultOut"}},
+      {"==FUNC==TO_BOOL", {"https://paul.ti.rw.fau.de/~jo00defe/flexrml/function#booleanOut"}},
       {"==FUNC==TO_UPPER_CASE", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#stringOut"}},
       {"==FUNC==STRING_LENGTH", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#output_number"}},
       {"==FUNC==STRING_SUBSTRING", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#stringOut"}},
