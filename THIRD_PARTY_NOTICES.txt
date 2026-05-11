@@ -1,31 +1,21 @@
 Third-Party Notices
 ===================
 
-This project vendors source code from the following third-party projects.
+This project does not vendor third-party source code in the repository.
+Native C++ dependencies are resolved through vcpkg from the manifest in
+vcpkg.json.
 
 1) Serd
    Copyright 2011-2023 David Robillard <d@drobilla.net>
    License: ISC (SPDX-License-Identifier: ISC)
    Upstream: https://github.com/drobilla/serd
 
-   Note: License text is available via the SPDX ISC license:
-   https://spdx.org/licenses/ISC.html
+2) jsoncons
+   Copyright Daniel Parker
+   License: Boost Software License 1.0 (SPDX-License-Identifier: BSL-1.0)
+   Upstream: https://github.com/danielaparker/jsoncons
 
-2) xxHash
+3) xxHash
    Copyright (C) 2012-2023 Yann Collet
-   License: BSD 2-Clause
+   License: BSD 2-Clause (SPDX-License-Identifier: BSD-2-Clause)
    Upstream: https://github.com/Cyan4973/xxHash
-
-   Note: The BSD 2-Clause license text is included in the header comment of
-   the vendored xxHash source files.
-
-3) RML-Core SHACL shape
-   Source: kg-construct/rml-core
-   Upstream: https://kg-construct.github.io/rml-core/shapes/core.ttl
-   Project: https://github.com/kg-construct/rml-core
-   License: CC BY 4.0
-   License URL: https://creativecommons.org/licenses/by/4.0/
-
-   Note: The bundled file src/flexrml/shapes/core.ttl is redistributed under
-   its original CC BY 4.0 license. If this file is modified, those changes
-   should be indicated in the file and in accompanying notices.

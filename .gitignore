@@ -1,17 +1,38 @@
+# Python environments and caches
 /env/
 /venv/
-*.so*
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# CMake and compiler output
+/build/
+/flexrml
+compile_commands.json
+CMakeUserPresets.json
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
 *.bin
-*.nq
-*.csv
-*.ttl
-*pyc
-*.build
-*.dist
-*.onefile-build
-mapping
-*.json
-flexrml.egg-info
-__pycache__
-build
-RMLTC*
+
+# vcpkg manifest-mode install output
+/vcpkg_installed/
+
+# Generated validation output
+/validation_report.md
+/mapping
+/*.nq
+/*.csv
+/*.ttl
+
+# External conformance test-case checkouts
+/test_cases/*
+!/test_cases/.gitignore
+
+# Legacy Nuitka outputs
+*.build/
+*.dist/
+*.onefile-build/

@@ -12,23 +12,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-try:
-    from rdflib import Dataset
-    from rdflib.compare import to_isomorphic
-except ImportError:  # pragma: no cover - handled at runtime for missing deps
-    Dataset = None
-    to_isomorphic = None
 
+from rdflib import Dataset
+from rdflib.compare import to_isomorphic
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_CASES_DIR = ROOT / "test_cases"
 REPORT_PATH = ROOT / "validation_report.md"
 PYPROJECT_PATH = ROOT / "pyproject.toml"
-STANDALONE_BINARY = ROOT / "flexrml"
-
-# Toggle this to validate test cases with the built standalone binary instead
-# of `python -m flexrml.flexcore`.
-USE_STANDALONE_BINARY = False
+FLEXRML_BINARY = ROOT / "flexrml"
 
 
 @dataclass
@@ -42,20 +34,16 @@ class CaseResult:
     stderr: str = ""
 
 
-def build_flexrml_command(output_path: Path, default_base_iri: str | None) -> tuple[list[str], dict[str, str]]:
-    if USE_STANDALONE_BINARY:
-        if not STANDALONE_BINARY.is_file():
-            raise FileNotFoundError(
-                f"Standalone binary not found at {STANDALONE_BINARY}. Build it first or set "
-                "USE_STANDALONE_BINARY = False."
-            )
+def result_category(result: CaseResult) -> str:
+    return result.name.split("/", 1)[0] if "/" in result.name else "."
 
-        command = [str(STANDALONE_BINARY), "-m", "mapping.ttl", "-o", str(output_path), "--validate-shacl"]
-        env = os.environ.copy()
-    else:
-        command = [sys.executable, "-m", "flexrml.flexcore", "-m", "mapping.ttl", "-o", str(output_path), "--validate-shacl"]
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(ROOT / "src")
+
+def build_flexrml_command(output_path: Path, default_base_iri: str | None) -> tuple[list[str], dict[str, str]]:
+    if not FLEXRML_BINARY.is_file():
+        raise FileNotFoundError(f"Native binary not found at {FLEXRML_BINARY}. Build it first.")
+
+    command = [str(FLEXRML_BINARY), "-m", "mapping.ttl", "-o", str(output_path)]
+    env = os.environ.copy()
 
     if default_base_iri:
         command.extend(["-b", default_base_iri])
@@ -135,6 +123,9 @@ def dataset_context_map(dataset: Dataset) -> dict[str, object]:
 
 
 def compare_rdf_outputs(expected_output: str, actual_output: str) -> bool:
+    if Dataset is None or to_isomorphic is None:
+        return False
+
     try:
         expected_dataset = parse_with_rdflib(expected_output)
         actual_dataset = parse_with_rdflib(actual_output)
@@ -154,7 +145,12 @@ def compare_rdf_outputs(expected_output: str, actual_output: str) -> bool:
     return True
 
 
+def case_display_name(case_dir: Path) -> str:
+    return case_dir.relative_to(TEST_CASES_DIR).as_posix()
+
+
 def run_case(case_dir: Path) -> CaseResult:
+    case_name = case_display_name(case_dir)
     readme_path = case_dir / "README.md"
     expected_error = parse_error_expected(readme_path)
     default_base_iri = parse_default_base_iri(readme_path)
@@ -185,11 +181,11 @@ def run_case(case_dir: Path) -> CaseResult:
         if expected_error:
             passed = proc.returncode != 0
             reason = "error observed as expected" if passed else "expected an error, but execution succeeded"
-            return CaseResult(case_dir.name, passed, expected_error, proc.returncode, reason, stdout, stderr)
+            return CaseResult(case_name, passed, expected_error, proc.returncode, reason, stdout, stderr)
 
         if proc.returncode != 0:
             return CaseResult(
-                case_dir.name,
+                case_name,
                 False,
                 expected_error,
                 proc.returncode,
@@ -210,7 +206,7 @@ def run_case(case_dir: Path) -> CaseResult:
 
         if not outputs_match:
             return CaseResult(
-                case_dir.name,
+                case_name,
                 False,
                 expected_error,
                 proc.returncode,
@@ -219,17 +215,31 @@ def run_case(case_dir: Path) -> CaseResult:
                 stderr,
             )
 
-        return CaseResult(case_dir.name, True, expected_error, proc.returncode, "output matches", stdout, stderr)
+        return CaseResult(case_name, True, expected_error, proc.returncode, "output matches", stdout, stderr)
     finally:
         output_path.unlink(missing_ok=True)
 
 
+def is_case_dir(path: Path) -> bool:
+    return (path / "README.md").is_file() and (path / "mapping.ttl").is_file()
+
+
+def selected_case_matches(case_dir: Path, selected: set[str]) -> bool:
+    relative_name = case_display_name(case_dir)
+    parts = relative_name.split("/")
+    return (
+        relative_name in selected
+        or case_dir.name in selected
+        or any(part in selected for part in parts[:-1])
+    )
+
+
 def iter_case_dirs(selected: list[str] | None) -> list[Path]:
-    case_dirs = sorted(path for path in TEST_CASES_DIR.iterdir() if path.is_dir())
+    case_dirs = sorted(path for path in TEST_CASES_DIR.rglob("*") if path.is_dir() and is_case_dir(path))
     if not selected:
         return case_dirs
-    selected_set = set(selected)
-    return [case_dir for case_dir in case_dirs if case_dir.name in selected_set]
+    selected_set = {name.strip("/") for name in selected}
+    return [case_dir for case_dir in case_dirs if selected_case_matches(case_dir, selected_set)]
 
 
 def parse_project_version() -> str:
@@ -247,6 +257,7 @@ def parse_project_version() -> str:
 def write_markdown_report(results: list[CaseResult], selected: list[str] | None) -> None:
     passed_count = sum(result.passed for result in results)
     failed = [result for result in results if not result.passed]
+    categories = sorted({result_category(result) for result in results})
     scope = ", ".join(selected) if selected else "all test cases"
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     version = parse_project_version()
@@ -257,13 +268,27 @@ def write_markdown_report(results: list[CaseResult], selected: list[str] | None)
         f"- FlexRML version: `{version}`",
         f"- Generated at: `{generated_at}`",
         f"- Scope: `{scope}`",
-        f"- Execution mode: `{'standalone binary' if USE_STANDALONE_BINARY else 'python module'}`",
+        "- Execution mode: `native C++ binary`",
         f"- Passed: `{passed_count}/{len(results)}`",
         f"- Failed: `{len(failed)}`",
         "",
+        "## Summary by Subfolder",
+        "",
+        "| Subfolder | Passed | Failed | Total |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+
+    for category in categories:
+        category_results = [result for result in results if result_category(result) == category]
+        category_passed = sum(result.passed for result in category_results)
+        category_failed = len(category_results) - category_passed
+        lines.append(f"| `{category}` | {category_passed} | {category_failed} | {len(category_results)} |")
+
+    lines.extend([
+        "",
         "## Results",
         "",
-    ]
+    ])
 
     for result in results:
         status = "PASS" if result.passed else "FAIL"
@@ -295,6 +320,15 @@ def write_markdown_report(results: list[CaseResult], selected: list[str] | None)
     REPORT_PATH.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def print_summary_by_subfolder(results: list[CaseResult]) -> None:
+    categories = sorted({result_category(result) for result in results})
+    print("\nSummary by subfolder:")
+    for category in categories:
+        category_results = [result for result in results if result_category(result) == category]
+        category_passed = sum(result.passed for result in category_results)
+        print(f"  {category}: {category_passed}/{len(category_results)} cases passed")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate FlexRML against local RML test cases.")
     parser.add_argument("cases", nargs="*", help="Optional list of case directory names to run.")
@@ -324,6 +358,7 @@ def main() -> int:
 
     passed_count = sum(result.passed for result in results)
     write_markdown_report(results, args.cases or None)
+    print_summary_by_subfolder(results)
     print(f"\nSummary: {passed_count}/{len(results)} cases passed.")
     return 0 if passed_count == len(results) else 1
 

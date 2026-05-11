@@ -1,0 +1,9 @@
+{
+  "name": "flexrml",
+  "description": "FlexRML native C++ dependencies",
+  "dependencies": [
+    "jsoncons",
+    "serd",
+    "xxhash"
+  ]
+}

@@ -6,9 +6,6 @@
 #include <string>
 #include <vector>
 
-// used to store string result
-static std::string g_result_str;
-
 // Definition of DfEntry structure similar to your Go struct.
 struct DfEntry {
   std::string S_invar;
@@ -209,7 +206,7 @@ std::string create_partitions(std::vector<DfEntry> invar_data) {
   return oss.str();
 }
 
-std::vector<std::string> split_by_substring(const std::string& str, const std::string& delimiter) {
+static std::vector<std::string> split_by_substring(const std::string& str, const std::string& delimiter) {
   std::vector<std::string> result;
   size_t start = 0;
   size_t end = str.find(delimiter);
@@ -225,15 +222,10 @@ std::vector<std::string> split_by_substring(const std::string& str, const std::s
   return result;
 }
 
-extern "C" {
-// Function to process the RDF string and return the result
-const char* ra_partitioner(const char* ra_expressions_char) {
-  std::string ra_expressions_str(ra_expressions_char);
+std::string ra_partitioner_string(const std::string& ra_expressions_str) {
   std::vector<std::string> ra_expressions = split_by_substring(ra_expressions_str, "\n");
 
   std::vector<DfEntry> data;
-
-  g_result_str = "";
 
   int id = 0;
   for (const auto& ra_expression : ra_expressions) {
@@ -255,8 +247,5 @@ const char* ra_partitioner(const char* ra_expressions_char) {
     }
   }
 
-  g_result_str = create_partitions(data);
-
-  return g_result_str.c_str();
-}
+  return create_partitions(data);
 }

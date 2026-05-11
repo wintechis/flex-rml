@@ -1,0 +1,3 @@
+#pragma once
+
+#define FLEXRML_VERSION "@PROJECT_VERSION@"

@@ -40,15 +40,12 @@ struct ParsedFunctionExecution {
   std::vector<FunctionInput> inputs;   // extracted inputs
 };
 
-// used to store string result
-static std::string g_result_str;
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// Transformation functions from string to vector and the other way round
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Function to split a single line into an NTriple
-NTriple split_line(const std::string& line) {
+static NTriple split_line(const std::string& line) {
   NTriple triple;
   size_t pos1 = line.find("|||");
   size_t pos2 = line.find("|||", pos1 + 3);
@@ -63,7 +60,7 @@ NTriple split_line(const std::string& line) {
 }
 
 // Function to process the entire RDF string
-std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
+static std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
   std::vector<NTriple> triples;
   std::istringstream stream(rdf_string);
   std::string line;
@@ -80,7 +77,7 @@ std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
   return triples;
 }
 
-std::vector<std::string> split_by_substring(const std::string& str, const std::string& delimiter) {
+static std::vector<std::string> split_by_substring(const std::string& str, const std::string& delimiter) {
   std::vector<std::string> result;
   size_t start = 0;
   size_t end = str.find(delimiter);
@@ -408,10 +405,7 @@ static bool encode_function_execution(
 /////// Functions supported in RML
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-extern "C" {
-
-const char* resolve_rml_functions(const char* input_rdf_mapping) {
-  std::string rdf_rule_str(input_rdf_mapping ? input_rdf_mapping : "");
+std::string resolve_rml_functions_string(const std::string& rdf_rule_str) {
 
   // Split into graphs
   std::vector<std::string> rdf_graph_strings = split_by_substring(rdf_rule_str, "===");
@@ -508,15 +502,13 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
       if (fit == function_by_exec_node.end()) {
         std::cerr << "rml:functionExecution target has no rml:function: "
                   << execution_node << "\n";
-        g_result_str.clear();
-        return g_result_str.c_str();
+        return "";
       }
 
       std::string internal_function_name;
       if (!is_supported_function(fit->second, internal_function_name)) {
         std::cerr << "Called function is not supported: " << fit->second << "\n";
-        g_result_str.clear();
-        return g_result_str.c_str();
+        return "";
       }
 
       auto return_it = return_by_source_node.find(std::string_view(function_value_source_node));
@@ -524,8 +516,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
           !is_supported_return(internal_function_name, std::string(return_it->second))) {
         std::cerr << "Unsupported return for function " << internal_function_name
                   << ": " << return_it->second << "\n";
-        g_result_str.clear();
-        return g_result_str.c_str();
+        return "";
       }
 
       ParsedFunctionExecution parsed;
@@ -548,8 +539,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
           if (!is_supported_parameter(internal_function_name, fi.parameter)) {
             std::cerr << "Unsupported parameter for function " << internal_function_name
                       << ": " << fi.parameter << "\n";
-            g_result_str.clear();
-            return g_result_str.c_str();
+            return "";
           }
 
           auto vmit = value_map_by_input_node.find(input_node);
@@ -563,8 +553,7 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
             }
 
             std::cerr << "rml:input node has no rml:inputValueMap or rml:inputValue: " << input_node << "\n";
-            g_result_str.clear();
-            return g_result_str.c_str();
+            return "";
           }
 
           std::string_view value_map_node = vmit->second;
@@ -590,15 +579,13 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
                                            input_value_by_input_node, reference_by_value_map,
                                            constant_by_value_map, template_by_value_map,
                                            execution_by_value_map, nested_function)) {
-              g_result_str.clear();
-              return g_result_str.c_str();
+              return "";
             }
             fi.kind = "function";
             fi.value = replace_all(nested_function, ";;", "%3B%3B");
           } else {
             std::cerr << "inputValueMap has no supported value: " << value_map_node << "\n";
-            g_result_str.clear();
-            return g_result_str.c_str();
+            return "";
           }
 
           parsed.inputs.push_back(std::move(fi));
@@ -717,16 +704,13 @@ const char* resolve_rml_functions(const char* input_rdf_mapping) {
     }
   }
 
-  // Rebuild output with the same "===" separator
-  g_result_str.clear();
+  std::string result;
   for (size_t i = 0; i < new_normalized_graph_arr.size(); ++i) {
-    g_result_str += new_normalized_graph_arr[i];
+    result += new_normalized_graph_arr[i];
     if (i + 1 < new_normalized_graph_arr.size()) {
-      g_result_str += "===";
+      result += "===";
     }
   }
 
-  return g_result_str.c_str();
+  return result;
 }
-
-}  // extern "C"

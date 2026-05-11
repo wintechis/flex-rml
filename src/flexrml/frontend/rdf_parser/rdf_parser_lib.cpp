@@ -5,10 +5,7 @@
 #include "definitions.h"
 #include "rdf_parser.h"
 
-// used to store string result
-static std::string g_result_str;
-
-std::vector<std::string> find_matching_objects(const std::vector<NTriple> &triples, const std::string &subject, const std::string &predicate) {
+static std::vector<std::string> find_matching_objects(const std::vector<NTriple> &triples, const std::string &subject, const std::string &predicate) {
   std::vector<std::string> results;
 
   for (const NTriple &triple : triples) {
@@ -29,7 +26,7 @@ std::vector<std::string> find_matching_objects(const std::vector<NTriple> &tripl
   return results;  // returns the vector of matching objects
 }
 
-std::vector<std::string> find_matching_subjects(
+static std::vector<std::string> find_matching_subjects(
     const std::vector<NTriple> &triples, const std::string &predicate,
     const std::string &object) {
   std::vector<std::string> results;
@@ -83,35 +80,21 @@ void validate_rml(const std::vector<NTriple> &rml_triple) {
 
 }
 
-extern "C" {
-
-// Function to process the RDF string and return the result
-const char *parse_rdf(const char *rdf_mapping_string) {
+std::string parse_rdf_string(const std::string& rdf_mapping) {
   try {
-    std::string rdf_mapping(rdf_mapping_string);
-    // Parse the input RDF rule
     RDFParser parser;
     std::vector<NTriple> rml_triple = parser.parse(rdf_mapping);
-    
-    // Validate Graph
+
     validate_rml(rml_triple);
-    // Clear the global result string
-    g_result_str.clear();
 
-    // Build a single string from the parsed triples
+    std::string result;
     for (const auto &el : rml_triple) {
-      g_result_str += el.subject + "|||" + el.predicate + "|||" + el.object + "\n";
+      result += el.subject + "|||" + el.predicate + "|||" + el.object + "\n";
     }
-
-    // Return result as a C-string
-    return g_result_str.c_str();
+    return result;
   } catch (const std::runtime_error &e) {
-    // Return the error message as a string
-    static std::string error_msg = "Error: " + std::string(e.what());
-    return error_msg.c_str();
+    return "Error: " + std::string(e.what());
   } catch (...) {
-    static std::string error_msg = "Error: Unknown error occurred.";
-    return error_msg.c_str();
+    return "Error: Unknown error occurred.";
   }
-}
 }

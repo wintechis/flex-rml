@@ -16,8 +16,6 @@
 #include "simple_executor.h"
 #include "utils.h"
 
-static std::string final_result;
-
 class ThreadPool {
  public:
   ThreadPool(size_t numThreads);
@@ -109,11 +107,12 @@ void split_to_kv_into(std::unordered_map<std::string, std::string>& out,
 
 //////////////////////////////////////////////////////////////
 
-extern "C" {
-const char *execute_physical_plans(const char* information, const char* mode,
-                           const char* continue_error,
-                           const char* output_file_path, const char* keep_data_in_memory, const char* json_data) {
-  // Get config variables //
+std::string execute_physical_plans_string(const std::string& information,
+                                          const std::string& mode,
+                                          const std::string& continue_error,
+                                          const std::string& output_file_path,
+                                          bool keep_in_memory,
+                                          const std::string& json_data) {
   std::string continue_error_str(continue_error);
   bool continue_on_error = false;
   if (continue_error_str == "true") {
@@ -123,18 +122,9 @@ const char *execute_physical_plans(const char* information, const char* mode,
   std::string threading_enabled(mode);
   std::string info(information);
   std::string ouput_file(output_file_path);
-  
 
-  std::string keep_in_memory_str(keep_data_in_memory);
-  bool keep_in_memory = false;
-  if (keep_in_memory_str == "true") {
-    keep_in_memory = true;
-  }
-
- // If keep in memory store in string
   std::string output_data_str = "";
 
-  // Clear output file
   if (!keep_in_memory){
     clear_output_file(ouput_file);
   }
@@ -166,10 +156,9 @@ const char *execute_physical_plans(const char* information, const char* mode,
   }
   ///////////////////////
   // Process json data //
-  std::string json_str(json_data);
   std::unordered_map<std::string, std::string> data_map; // Stores json data
-  if (json_str != ""){
-    std::vector<std::string> json_data_entries = split_by_substring(json_str, "|||===|||");
+  if (json_data != ""){
+    std::vector<std::string> json_data_entries = split_by_substring(json_data, "|||===|||");
     // remove empty entries
     json_data_entries.erase(std::remove_if(json_data_entries.begin(), json_data_entries.end(),[](const std::string& s){ return s.empty(); }), json_data_entries.end());
     for(const auto& data: json_data_entries ){
@@ -298,7 +287,5 @@ const char *execute_physical_plans(const char* information, const char* mode,
     // Shutdown the pool to ensure all tasks finish.
     pool.shutdown();
   } 
-  final_result = std::to_string(nr_generate_triple.load()) + "|||" + output_data_str;
-  return final_result.c_str();
-}
+  return std::to_string(nr_generate_triple.load()) + "|||" + output_data_str;
 }

@@ -24,9 +24,6 @@ struct NTriple {
   }
 };
 
-// used to store string result
-static std::string g_result_str;
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// Helper functions
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -648,7 +645,7 @@ std::vector<std::vector<NTriple>> separate_triple_maps(const std::vector<std::st
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Function to split a single line into an NTriple
-NTriple split_line(const std::string& line) {
+static NTriple split_line(const std::string& line) {
   NTriple triple;
   size_t pos1 = line.find("|||");
   size_t pos2 = line.find("|||", pos1 + 3);
@@ -663,7 +660,7 @@ NTriple split_line(const std::string& line) {
 }
 
 // Function to process the entire RDF string
-std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
+static std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
   std::vector<NTriple> triples;
   std::istringstream stream(rdf_string);
   std::string line;
@@ -679,7 +676,7 @@ std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
 }
 
 // Funciton to convert rdf_vector to string
-std::string rdf_string_to_vector(const std::vector<NTriple>& triples) {
+static std::string rdf_string_to_vector(const std::vector<NTriple>& triples) {
   std::string result = "";
 
   for (const auto& triple : triples) {
@@ -730,28 +727,18 @@ void validator(const std::vector<NTriple> &rdf_vector){
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-extern "C" {
+std::string normalize_rml_mapping_string(const std::string& input_rdf_mapping, int bn_number) {
+  std::vector<NTriple> rdf_vector = rdf_string_to_vector(input_rdf_mapping);
 
-const char* normalize_rml_mapping(const char* input_rdf_mapping, int bn_number) {
-  // Transform string to vector
-  std::string rdf_rule_str(input_rdf_mapping);
-  std::vector<NTriple> rdf_vector = rdf_string_to_vector(rdf_rule_str);
-
-  // Validate
   validator(rdf_vector);
 
-  //  Normalize
   std::vector<std::vector<NTriple>> normalized_graphs = normalize_mapping(rdf_vector, bn_number);
 
-  g_result_str.clear();
-  // Transform vectors to one string
+  std::string result;
   for (const auto& normalized_graph : normalized_graphs) {
     std::string normalized_graph_str = rdf_string_to_vector(normalized_graph);
-    g_result_str += normalized_graph_str;
-    g_result_str += "====";
+    result += normalized_graph_str;
+    result += "====";
   }
-
-  // Return result as a C-string
-  return g_result_str.c_str();
-}
+  return result;
 }

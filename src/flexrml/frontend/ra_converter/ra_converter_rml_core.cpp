@@ -16,9 +16,6 @@
 /////// Struct Definitions
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// used to store string result
-static std::string g_result_str;
-
 struct NTriple {
   std::string subject;
   std::string predicate;
@@ -62,7 +59,7 @@ struct FunctionExec {
   std::string input_term_map;
 };
 
-std::unordered_set<std::string> valid_language_subtags = {
+static std::unordered_set<std::string> valid_language_subtags = {
     "en",  // English
     "es",  // Spanish
     "fr",  // French
@@ -86,35 +83,8 @@ std::unordered_set<std::string> valid_language_subtags = {
 };
 
 // Global unordered_set to track generated strings
-std::unordered_set<std::string> generated_strings;
+static std::unordered_set<std::string> generated_strings;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-std::string derive_join_field_from_source(const std::string& source_path) {
-  std::string field = source_path;
-  std::size_t slash_pos = field.find_last_of("/\\");
-  if (slash_pos != std::string::npos) {
-    field = field.substr(slash_pos + 1);
-  }
-
-  std::size_t dot_pos = field.find_last_of('.');
-  if (dot_pos != std::string::npos) {
-    field = field.substr(0, dot_pos);
-  }
-
-  if (!field.empty() && field.back() == 's') {
-    field.pop_back();
-  }
-
-  if (!field.empty()) {
-    field[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(field[0])));
-  }
-
-  return field;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////// General Helper Functions
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Helper function to determine if a character at position `i` is escaped
 bool isEscaped(const std::string& line, size_t i) {
@@ -167,7 +137,7 @@ std::tuple<std::string, std::string> check_annotated_lang_tag(const std::string&
   return std::make_tuple(rdf_term_map, current_lang_tag);
 }
 
-std::string generate_random_string(size_t length) {
+static std::string generate_random_string(size_t length) {
   const std::string characters =
       "abcdefghijklmnopqrstuvwxyz"
       "0123456789";
@@ -189,7 +159,7 @@ std::string generate_random_string(size_t length) {
   return random_string;
 }
 
-std::vector<std::string> extract_substrings(const std::string& str) {
+static std::vector<std::string> extract_substrings(const std::string& str) {
   std::vector<std::string> substrings;
   size_t startPos = 0;
 
@@ -226,6 +196,34 @@ std::vector<std::string> extract_substrings(const std::string& str) {
   return substrings;
 }
 
+std::string extract_constant_value_for_template(const std::string& template_value,
+                                                const std::string& constant_value) {
+  std::vector<std::string> extracted = extract_substrings(template_value);
+  if (extracted.size() != 1) {
+    return constant_value;
+  }
+
+  std::string placeholder = "{" + extracted[0] + "}";
+  std::size_t placeholder_pos = template_value.find(placeholder);
+  if (placeholder_pos == std::string::npos) {
+    return constant_value;
+  }
+
+  std::string prefix = template_value.substr(0, placeholder_pos);
+  std::string suffix = template_value.substr(placeholder_pos + placeholder.size());
+  if (constant_value.size() < prefix.size() + suffix.size()) {
+    return constant_value;
+  }
+  if (!prefix.empty() && !constant_value.starts_with(prefix)) {
+    return constant_value;
+  }
+  if (!suffix.empty() && !constant_value.ends_with(suffix)) {
+    return constant_value;
+  }
+
+  return constant_value.substr(prefix.size(), constant_value.size() - prefix.size() - suffix.size());
+}
+
 // Function to split a line at a given char.
 std::vector<std::string> split_line_at_char(const std::string& line, const std::string& split_char) {
   std::vector<std::string> parts;
@@ -259,7 +257,7 @@ std::string replace_all(std::string value, const std::string& from, const std::s
   return value;
 }
 
-std::vector<std::string> find_matching_subjects(
+static std::vector<std::string> find_matching_subjects(
     const std::vector<NTriple>& triples, const std::string& predicate,
     const std::string& object) {
   std::vector<std::string> results;
@@ -282,7 +280,7 @@ std::vector<std::string> find_matching_subjects(
   return results;  // returns the vector of matching subjects
 }
 
-std::vector<std::string> find_matching_objects(
+static std::vector<std::string> find_matching_objects(
     const std::vector<NTriple>& triples, const std::string& subject,
     const std::string& predicate) {
   std::vector<std::string> results;
@@ -805,7 +803,7 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
       std::vector<std::string> direct_values =
           find_matching_objects(triples, condition_node, direct_predicate);
       if (direct_values.size() == 1) {
-        return std::make_pair(direct_values[0], std::string("reference"));
+        return std::make_tuple(direct_values[0], std::string("reference"), std::string{});
       }
 
       std::vector<std::string> map_nodes =
@@ -814,7 +812,7 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
         std::vector<std::string> references =
             find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/reference");
         if (references.size() == 1) {
-          return std::make_pair(references[0], std::string("reference"));
+          return std::make_tuple(references[0], std::string("reference"), std::string{});
         }
 
         std::vector<std::string> templates =
@@ -822,31 +820,37 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
         if (templates.size() == 1) {
           std::vector<std::string> extracted = extract_substrings(templates[0]);
           if (extracted.size() == 1) {
-            return std::make_pair(extracted[0], std::string("template"));
+            return std::make_tuple(extracted[0], std::string("template"), templates[0]);
           }
-          return std::make_pair(templates[0], std::string("template"));
+          return std::make_tuple(templates[0], std::string("template"), templates[0]);
         }
 
         std::vector<std::string> constants =
             find_matching_objects(triples, map_nodes[0], "http://w3id.org/rml/constant");
         if (constants.size() == 1) {
-          return std::make_pair(constants[0], std::string("constant"));
+          return std::make_tuple(constants[0], std::string("constant"), std::string{});
         }
       }
 
-      return std::make_pair(std::string{}, std::string{});
+      return std::make_tuple(std::string{}, std::string{}, std::string{});
     };
 
-    auto [child, child_type] = resolve_join_value(join_condition_node,
-                                                  "http://w3id.org/rml/child",
-                                                  "http://w3id.org/rml/childMap");
-    auto [parent, parent_type] = resolve_join_value(join_condition_node,
-                                                    "http://w3id.org/rml/parent",
-                                                    "http://w3id.org/rml/parentMap");
+    auto [child, child_type, child_template] = resolve_join_value(join_condition_node,
+                                                                  "http://w3id.org/rml/child",
+                                                                  "http://w3id.org/rml/childMap");
+    auto [parent, parent_type, parent_template] = resolve_join_value(join_condition_node,
+                                                                    "http://w3id.org/rml/parent",
+                                                                    "http://w3id.org/rml/parentMap");
 
     if (child.empty() || parent.empty()) {
       std::cout << "Could not parse join condition." << std::endl;
       std::exit(1);
+    }
+
+    if (child_type == "template" && parent_type == "constant") {
+      parent = extract_constant_value_for_template(child_template, parent);
+    } else if (child_type == "constant" && parent_type == "template") {
+      child = extract_constant_value_for_template(parent_template, child);
     }
 
     result.join_condition[0] = child;
@@ -868,14 +872,6 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
 
   std::vector<std::string> parent_tm_sources = find_matching_objects(triples, parent_tm_source_node, "http://w3id.org/rml/path");
   std::string parent_tm_source = parent_tm_sources[0];
-
-  if (result.join_condition_type[0] == "constant") {
-    std::string derived_child_field = derive_join_field_from_source(parent_tm_source);
-    if (!derived_child_field.empty()) {
-      result.join_condition[0] = derived_child_field;
-      result.join_condition_type[0] = "reference";
-    }
-  }
 
   // Get parent subject aka object
   std::vector<std::string> parent_tm_subject_nodes = find_matching_objects(triples, parent_tm_node, "http://w3id.org/rml/subjectMap");
@@ -905,13 +901,6 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
   // Check if template
   results = find_matching_objects(triples, parent_tm_subject_node, "http://w3id.org/rml/template");
   if (results.size() == 1) {
-    if (result.join_condition_type[1] == "constant") {
-      std::vector<std::string> extracted = extract_substrings(results[0]);
-      if (extracted.size() == 1) {
-        result.join_condition[1] = extracted[0];
-        result.join_condition_type[1] = "template";
-      }
-    }
     result.term_map_type = "template";
     result.term_map = results[0];
     result.term_type = "iri";
@@ -1014,7 +1003,9 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
 
   if (!is_empty) {
     if (obj.term_map_type.empty()) {
-      unique_attributes.insert(obj.join_condition[0]);
+      if (obj.join_condition_type[0] != "constant") {
+        unique_attributes.insert(obj.join_condition[0]);
+      }
     } else if (obj.join_condition_type[1] != "constant" &&
                (obj.term_map_type == "reference" || obj.term_map_type == "template" || obj.term_map_type == "function")) {
       unique_attributes.insert(obj.join_condition[1]);
@@ -1052,7 +1043,7 @@ void collect_graph_projected_attributes(std::set<std::string>& unique_attributes
   }
 }
 
-std::string replace_substring(const std::string& original,
+static std::string replace_substring(const std::string& original,
                               const std::string& toReplace,
                               const std::string& replacement) {
   std::string result = original;
@@ -1097,6 +1088,7 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   // Get projected attributes of input 1
   Object empty_obj;
   empty_obj.join_condition = obj.join_condition;  // copy join condition for projection
+  empty_obj.join_condition_type = obj.join_condition_type;
   std::vector<std::string> proj_attributes1 = get_projected_attributes(subj, pred, empty_obj);
   std::set<std::string> proj_attributes1_set(proj_attributes1.begin(), proj_attributes1.end());
   collect_graph_projected_attributes(proj_attributes1_set, graphs);
@@ -1363,7 +1355,7 @@ std::string converter(const std::vector<NTriple>& triples) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Function to split a single line into an NTriple
-NTriple split_line(const std::string& line) {
+static NTriple split_line(const std::string& line) {
   NTriple triple;
   size_t pos1 = line.find("|||");
   size_t pos2 = line.find("|||", pos1 + 3);
@@ -1378,7 +1370,7 @@ NTriple split_line(const std::string& line) {
 }
 
 // Function to process the entire RDF string
-std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
+static std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
   std::vector<NTriple> triples;
   std::istringstream stream(rdf_string);
   std::string line;
@@ -1395,25 +1387,7 @@ std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-extern "C" {
-const char* create_relational_algebra(const char* rml_input) {
-  // Convert the C-style string into a std::string
-  std::string rml(rml_input);
-
-  // Parse string
+std::string create_relational_algebra_string(const std::string& rml) {
   std::vector<NTriple> rdf_vector = rdf_string_to_vector(rml);
-
-  // Clear the global result string
-  g_result_str.clear();
-
-  g_result_str = converter(rdf_vector);
-
-  // Return result as a C-string
-  return g_result_str.c_str();
+  return converter(rdf_vector);
 }
-
-void converter_free(char* ptr) {
-  delete[] ptr;
-}
-
-}  // extern "C"

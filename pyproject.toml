@@ -9,22 +9,9 @@ description = "FlexRML"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-dependencies = [
-    "jsonpath-ng==1.8.0",
-    "pyshacl>=0.30,<0.32",
+dependencies = []
+
+[project.optional-dependencies]
+test = [
     "rdflib>=7,<8",
-]
-
-[tool.setuptools]
-package-dir = {"" = "src"}
-include-package-data = true
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-flexrml = [
-    "backend/*.so",
-    "frontend/*.so",
-    "shapes/*.ttl",
 ]
