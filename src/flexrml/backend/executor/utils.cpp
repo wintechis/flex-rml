@@ -905,10 +905,12 @@ void create_operator_into(const std::string& term_map,
                           const std::string& data_type,
                           const std::string& base_uri,
                           std::unordered_map<std::string, std::string>& map,
-                          std::string& out) {
+                          std::string& out,
+                          std::string& scratch) {
   static const std::string kNone = "None";
 
-  std::string rdf_storage;
+  scratch.clear();
+  std::string& rdf_storage = scratch;
   std::string_view rdf_term = term_map;
   const bool is_literal = term_type == "literal";
 
@@ -1001,6 +1003,18 @@ void create_operator_into(const std::string& term_map,
   }
 }
 
+void create_operator_into(const std::string& term_map,
+                          const std::string& term_map_type,
+                          const std::string& term_type,
+                          const std::string& lang_tag,
+                          const std::string& data_type,
+                          const std::string& base_uri,
+                          std::unordered_map<std::string, std::string>& map,
+                          std::string& out) {
+  std::string scratch;
+  create_operator_into(term_map, term_map_type, term_type, lang_tag, data_type, base_uri, map, out, scratch);
+}
+
 std::string create_operator(const std::string& term_map,
                             const std::string& term_map_type,
                             const std::string& term_type,
@@ -1009,7 +1023,8 @@ std::string create_operator(const std::string& term_map,
                             const std::string& base_uri,
                             std::unordered_map<std::string, std::string>& map) {
   std::string result;
-  create_operator_into(term_map, term_map_type, term_type, lang_tag, data_type, base_uri, map, result);
+  std::string scratch;
+  create_operator_into(term_map, term_map_type, term_type, lang_tag, data_type, base_uri, map, result, scratch);
   return result;
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////

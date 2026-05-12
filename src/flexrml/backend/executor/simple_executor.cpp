@@ -135,6 +135,10 @@ struct SetupData {
   std::string graph;
   std::string res;
   std::string buffered_res;
+  std::string subject_scratch;
+  std::string predicate_scratch;
+  std::string object_scratch;
+  std::string graph_scratch;
 
   std::ofstream outputFile;
 };
@@ -154,6 +158,10 @@ SetupData initialize_setup(const fs::path& output_file_name) {
   data.graph.reserve(512);
   data.res.reserve(2048);
   data.buffered_res.reserve(kOutputBufferReserve);
+  data.subject_scratch.reserve(512);
+  data.predicate_scratch.reserve(512);
+  data.object_scratch.reserve(512);
+  data.graph_scratch.reserve(512);
 
   // Open output file
   create_parent_directories_if_needed(output_file_name);
@@ -183,6 +191,10 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   data.graph.reserve(512);
   data.res.reserve(2048);
   data.buffered_res.reserve(kOutputBufferReserve);
+  data.subject_scratch.reserve(512);
+  data.predicate_scratch.reserve(512);
+  data.object_scratch.reserve(512);
+  data.graph_scratch.reserve(512);
 
   return data;
 }
@@ -309,25 +321,25 @@ int execute_simple_with_graph(const std::string& input_file_name,
       if (*s_term.map_type == "preformatted") {
         setup_data.subject = *s_term.value;
       } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject);
+        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
       }
       // PREDICATE
       if (*p_term.map_type == "preformatted") {
         setup_data.predicate = *p_term.value;
       } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate);
+        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
       }
       // OBJECT
       if (*o_term.map_type == "preformatted") {
         setup_data.object = *o_term.value;
       } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object);
+        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
       }
       // GRAPH
       if (*g_term.map_type == "preformatted") {
         setup_data.graph = *g_term.value;
       } else {
-        create_operator_into(*g_term.value, *g_term.map_type, g_content[2], "", "", base_uri, row, setup_data.graph);
+        create_operator_into(*g_term.value, *g_term.map_type, g_content[2], "", "", base_uri, row, setup_data.graph, setup_data.graph_scratch);
       }
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
@@ -447,25 +459,25 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
       if (*s_term.map_type == "preformatted") {
         setup_data.subject = *s_term.value;
       } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject);
+        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
       }
       // PREDICATE
       if (*p_term.map_type == "preformatted") {
         setup_data.predicate = *p_term.value;
       } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate);
+        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
       }
       // OBJECT
       if (*o_term.map_type == "preformatted") {
         setup_data.object = *o_term.value;
       } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object);
+        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
       }
       // GRAPH
       if (*g_term.map_type == "preformatted") {
         setup_data.graph = *g_term.value;
       } else {
-        create_operator_into(*g_term.value, *g_term.map_type, g_content[2], "", "", base_uri, row, setup_data.graph);
+        create_operator_into(*g_term.value, *g_term.map_type, g_content[2], "", "", base_uri, row, setup_data.graph, setup_data.graph_scratch);
       }
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
@@ -566,19 +578,19 @@ int execute_simple(const std::string& input_file_name,
       if (*s_term.map_type == "preformatted") {
         setup_data.subject = *s_term.value;
       } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject);
+        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
       }
       // PREDICATE
       if (*p_term.map_type == "preformatted") {
         setup_data.predicate = *p_term.value;
       } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate);
+        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
       }
       // OBJECT
       if (*o_term.map_type == "preformatted") {
         setup_data.object = *o_term.value;
       } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object);
+        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
       }
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
@@ -697,19 +709,19 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
       if (*s_term.map_type == "preformatted") {
         setup_data.subject = *s_term.value;
       } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject);
+        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
       }
       // PREDICATE
       if (*p_term.map_type == "preformatted") {
         setup_data.predicate = *p_term.value;
       } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate);
+        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
       }
       // OBJECT
       if (*o_term.map_type == "preformatted") {
         setup_data.object = *o_term.value;
       } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object);
+        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
       }
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
