@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include <ankerl/unordered_dense.h>
+
 #include "definitions.h"
 #include "utils.h"
 #include "xxhash.h"
@@ -37,64 +39,15 @@ struct TripleHash128 {
   }
 };
 
-class FlatTripleHashSet {
- public:
-  bool insert(const TripleHash128& key) {
-    const TripleHash128 stored_key = key.low == 0 && key.high == 0 ? TripleHash128{0, 1} : key;
-    if (buckets_.empty() || (size_ + 1) * 100 >= buckets_.size() * 97) {
-      rehash(buckets_.empty() ? 1024 : buckets_.size() * 2);
-    }
+struct TripleHash128Hasher {
+  using is_avalanching = void;
 
-    std::size_t index = bucket_index(stored_key);
-    while (is_occupied(buckets_[index])) {
-      if (buckets_[index] == stored_key) {
-        return false;
-      }
-      index = (index + 1) & (buckets_.size() - 1);
-    }
-
-    buckets_[index] = stored_key;
-    ++size_;
-    return true;
+  auto operator()(const TripleHash128& key) const noexcept -> std::uint64_t {
+    return key.low ^ (key.high + 0x9e3779b97f4a7c15ULL + (key.low << 6) + (key.low >> 2));
   }
-
- private:
-  static std::size_t next_power_of_two(std::size_t value) {
-    std::size_t result = 1;
-    while (result < value) {
-      result <<= 1;
-    }
-    return result;
-  }
-
-  static bool is_occupied(const TripleHash128& key) {
-    return key.low != 0 || key.high != 0;
-  }
-
-  static std::size_t hash_key(const TripleHash128& key) {
-    return static_cast<std::size_t>(key.low ^ (key.high + 0x9e3779b97f4a7c15ULL + (key.low << 6) + (key.low >> 2)));
-  }
-
-  std::size_t bucket_index(const TripleHash128& key) const {
-    return hash_key(key) & (buckets_.size() - 1);
-  }
-
-  void rehash(std::size_t requested_size) {
-    std::vector<TripleHash128> old_buckets = std::move(buckets_);
-    buckets_.clear();
-    buckets_.resize(next_power_of_two(requested_size));
-    size_ = 0;
-
-    for (const TripleHash128& bucket : old_buckets) {
-      if (is_occupied(bucket)) {
-        insert(bucket);
-      }
-    }
-  }
-
-  std::vector<TripleHash128> buckets_;
-  std::size_t size_ = 0;
 };
+
+using TripleHashSet = ankerl::unordered_dense::set<TripleHash128, TripleHash128Hasher>;
 
 static TripleHash128 hash_triple(std::string_view triple) {
   const XXH128_hash_t hash = XXH3_128bits(triple.data(), triple.size());
@@ -164,7 +117,7 @@ static void project_row_into(const std::vector<std::string>& split_line,
 /// Data setup
 ///////////////////////////////////////////////////////////////
 struct SetupData {
-  FlatTripleHashSet unique_triple_hashes;
+  TripleHashSet unique_triple_hashes;
 
   std::string line;
   std::vector<std::string> split_line;
@@ -386,7 +339,7 @@ int execute_simple_with_graph(const std::string& input_file_name,
     }
 
     setup_data.res = format_statement(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph);
-    if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res))) {
+    if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
       continue;
     }
     setup_data.triple_counter++;
@@ -637,7 +590,7 @@ int execute_simple(const std::string& input_file_name,
     }
 
     setup_data.res = setup_data.subject + " " + setup_data.predicate + " " + setup_data.object + " .\n";
-    if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res))) {
+    if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
       continue;
     }
     setup_data.triple_counter++;

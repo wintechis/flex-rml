@@ -23,6 +23,7 @@ endif()
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
 find_package(jsoncons CONFIG REQUIRED)
+find_package(unordered_dense CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
 pkg_check_modules(SERD REQUIRED IMPORTED_TARGET serd-0)
 
@@ -58,6 +59,7 @@ target_include_directories(flexrml PRIVATE
 
 target_link_libraries(flexrml PRIVATE
   jsoncons::jsoncons
+  unordered_dense::unordered_dense
   xxHash::xxhash
   PkgConfig::SERD
   Threads::Threads

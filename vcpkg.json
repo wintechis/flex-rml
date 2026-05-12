@@ -4,6 +4,7 @@
   "dependencies": [
     "jsoncons",
     "serd",
+    "unordered-dense",
     "xxhash"
   ]
 }
