@@ -615,7 +615,7 @@ int execute_simple_with_graph(const std::string& input_file_name,
       }
     }
 
-    setup_data.res = format_statement(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph);
+    format_statement_into(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph, setup_data.res);
     if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
       continue;
     }
@@ -734,7 +734,7 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
       }
     }
 
-    setup_data.res = format_statement(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph);
+    format_statement_into(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph, setup_data.res);
     if (!unique_triple.insert(setup_data.res).second) {
       continue;
     }
@@ -832,7 +832,7 @@ int execute_simple(const std::string& input_file_name,
       }
     }
 
-    setup_data.res = setup_data.subject + " " + setup_data.predicate + " " + setup_data.object + " .\n";
+    format_statement_into(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.res);
     if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
       continue;
     }
@@ -948,7 +948,7 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
       }
     }
 
-    setup_data.res = setup_data.subject + " " + setup_data.predicate + " " + setup_data.object + " .\n";
+    format_statement_into(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.res);
     if (!unique_triple.insert(setup_data.res).second) {
       continue;
     }

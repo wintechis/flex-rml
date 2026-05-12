@@ -121,14 +121,50 @@ bool is_default_graph_marker(const std::string& graph) {
 }
 
 std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object) {
-  return subject + " " + predicate + " " + object + " .\n";
+  std::string result;
+  format_statement_into(subject, predicate, object, result);
+  return result;
 }
 
 std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph) {
-  if (graph.empty() || is_default_graph_marker(graph)) {
-    return format_statement(subject, predicate, object);
+  std::string result;
+  format_statement_into(subject, predicate, object, graph, result);
+  return result;
+}
+
+void format_statement_into(const std::string& subject, const std::string& predicate, const std::string& object, std::string& out) {
+  out.clear();
+  const std::size_t required_size = subject.size() + predicate.size() + object.size() + 6;
+  if (out.capacity() < required_size) {
+    out.reserve(required_size);
   }
-  return subject + " " + predicate + " " + object + " " + graph + " .\n";
+  out.append(subject);
+  out.push_back(' ');
+  out.append(predicate);
+  out.push_back(' ');
+  out.append(object);
+  out.append(" .\n");
+}
+
+void format_statement_into(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph, std::string& out) {
+  if (graph.empty() || is_default_graph_marker(graph)) {
+    format_statement_into(subject, predicate, object, out);
+    return;
+  }
+
+  out.clear();
+  const std::size_t required_size = subject.size() + predicate.size() + object.size() + graph.size() + 7;
+  if (out.capacity() < required_size) {
+    out.reserve(required_size);
+  }
+  out.append(subject);
+  out.push_back(' ');
+  out.append(predicate);
+  out.push_back(' ');
+  out.append(object);
+  out.push_back(' ');
+  out.append(graph);
+  out.append(" .\n");
 }
 
 int get_index(const std::vector<std::string>& input_vector, std::string searched_element) {

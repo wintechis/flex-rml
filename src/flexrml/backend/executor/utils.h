@@ -26,6 +26,8 @@ bool split_csv_line_views_into(const std::string& str, char separator, std::vect
 bool is_default_graph_marker(const std::string& graph);
 std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object);
 std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph);
+void format_statement_into(const std::string& subject, const std::string& predicate, const std::string& object, std::string& out);
+void format_statement_into(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph, std::string& out);
 std::string make_safe_iri(std::string_view node, bool encode_non_ascii = true);
 void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& out);
 std::string infer_literal_datatype(std::string_view rdf_term,
