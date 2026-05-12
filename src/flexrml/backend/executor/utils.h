@@ -48,6 +48,14 @@ std::string create_operator(const std::string& term_map,
                             const std::string& data_type,
                             const std::string& base_uri,
                             std::unordered_map<std::string, std::string>& map);
+void create_operator_into(const std::string& term_map,
+                          const std::string& term_map_type,
+                          const std::string& term_type,
+                          const std::string& lang_tag,
+                          const std::string& data_type,
+                          const std::string& base_uri,
+                          std::unordered_map<std::string, std::string>& map,
+                          std::string& out);
 
 std::string get_local_now_iso8601();
 std::string get_current_date_time_string();

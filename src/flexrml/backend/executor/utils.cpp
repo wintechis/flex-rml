@@ -169,6 +169,10 @@ std::string clean_blank_node(std::string_view raw) {
 std::unordered_map<std::string, std::string> uri_map;
 
 std::vector<std::string> extract_substrings(const std::string& str);
+void expand_template_term_into(const std::string& term_map,
+                               const std::string& term_type,
+                               std::unordered_map<std::string, std::string>& map,
+                               std::string& result);
 
 static std::string transform_string(const std::string& input) {
   static constexpr std::string_view digit_map[10] = {
@@ -609,6 +613,68 @@ std::string handle_term_type(const std::string& term_type,
   throw std::runtime_error(error_msg);
 }
 
+void handle_term_type_into(const std::string& term_type,
+                           std::string_view rdf_term,
+                           const std::string& lang_tag,
+                           const std::string& data_type,
+                           std::string& out) {
+  static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
+                                                      ')', ',', '[', ']'};
+
+  out.clear();
+  if (term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") {
+    if ((term_type == "uri" || term_type == "iri") && contains_invalid_chars(rdf_term, errorChars)) {
+      std::string error_msg;
+      error_msg.reserve(rdf_term.size() + 58);
+      error_msg.append("Error: invalid IRI detected for node: '");
+      error_msg.append(rdf_term);
+      error_msg.append("'. ");
+      if (continue_on_error == true) {
+        std::cout << error_msg << "Skipping!\n";
+      }
+      error_msg += "Stop!";
+      throw std::runtime_error(error_msg);
+    }
+    out.reserve(rdf_term.size() + 2);
+    out.push_back('<');
+    out.append(rdf_term);
+    out.push_back('>');
+    return;
+  }
+
+  if (term_type == "blanknode") {
+    std::string rdf_term_clean = clean_blank_node(rdf_term);
+    out.reserve(rdf_term_clean.size() + 2);
+    out.append("_:");
+    out.append(rdf_term_clean);
+    return;
+  }
+
+  if (term_type == "literal") {
+    out.reserve(rdf_term.size() + data_type.size() + lang_tag.size() + 6);
+    out.push_back('"');
+    out.append(rdf_term);
+    out.push_back('"');
+
+    if (data_type != "None") {
+      out.append("^^<");
+      out.append(data_type);
+      out.push_back('>');
+    } else if (lang_tag != "None") {
+      out.push_back('@');
+      out.append(lang_tag);
+    }
+    return;
+  }
+
+  std::string error_msg =
+      "Error: unsupported term type. Valid term types are 'uri', 'iri', "
+      "'unsafeiri', 'blanknode', 'literal'. Received: " +
+      term_type;
+  std::cout << error_msg << std::endl;
+  throw std::runtime_error(error_msg);
+}
+
 std::string unmaskString(std::string_view input) {
   if (input.find('\\') == std::string_view::npos) {
     return std::string(input);
@@ -746,7 +812,7 @@ bool is_rml_decimal(std::string_view value) {
   return true;
 }
 
-std::string infer_literal_datatype(const std::string& rdf_term,
+std::string infer_literal_datatype(std::string_view rdf_term,
                                    const std::string& lang_tag,
                                    const std::string& data_type) {
   if (lang_tag != "None" || data_type != "None") {
@@ -770,6 +836,15 @@ std::string expand_template_term(const std::string& term_map,
                                  const std::string& term_type,
                                  std::unordered_map<std::string, std::string>& map) {
   std::string result;
+  expand_template_term_into(term_map, term_type, map, result);
+  return result;
+}
+
+void expand_template_term_into(const std::string& term_map,
+                               const std::string& term_type,
+                               std::unordered_map<std::string, std::string>& map,
+                               std::string& result) {
+  result.clear();
   result.reserve(term_map.size());
 
   for (std::size_t i = 0; i < term_map.size();) {
@@ -821,18 +896,20 @@ std::string expand_template_term(const std::string& term_map,
       result += it->second;
     }
   }
-
-  return result;
 }
 
-std::string create_operator(const std::string& term_map,
-                            const std::string& term_map_type,
-                            const std::string& term_type,
-                            const std::string& lang_tag,
-                            const std::string& data_type,
-                            const std::string& base_uri,
-                            std::unordered_map<std::string, std::string>& map) {
-  std::string rdf_term = term_map;
+void create_operator_into(const std::string& term_map,
+                          const std::string& term_map_type,
+                          const std::string& term_type,
+                          const std::string& lang_tag,
+                          const std::string& data_type,
+                          const std::string& base_uri,
+                          std::unordered_map<std::string, std::string>& map,
+                          std::string& out) {
+  static const std::string kNone = "None";
+
+  std::string rdf_storage;
+  std::string_view rdf_term = term_map;
   const bool is_literal = term_type == "literal";
 
   auto normalize_iri_annotation = [&base_uri](std::string& annotation_value) {
@@ -846,66 +923,94 @@ std::string create_operator(const std::string& term_map,
 
   // Handle template
   if (term_map_type == "template") {
-    std::string effective_lang_tag = "None";
-    std::string effective_data_type = "None";
+    const std::string* effective_lang_tag = &kNone;
+    const std::string* effective_data_type = &kNone;
+    std::string resolved_lang_tag;
+    std::string resolved_data_type;
     if (is_literal) {
-      effective_lang_tag = resolve_annotation_value(lang_tag, map);
-      effective_data_type = resolve_annotation_value(data_type, map);
-      normalize_iri_annotation(effective_data_type);
+      resolved_lang_tag = resolve_annotation_value(lang_tag, map);
+      resolved_data_type = resolve_annotation_value(data_type, map);
+      normalize_iri_annotation(resolved_data_type);
+      effective_lang_tag = &resolved_lang_tag;
+      effective_data_type = &resolved_data_type;
     }
 
-    if (rdf_term.find('{') != std::string::npos) {
-      rdf_term = expand_template_term(rdf_term, term_type, map);
+    if (term_map.find('{') != std::string::npos) {
+      expand_template_term_into(term_map, term_type, map, rdf_storage);
+      rdf_term = rdf_storage;
     }
 
     // Add base iri if needed
     if ((term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
-      rdf_term = base_uri + rdf_term;
+      if (rdf_term.data() != rdf_storage.data()) {
+        rdf_storage.assign(rdf_term);
+      }
+      rdf_storage.insert(0, base_uri);
+      rdf_term = rdf_storage;
     }
 
-    rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
-
-    return rdf_term;
+    handle_term_type_into(term_type, rdf_term, *effective_lang_tag, *effective_data_type, out);
+    return;
   }
   // Handle reference
   else if (term_map_type == "reference") {
     auto value = map.find(term_map);
-    std::string data = value != map.end() ? value->second : std::string{};
-    std::string effective_lang_tag = "None";
-    std::string effective_data_type = "None";
+    rdf_term = value != map.end() ? std::string_view(value->second) : std::string_view{};
+    const std::string* effective_lang_tag = &kNone;
+    const std::string* effective_data_type = &kNone;
+    std::string resolved_lang_tag;
+    std::string resolved_data_type;
 
     if (is_literal) {
-      effective_lang_tag = resolve_annotation_value(lang_tag, map);
-      effective_data_type = resolve_annotation_value(data_type, map);
-      normalize_iri_annotation(effective_data_type);
-      effective_data_type = infer_literal_datatype(data, effective_lang_tag, effective_data_type);
+      resolved_lang_tag = resolve_annotation_value(lang_tag, map);
+      resolved_data_type = resolve_annotation_value(data_type, map);
+      normalize_iri_annotation(resolved_data_type);
+      resolved_data_type = infer_literal_datatype(rdf_term, resolved_lang_tag, resolved_data_type);
+      effective_lang_tag = &resolved_lang_tag;
+      effective_data_type = &resolved_data_type;
     }
-
-    rdf_term = std::move(data);
 
     // Add base iri if needed
     if ((term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
-      rdf_term = base_uri + rdf_term;
+      rdf_storage.reserve(base_uri.size() + rdf_term.size());
+      rdf_storage.append(base_uri);
+      rdf_storage.append(rdf_term);
+      rdf_term = rdf_storage;
     }
 
-    rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
-
-    return rdf_term;
+    handle_term_type_into(term_type, rdf_term, *effective_lang_tag, *effective_data_type, out);
+    return;
   } else if (term_map_type == "constant") {
-    std::string effective_lang_tag = "None";
-    std::string effective_data_type = "None";
+    const std::string* effective_lang_tag = &kNone;
+    const std::string* effective_data_type = &kNone;
+    std::string resolved_lang_tag;
+    std::string resolved_data_type;
     if (is_literal) {
-      effective_lang_tag = resolve_annotation_value(lang_tag, map);
-      effective_data_type = resolve_annotation_value(data_type, map);
-      normalize_iri_annotation(effective_data_type);
-      effective_data_type = infer_literal_datatype(rdf_term, effective_lang_tag, effective_data_type);
+      resolved_lang_tag = resolve_annotation_value(lang_tag, map);
+      resolved_data_type = resolve_annotation_value(data_type, map);
+      normalize_iri_annotation(resolved_data_type);
+      resolved_data_type = infer_literal_datatype(rdf_term, resolved_lang_tag, resolved_data_type);
+      effective_lang_tag = &resolved_lang_tag;
+      effective_data_type = &resolved_data_type;
     }
-    rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
-    return rdf_term;
+    handle_term_type_into(term_type, rdf_term, *effective_lang_tag, *effective_data_type, out);
+    return;
   } else {
     std::cout << "Error: term map type not supported! Valid types are: 'template', 'reference', 'constant'. Received term map type: '" << term_map_type << "'" << " and term map '" << term_map << "'" << std::endl;
     exit(1);
   }
+}
+
+std::string create_operator(const std::string& term_map,
+                            const std::string& term_map_type,
+                            const std::string& term_type,
+                            const std::string& lang_tag,
+                            const std::string& data_type,
+                            const std::string& base_uri,
+                            std::unordered_map<std::string, std::string>& map) {
+  std::string result;
+  create_operator_into(term_map, term_map_type, term_type, lang_tag, data_type, base_uri, map, result);
+  return result;
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
