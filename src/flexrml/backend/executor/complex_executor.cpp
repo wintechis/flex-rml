@@ -117,11 +117,8 @@ JoinBinding resolve_join_binding(const std::vector<std::string>& proj_attrs,
 std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(std::istream& input_file,
                                                                                 const std::vector<int>& projected_indeces,
                                                                                 const JoinBinding& join_binding) {
-  // Reserve for our hash table and duplicate check set.
   std::unordered_multimap<std::string, std::vector<std::string>> hash_table;
-  hash_table.reserve(1024 * 1024 * 2);
   std::unordered_set<uint64_t> unique_hashes;
-  unique_hashes.reserve(1024 * 1024);
 
   const size_t batch_size = 1000;
   std::vector<std::string> batch_lines;
@@ -234,7 +231,6 @@ int execute_complex(const fs::path& output_file_name,
   // Setup
   std::string line;
   std::unordered_set<uint64_t> unique_hashes;
-  unique_hashes.reserve(1024 * 1024);
   size_t triple_counter = 0;
 
   size_t write_cnt = 0;

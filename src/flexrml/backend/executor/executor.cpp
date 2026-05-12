@@ -17,6 +17,35 @@
 #include "simple_executor.h"
 #include "utils.h"
 
+namespace {
+
+constexpr std::size_t kOutputBufferReserve = 64 * 1024;
+
+void write_triples_chunked(std::ostream& output, const std::unordered_set<std::string>& triples) {
+  std::string buffer;
+  buffer.reserve(kOutputBufferReserve);
+
+  for (const auto& triple : triples) {
+    if (!buffer.empty() && buffer.size() + triple.size() > kOutputBufferReserve) {
+      output << buffer;
+      buffer.clear();
+    }
+    buffer += triple;
+  }
+
+  if (!buffer.empty()) {
+    output << buffer;
+  }
+}
+
+void append_triples(std::string& output, const std::unordered_set<std::string>& triples) {
+  for (const auto& triple : triples) {
+    output += triple;
+  }
+}
+
+}  // namespace
+
 class ThreadPool {
  public:
   ThreadPool(size_t numThreads);
@@ -219,23 +248,15 @@ std::string execute_physical_plans_string(const std::string& information,
 
         nr_generate_triple += unique_triple.size();
 
-        // serialize //
-        std::string buffer;
-        buffer.reserve(1024 * 1024);
-
-        for (const auto& triple : unique_triple) {
-          buffer += triple;  // data to buffer
-        }
-
         if (keep_in_memory){
-          output_data_str += buffer;
+          append_triples(output_data_str, unique_triple);
         } else {
           std::ofstream outputFile(ouput_file, std::ios::app);
           if (!outputFile) {
             std::cout << "Error: Unable to open file for writing." << std::endl;
             std::exit(1);
           }
-          outputFile << buffer;
+          write_triples_chunked(outputFile, unique_triple);
           outputFile.close();
         }
       }
@@ -279,24 +300,17 @@ std::string execute_physical_plans_string(const std::string& information,
           }
           nr_generate_triple.fetch_add(unique_triple.size(), std::memory_order_relaxed);
 
-          // Serialize the unique triples.
-          std::string buffer;
-          buffer.reserve(1024 * 1024);
-          for (const auto& triple : unique_triple) {
-            buffer += triple;
-          }
-      
           // Protect file writing using a mutex.
           std::lock_guard<std::mutex> lock(output_mutex);
           if (keep_in_memory){
-            output_data_str += buffer;
+            append_triples(output_data_str, unique_triple);
           } else {
             std::ofstream outputFile(ouput_file, std::ios::app);
             if (!outputFile) {
               std::cout << "Error: Unable to open file for writing." << std::endl;
               std::exit(1);
             }
-            outputFile << buffer;
+            write_triples_chunked(outputFile, unique_triple);
             outputFile.close();
           }
           

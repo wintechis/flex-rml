@@ -24,6 +24,8 @@
 
 namespace fs = std::filesystem;
 
+constexpr std::size_t kOutputBufferReserve = 64 * 1024;
+
 static void create_parent_directories_if_needed(const fs::path& path) {
   const auto parent = path.parent_path();
   if (!parent.empty()) {
@@ -70,7 +72,7 @@ SetupData initialize_setup(const fs::path& output_file_name) {
   data.object.reserve(512);
   data.graph.reserve(512);
   data.res.reserve(2048);
-  data.buffered_res.reserve(204800);
+  data.buffered_res.reserve(kOutputBufferReserve);
 
   // Open output file
   create_parent_directories_if_needed(output_file_name);
@@ -98,7 +100,7 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   data.object.reserve(512);
   data.graph.reserve(512);
   data.res.reserve(2048);
-  data.buffered_res.reserve(204800);
+  data.buffered_res.reserve(kOutputBufferReserve);
 
   return data;
 }

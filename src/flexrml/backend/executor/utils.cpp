@@ -8,7 +8,6 @@
 #include <fstream>
 #include <iostream>
 #include <random>
-#include <regex>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -596,6 +595,76 @@ std::string escape_braces(const std::string& value) {
   return escaped;
 }
 
+bool is_rml_integer(std::string_view value) {
+  if (value.empty()) {
+    return false;
+  }
+
+  std::size_t index = 0;
+  if (value[index] == '-') {
+    ++index;
+    if (index == value.size()) {
+      return false;
+    }
+  }
+
+  if (value[index] == '0') {
+    return index + 1 == value.size();
+  }
+  if (!std::isdigit(static_cast<unsigned char>(value[index]))) {
+    return false;
+  }
+
+  for (++index; index < value.size(); ++index) {
+    if (!std::isdigit(static_cast<unsigned char>(value[index]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool is_rml_decimal(std::string_view value) {
+  if (value.empty()) {
+    return false;
+  }
+
+  std::size_t index = 0;
+  if (value[index] == '-') {
+    ++index;
+    if (index == value.size()) {
+      return false;
+    }
+  }
+
+  if (value[index] == '0') {
+    ++index;
+  } else {
+    if (!std::isdigit(static_cast<unsigned char>(value[index]))) {
+      return false;
+    }
+    for (++index; index < value.size() && value[index] != '.'; ++index) {
+      if (!std::isdigit(static_cast<unsigned char>(value[index]))) {
+        return false;
+      }
+    }
+  }
+
+  if (index >= value.size() || value[index] != '.') {
+    return false;
+  }
+  ++index;
+  if (index == value.size()) {
+    return false;
+  }
+
+  for (; index < value.size(); ++index) {
+    if (!std::isdigit(static_cast<unsigned char>(value[index]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string infer_literal_datatype(const std::string& rdf_term,
                                    const std::string& lang_tag,
                                    const std::string& data_type) {
@@ -603,16 +672,13 @@ std::string infer_literal_datatype(const std::string& rdf_term,
     return data_type;
   }
 
-  static const std::regex integer_pattern(R"(^-?(0|[1-9][0-9]*)$)");
-  static const std::regex decimal_pattern(R"(^-?(0|[1-9][0-9]*)\.[0-9]+$)");
-
   if (rdf_term == "true" || rdf_term == "false") {
     return "http://www.w3.org/2001/XMLSchema#boolean";
   }
-  if (std::regex_match(rdf_term, integer_pattern)) {
+  if (is_rml_integer(rdf_term)) {
     return "http://www.w3.org/2001/XMLSchema#integer";
   }
-  if (std::regex_match(rdf_term, decimal_pattern)) {
+  if (is_rml_decimal(rdf_term)) {
     return "http://www.w3.org/2001/XMLSchema#decimal";
   }
 
