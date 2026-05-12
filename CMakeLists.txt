@@ -83,3 +83,11 @@ add_custom_target(validate
   COMMENT "Running FlexRML validation test cases"
   VERBATIM
 )
+
+add_custom_target(benchmark
+  COMMAND "${FLEXRML_VALIDATOR_PYTHON}" scripts/run_benchmarks.py
+  DEPENDS flexrml
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "Running FlexRML benchmarks"
+  VERBATIM
+)

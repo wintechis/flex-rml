@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "json_preprocessor.h"
+#include "physical_plan.h"
 #include "version.h"
 
 std::string parse_rdf_string(const std::string& rdf_mapping);
@@ -26,12 +27,26 @@ std::string create_plan_partitions_string(const std::string& ra_text,
                                           bool materialize_constants,
                                           bool heuristic_ordering,
                                           bool can_order);
+std::vector<PlanPartition> create_plan_partitions(const std::string& ra_text,
+                                                  const std::string& base_uris_text,
+                                                  const std::string& default_base_uri,
+                                                  const std::string& output_file_path,
+                                                  const std::string& continue_on_error,
+                                                  bool materialize_constants,
+                                                  bool heuristic_ordering,
+                                                  bool can_order);
 std::string execute_physical_plans_string(const std::string& information,
                                           const std::string& mode,
                                           const std::string& continue_error,
                                           const std::string& output_file_path,
                                           bool keep_in_memory,
                                           const std::string& json_data);
+std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& partitions,
+                                             const std::string& mode,
+                                             const std::string& continue_error,
+                                             const std::string& output_file_path,
+                                             bool keep_in_memory,
+                                             const std::string& json_data);
 
 namespace {
 
@@ -562,7 +577,7 @@ std::string execute_mapping(const Options& options) {
   auto plan = build_runtime_plan(options);
   auto in_memory_data = preprocess_runtime_inputs(plan);
   const bool keep_in_memory = options.output_file_path.empty();
-  const auto plan_partition_string = create_plan_partitions_string(
+  const auto plan_partitions = create_plan_partitions(
       plan.ra,
       join(plan.base_uris, "\n"),
       options.base_uri,
@@ -572,8 +587,8 @@ std::string execute_mapping(const Options& options) {
       options.heuristic_ordering == "true",
       in_memory_data.empty());
 
-  const auto execution_result = execute_physical_plans_string(
-      plan_partition_string,
+  const auto execution_result = execute_physical_plan_partitions(
+      plan_partitions,
       options.threading_enabled,
       options.continue_on_error,
       options.output_file_path,

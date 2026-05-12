@@ -3,6 +3,7 @@
 #include <cctype>
 #include <format>
 #include <iostream>
+#include <optional>
 #include <random>
 #include <set>
 #include <sstream>
@@ -44,6 +45,8 @@ struct Object {
   std::string join_type = "None";
   std::array<std::string, 2> join_condition = {"", ""};
   std::array<std::string, 2> join_condition_type = {"", ""};
+  std::vector<std::array<std::string, 2>> join_conditions;
+  std::vector<std::array<std::string, 2>> join_condition_types;
 };
 
 struct Graph {
@@ -354,6 +357,60 @@ std::string get_predicate_object_map(const std::vector<NTriple>& triples,
 
   return res[0];
 }
+
+bool is_blank_node_identifier(const std::string& value) {
+  return value.starts_with("_:");
+}
+
+bool is_subject_node(const std::vector<NTriple>& triples, const std::string& value) {
+  return std::any_of(triples.begin(), triples.end(), [&value](const NTriple& triple) {
+    return triple.subject == value;
+  });
+}
+
+std::string get_source_path(const std::vector<NTriple>& triples) {
+  std::vector<std::string> paths = find_matching_objects(triples, "", "http://w3id.org/rml/path");
+  if (!paths.empty()) {
+    return paths[0];
+  }
+
+  std::vector<std::string> sources = find_matching_objects(triples, "", "http://w3id.org/rml/source");
+  for (const auto& source : sources) {
+    std::vector<std::string> source_paths = find_matching_objects(triples, source, "http://w3id.org/rml/path");
+    if (!source_paths.empty()) {
+      return source_paths[0];
+    }
+  }
+  for (const auto& source : sources) {
+    if (!is_subject_node(triples, source)) {
+      return source;
+    }
+  }
+
+  throw std::runtime_error("No logical source path found.");
+}
+
+std::string get_source_path_from_logical_source(const std::vector<NTriple>& triples,
+                                                const std::string& logical_source_node) {
+  std::vector<std::string> source_nodes = find_matching_objects(triples, logical_source_node, "http://w3id.org/rml/source");
+  if (source_nodes.empty()) {
+    throw std::runtime_error("No source found for logical source.");
+  }
+
+  for (const auto& source_node : source_nodes) {
+    std::vector<std::string> paths = find_matching_objects(triples, source_node, "http://w3id.org/rml/path");
+    if (!paths.empty()) {
+      return paths[0];
+    }
+  }
+  for (const auto& source_node : source_nodes) {
+    if (!is_subject_node(triples, source_node)) {
+      return source_node;
+    }
+  }
+
+  throw std::runtime_error("No logical source path found.");
+}
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -365,117 +422,72 @@ std::vector<Graph> get_graph(const std::vector<NTriple>& triples,
                              const std::string& pom) {
   std::vector<Graph> graphs;
 
-  // Get subject nodes
+  auto is_default_graph = [](const std::string& value) {
+    return value == "http://w3id.org/rml/defaultGraph" ||
+           value == "http://www.w3.org/ns/r2rml#defaultGraph";
+  };
+
+  auto graph_from_node = [&triples, &is_default_graph](const std::string& graph_node) -> std::optional<Graph> {
+    Graph graph;
+    graph.term_map_type = "";
+    graph.term_type = "iri";
+    graph.term_map = "";
+
+    std::vector<std::string> results = find_matching_objects(triples, graph_node, "http://w3id.org/rml/constant");
+    if (results.size() == 1) {
+      graph.term_map_type = "constant";
+      if (!is_default_graph(results[0])) {
+        graph.term_map = results[0];
+      }
+      return graph;
+    }
+
+    results = find_matching_objects(triples, graph_node, "http://w3id.org/rml/reference");
+    if (results.empty()) {
+      results = find_matching_objects(triples, graph_node, "http://semweb.mmlab.be/ns/rml#reference");
+    }
+    if (results.size() == 1) {
+      graph.term_map_type = "reference";
+      if (!is_default_graph(results[0])) {
+        graph.term_map = results[0];
+      }
+      return graph;
+    }
+
+    results = find_matching_objects(triples, graph_node, "http://w3id.org/rml/template");
+    if (results.size() == 1) {
+      graph.term_map_type = "template";
+      if (!is_default_graph(results[0])) {
+        graph.term_map = results[0];
+      }
+      return graph;
+    }
+
+    results = find_matching_objects(triples, graph_node, "function");
+    if (results.size() == 1) {
+      graph.term_map_type = "function";
+      graph.term_map = results[0];
+      return graph;
+    }
+
+    return std::nullopt;
+  };
+
+  auto append_graphs = [&graphs, &graph_from_node](const std::vector<std::string>& graph_nodes) {
+    for (const auto& graph_node : graph_nodes) {
+      if (auto graph = graph_from_node(graph_node)) {
+        graphs.push_back(std::move(*graph));
+      }
+    }
+  };
+
   std::vector<std::string> subject_nodes = find_matching_objects(
       triples, root_tm, "http://w3id.org/rml/subjectMap");
-  std::string subject_node = subject_nodes[0];
-
-  // Check if graph is available at subject
-  std::vector<std::string> graph_nodes = find_matching_objects(
-      triples, subject_node, "http://w3id.org/rml/graphMap");
-
-  // Initialize Graph result with default values
-  Graph result;
-  result.term_map_type = "";
-  result.term_type = "iri";
-  result.term_map = "";
-
-  if (graph_nodes.size() != 1) {
-    graphs.push_back(result);
-    return graphs;
+  if (!subject_nodes.empty()) {
+    append_graphs(find_matching_objects(triples, subject_nodes[0], "http://w3id.org/rml/graphMap"));
   }
 
-  std::string graph_node = graph_nodes[0];
-
-  // Check if constant
-  std::vector<std::string> results = find_matching_objects(
-      triples, graph_node, "http://w3id.org/rml/constant");
-  if (results.size() == 1) {
-    result.term_map_type = "constant";
-    if (results[0] != "http://w3id.org/rml/defaultGraph") {
-      result.term_map = results[0];
-    }
-    graphs.push_back(result);
-  }
-
-  // Check if reference
-  results = find_matching_objects(triples, graph_node, "http://w3id.org/rml/reference");
-  if (results.size() == 1) {
-    result.term_map_type = "reference";
-    if (results[0] != "http://www.w3.org/ns/r2rml#defaultGraph") {
-      result.term_map = results[0];
-    }
-    graphs.push_back(result);
-  }
-
-  // Check if template
-  results = find_matching_objects(triples, graph_node, "http://w3id.org/rml/template");
-  if (results.size() == 1) {
-    result.term_map_type = "template";
-    if (results[0] != "http://www.w3.org/ns/r2rml#defaultGraph") {
-      result.term_map = results[0];
-    }
-    graphs.push_back(result);
-  }
-
-  results = find_matching_objects(triples, graph_node, "function");
-  if (results.size() == 1) {
-    result.term_map_type = "function";
-    result.term_map = results[0];
-    graphs.push_back(result);
-  }
-
-  // Check if graph is available at object
-  std::vector<std::string> pom_graph_nodes = find_matching_objects(
-      triples, pom, "http://w3id.org/rml/graphMap");
-  if (pom_graph_nodes.size() != 1) {
-    return graphs;
-  }
-
-  std::string pom_graph_node = pom_graph_nodes[0];
-
-  // Initialize Graph result with default values
-  Graph result2;
-  result2.term_map_type = "";
-  result2.term_type = "iri";
-  result2.term_map = "";
-
-  // Check if constant
-  results = find_matching_objects(triples, pom_graph_node, "http://w3id.org/rml/constant");
-  if (results.size() == 1) {
-    result2.term_map_type = "constant";
-    if (results[0] != "http://www.w3.org/ns/r2rml#defaultGraph") {
-      result2.term_map = results[0];
-    }
-    graphs.push_back(result2);
-  }
-
-  // Check if reference
-  results = find_matching_objects(triples, pom_graph_node, "http://semweb.mmlab.be/ns/rml#reference");
-  if (results.size() == 1) {
-    result2.term_map_type = "reference";
-    if (results[0] != "http://www.w3.org/ns/r2rml#defaultGraph") {
-      result2.term_map = results[0];
-    }
-    graphs.push_back(result2);
-  }
-
-  // Check if template
-  results = find_matching_objects(triples, pom_graph_node, "http://w3id.org/rml/template");
-  if (results.size() == 1) {
-    result2.term_map_type = "template";
-    if (results[0] != "http://www.w3.org/ns/r2rml#defaultGraph") {
-      result2.term_map = results[0];
-    }
-    graphs.push_back(result2);
-  }
-
-  results = find_matching_objects(triples, pom_graph_node, "function");
-  if (results.size() == 1) {
-    result2.term_map_type = "function";
-    result2.term_map = results[0];
-    graphs.push_back(result2);
-  }
+  append_graphs(find_matching_objects(triples, pom, "http://w3id.org/rml/graphMap"));
 
   return graphs;
 }
@@ -792,9 +804,7 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
 
   std::vector<std::string> join_condition_nodes = find_matching_objects(
       triples, object_node, "http://w3id.org/rml/joinCondition");
-  std::string join_condition_node = "";
-  if (join_condition_nodes.size() == 1) {
-    join_condition_node = join_condition_nodes[0];
+  if (!join_condition_nodes.empty()) {
     result.join_type = "equi-join";
 
     auto resolve_join_value = [&triples](const std::string& condition_node,
@@ -835,28 +845,31 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
       return std::make_tuple(std::string{}, std::string{}, std::string{});
     };
 
-    auto [child, child_type, child_template] = resolve_join_value(join_condition_node,
-                                                                  "http://w3id.org/rml/child",
-                                                                  "http://w3id.org/rml/childMap");
-    auto [parent, parent_type, parent_template] = resolve_join_value(join_condition_node,
-                                                                    "http://w3id.org/rml/parent",
-                                                                    "http://w3id.org/rml/parentMap");
+    for (const auto& join_condition_node : join_condition_nodes) {
+      auto [child, child_type, child_template] = resolve_join_value(join_condition_node,
+                                                                    "http://w3id.org/rml/child",
+                                                                    "http://w3id.org/rml/childMap");
+      auto [parent, parent_type, parent_template] = resolve_join_value(join_condition_node,
+                                                                      "http://w3id.org/rml/parent",
+                                                                      "http://w3id.org/rml/parentMap");
 
-    if (child.empty() || parent.empty()) {
-      std::cout << "Could not parse join condition." << std::endl;
-      std::exit(1);
+      if (child.empty() || parent.empty()) {
+        std::cout << "Could not parse join condition." << std::endl;
+        std::exit(1);
+      }
+
+      if (child_type == "template" && parent_type == "constant") {
+        parent = extract_constant_value_for_template(child_template, parent);
+      } else if (child_type == "constant" && parent_type == "template") {
+        child = extract_constant_value_for_template(parent_template, child);
+      }
+
+      result.join_conditions.push_back({child, parent});
+      result.join_condition_types.push_back({child_type, parent_type});
     }
 
-    if (child_type == "template" && parent_type == "constant") {
-      parent = extract_constant_value_for_template(child_template, parent);
-    } else if (child_type == "constant" && parent_type == "template") {
-      child = extract_constant_value_for_template(parent_template, child);
-    }
-
-    result.join_condition[0] = child;
-    result.join_condition[1] = parent;
-    result.join_condition_type[0] = child_type;
-    result.join_condition_type[1] = parent_type;
+    result.join_condition = result.join_conditions.front();
+    result.join_condition_type = result.join_condition_types.front();
   }
 
   // Get parentTM
@@ -867,11 +880,7 @@ std::tuple<Object, std::string> get_object_w_join(const std::vector<NTriple>& tr
   std::vector<std::string> parent_tm_logical_source_nodes = find_matching_objects(triples, parent_tm_node, "http://w3id.org/rml/logicalSource");
   std::string parent_tm_logical_source_node = parent_tm_logical_source_nodes[0];
 
-  std::vector<std::string> parent_tm_source_nodes = find_matching_objects(triples, parent_tm_logical_source_node, "http://w3id.org/rml/source");
-  std::string parent_tm_source_node = parent_tm_source_nodes[0];
-
-  std::vector<std::string> parent_tm_sources = find_matching_objects(triples, parent_tm_source_node, "http://w3id.org/rml/path");
-  std::string parent_tm_source = parent_tm_sources[0];
+  std::string parent_tm_source = get_source_path_from_logical_source(triples, parent_tm_logical_source_node);
 
   // Get parent subject aka object
   std::vector<std::string> parent_tm_subject_nodes = find_matching_objects(triples, parent_tm_node, "http://w3id.org/rml/subjectMap");
@@ -997,18 +1006,32 @@ std::vector<std::string> get_projected_attributes(const Subject& subj,
   collect_annotation_attributes(obj.data_type);
 
   // Handle join condition if available
-  bool is_empty = std::all_of(obj.join_condition.begin(), obj.join_condition.end(), [](const std::string& s) { return s.empty(); });
+  bool is_empty = obj.join_conditions.empty() &&
+                  std::all_of(obj.join_condition.begin(), obj.join_condition.end(), [](const std::string& s) { return s.empty(); });
   // if object is empty -> generation of child join; else geneartion of parent
   // join
 
   if (!is_empty) {
-    if (obj.term_map_type.empty()) {
-      if (obj.join_condition_type[0] != "constant") {
-        unique_attributes.insert(obj.join_condition[0]);
+    if (!obj.join_conditions.empty()) {
+      for (std::size_t i = 0; i < obj.join_conditions.size(); ++i) {
+        if (obj.term_map_type.empty()) {
+          if (obj.join_condition_types[i][0] != "constant") {
+            unique_attributes.insert(obj.join_conditions[i][0]);
+          }
+        } else if (obj.join_condition_types[i][1] != "constant" &&
+                   (obj.term_map_type == "reference" || obj.term_map_type == "template" || obj.term_map_type == "function")) {
+          unique_attributes.insert(obj.join_conditions[i][1]);
+        }
       }
-    } else if (obj.join_condition_type[1] != "constant" &&
-               (obj.term_map_type == "reference" || obj.term_map_type == "template" || obj.term_map_type == "function")) {
-      unique_attributes.insert(obj.join_condition[1]);
+    } else {
+      if (obj.term_map_type.empty()) {
+        if (obj.join_condition_type[0] != "constant") {
+          unique_attributes.insert(obj.join_condition[0]);
+        }
+      } else if (obj.join_condition_type[1] != "constant" &&
+                 (obj.term_map_type == "reference" || obj.term_map_type == "template" || obj.term_map_type == "function")) {
+        unique_attributes.insert(obj.join_condition[1]);
+      }
     }
   }
 
@@ -1054,9 +1077,24 @@ static std::string replace_substring(const std::string& original,
   return result;
 }
 
+static std::string join_strings(const std::vector<std::string>& values,
+                                const std::string& delimiter) {
+  std::string result;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      result += delimiter;
+    }
+    result += values[i];
+  }
+  return result;
+}
+
 std::string create_complex_tree(const std::vector<NTriple>& triples) {
   // Get source
   std::vector<std::string> sources = find_matching_objects(triples, "", "http://w3id.org/rml/path");
+  if (sources.empty()) {
+    sources.push_back(get_source_path(triples));
+  }
 
   // Get root tm
   std::string root_tm = get_root_tm(triples);
@@ -1089,6 +1127,8 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   Object empty_obj;
   empty_obj.join_condition = obj.join_condition;  // copy join condition for projection
   empty_obj.join_condition_type = obj.join_condition_type;
+  empty_obj.join_conditions = obj.join_conditions;
+  empty_obj.join_condition_types = obj.join_condition_types;
   std::vector<std::string> proj_attributes1 = get_projected_attributes(subj, pred, empty_obj);
   std::set<std::string> proj_attributes1_set(proj_attributes1.begin(), proj_attributes1.end());
   collect_graph_projected_attributes(proj_attributes1_set, graphs);
@@ -1136,7 +1176,17 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   if (obj.join_type == "natural-join") {
     join_node = "(" + projection_file1_node + ") bowtie (" + projection_file2_node + ")";
   } else {
-    join_node = "(" + projection_file1_node + ") bowtie [" + sources[0] + "_" + obj.join_condition[0] + "=" + parent_source + "_" + obj.join_condition[1] + "] (" + projection_file2_node + ")";
+    std::vector<std::string> join_arguments;
+    std::vector<std::array<std::string, 2>> single_join_condition;
+    const auto* join_conditions = &obj.join_conditions;
+    if (join_conditions->empty()) {
+      single_join_condition.push_back(obj.join_condition);
+      join_conditions = &single_join_condition;
+    }
+    for (const auto& condition : *join_conditions) {
+      join_arguments.push_back(sources[0] + "_" + condition[0] + "=" + parent_source + "_" + condition[1]);
+    }
+    join_node = "(" + projection_file1_node + ") bowtie [" + join_strings(join_arguments, ",") + "] (" + projection_file2_node + ")";
   }
 
   //////////////////////////////////////
@@ -1203,35 +1253,21 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   std::string pred_create = "create(" + pred.term_map + "," + pred.term_map_type + "," + pred.term_type + ") -> P";
   std::string obj_create = "create(" + obj.term_map + "," + obj.term_map_type + "," + obj.term_type + "," + obj.lang_tag + "," + obj.data_type + "," + subj.condition + ") -> O";
 
-  std::string graph_create1 = "";
-  std::string graph_create2 = "";
-  if (graphs.size() == 1) {
-    if (!graphs[0].term_map.empty()) {
-      graph_create1 = "create(" + graphs[0].term_map + "," + graphs[0].term_map_type + "," + graphs[0].term_type + ") -> G";
-    }
-  } else if (graphs.size() == 2) {
-    if (!graphs[0].term_map.empty()) {
-      graph_create1 = "create(" + graphs[0].term_map + "," + graphs[0].term_map_type + "," + graphs[0].term_type + ") -> G";
-    }
-    if (!graphs[1].term_map.empty()) {
-      graph_create2 = "create(" + graphs[1].term_map + "," + graphs[1].term_map_type + "," + graphs[1].term_type + ") -> G";
-    }
-  }
-
   std::vector<std::string> proj_nodes;
-  if (!graph_create1.empty()) {
+  for (const auto& graph : graphs) {
+    if (graph.term_map.empty()) {
+      std::string create_projection_node;
+      create_projection_node = "pi[" + subj_create + "," + pred_create + "," + obj_create + "]";
+      proj_nodes.push_back(create_projection_node);
+      continue;
+    }
+    std::string graph_create = "create(" + graph.term_map + "," + graph.term_map_type + "," + graph.term_type + ") -> G";
     std::string create_projection_node;
-    create_projection_node = "pi[" + subj_create + "," + pred_create + "," + obj_create + "," + graph_create1 + "]";
+    create_projection_node = "pi[" + subj_create + "," + pred_create + "," + obj_create + "," + graph_create + "]";
     proj_nodes.push_back(create_projection_node);
   }
 
-  if (!graph_create2.empty()) {
-    std::string create_projection_node;
-    create_projection_node = "pi[" + subj_create + "," + pred_create + "," + obj_create + "," + graph_create2 + "]";
-    proj_nodes.push_back(create_projection_node);
-  }
-
-  if (graph_create1.empty() && graph_create2.empty()) {
+  if (proj_nodes.empty()) {
     std::string create_projection_node;
     create_projection_node = "pi[" + subj_create + "," + pred_create + "," + obj_create + "]";
     proj_nodes.push_back(create_projection_node);
@@ -1252,7 +1288,7 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
   std::vector<std::string> final_result;
   /////////////////////
   // Get source
-  std::string source = find_matching_objects(triples, "", "http://w3id.org/rml/path")[0];
+  std::string source = get_source_path(triples);
 
   // Get root tm
   std::string root_tm = get_root_tm(triples);
@@ -1299,24 +1335,19 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
                            "create(" + pred.term_map + "," + pred.term_map_type + "," + pred.term_type + ") -> P," +
                            "create(" + obj.term_map + "," + obj.term_map_type + "," + obj.term_type + "," + obj.lang_tag + "," + obj.data_type + "," + subj.condition + ") -> O";
 
-  if (graphs.size() == 1 && !graphs[0].term_map.empty()) {
-    create_val += ", create(" + graphs[0].term_map + "," + graphs[0].term_map_type + "," + graphs[0].term_type + ") -> G]";
+  for (const auto& graph : graphs) {
+    if (graph.term_map.empty()) {
+      std::string create_val_without_graph = create_val;
+      create_val_without_graph += "]";
+      final_result.push_back(create_val_without_graph + "(" + projection_node + ")");
+      continue;
+    }
+    std::string create_val_with_graph = create_val;
+    create_val_with_graph += ", create(" + graph.term_map + "," + graph.term_map_type + "," + graph.term_type + ") -> G]";
+    final_result.push_back(create_val_with_graph + "(" + projection_node + ")");
+  }
 
-    std::string res = create_val + "(" + projection_node + ")";
-    final_result.push_back(res);
-  } else if (graphs.size() == 2) {
-    std::string create_val_1 = create_val;
-    std::string create_val_2 = create_val;
-
-    create_val_1 += ", create(" + graphs[0].term_map + "," + graphs[0].term_map_type + "," + graphs[0].term_type + ") -> G]";
-    create_val_2 += ", create(" + graphs[1].term_map + "," + graphs[1].term_map_type + "," + graphs[1].term_type + ") -> G]";
-
-    std::string res1 = create_val_1 + "(" + projection_node + ")";
-    final_result.push_back(res1);
-
-    std::string res2 = create_val_2 + "(" + projection_node + ")";
-    final_result.push_back(res2);
-  } else {
+  if (final_result.empty()) {
     create_val += "]";
     std::string res = create_val + "(" + projection_node + ")";
     final_result.push_back(res);

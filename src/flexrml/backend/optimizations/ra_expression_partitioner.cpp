@@ -230,16 +230,22 @@ std::string ra_partitioner_string(const std::string& ra_expressions_str) {
   int id = 0;
   for (const auto& ra_expression : ra_expressions) {
     std::vector<std::string> ra_expression_split = split_by_substring(ra_expression, "|||");
-    if (ra_expression_split.size() == 3) {
+    if (ra_expression_split.size() == 3 || ra_expression_split.size() == 4) {
       std::vector<std::string> s_content = split_by_substring(ra_expression_split[0], "===");
       std::vector<std::string> p_content = split_by_substring(ra_expression_split[1], "===");
       std::vector<std::string> o_content = split_by_substring(ra_expression_split[2], "===");
+      std::vector<std::string> g_content;
 
       std::string s_invar = get_invar(s_content);
       std::string p_invar = get_invar(p_content);
       std::string o_invar = get_invar(o_content);
+      std::string g_invar = "";
+      if (ra_expression_split.size() == 4) {
+        g_content = split_by_substring(ra_expression_split[3], "===");
+        g_invar = get_invar(g_content);
+      }
 
-      data.push_back(addData(s_invar, s_content[2], p_invar, p_content[1], o_invar, o_content[2], "", "", id, -1, -1, -1, -1));
+      data.push_back(addData(s_invar, s_content[2], p_invar, p_content[1], o_invar, o_content[2], "", g_invar, id, -1, -1, -1, -1));
       id++;
     } else {
       std::cout << "Size not supported in partitioner." << std::endl;

@@ -32,6 +32,9 @@ CMakeUserPresets.json
 # Generated profiling output
 /heaptrack.*.zst
 
+# Generated benchmark output
+/benchmark/
+
 # External conformance test-case checkouts
 /test_cases/*
 !/test_cases/.gitignore

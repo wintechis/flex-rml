@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "physical_plan.h"
+
 std::string ra_partitioner_string(const std::string& ra_expressions);
 
 namespace {
@@ -160,14 +162,16 @@ std::vector<LogicalExpression> parse_ra(const std::string& ra_text) {
         }
       } else {
         auto join_arguments = split(split(parent_parts[1], "[")[1], "]")[0];
-        join_arguments = trim(replace_all(join_arguments, "=", "==="));
-        auto join_parts = split(join_arguments, "===");
-        if (join_parts.size() < 2) {
-          throw std::runtime_error("Could not parse join arguments.");
+        std::vector<std::string> physical_join_parts;
+        for (const auto& join_argument : split(join_arguments, ",")) {
+          auto join_parts = split(trim(replace_all(join_argument, "=", "===")), "===");
+          if (join_parts.size() < 2) {
+            throw std::runtime_error("Could not parse join arguments.");
+          }
+          physical_join_parts.push_back(replace_all(join_parts[0], source1, "parent"));
+          physical_join_parts.push_back(replace_all(join_parts[1], source2, "child"));
         }
-        auto left = replace_all(join_parts[0], source1, "parent");
-        auto right = replace_all(join_parts[1], source2, "child");
-        join_node = {{"type", "equi-join"}, {"arguments", left + "===" + right}};
+        join_node = {{"type", "equi-join"}, {"arguments", join(physical_join_parts, "===")}};
       }
 
       auto creation = creation_node(pi_parts[1], static_cast<int>(count_substr(pi_parts[1], "create(")));
@@ -261,7 +265,7 @@ std::vector<std::string> partition_ids(const std::vector<LogicalExpression>& exp
     const auto& creation = expression.size() == 2 ? expression[1] : expression[3];
     input += creation.at("s_content") + "|||" + creation.at("p_content") + "|||" + creation.at("o_content");
     if (creation.count("g_content") != 0) {
-      input += creation.at("g_content");
+      input += "|||" + creation.at("g_content");
     }
     input += "\n";
   }
@@ -416,6 +420,60 @@ std::string serialize_partitions(const std::vector<std::vector<Plan>>& partition
   return output.str();
 }
 
+SimplePlan plan_to_simple_plan(const Plan& plan) {
+  if (plan.size() != 5 || plan[0].size() < 3 || plan[1].size() < 4 || plan[2].empty() || plan[3].empty()) {
+    throw std::runtime_error("Invalid simple physical plan.");
+  }
+
+  SimplePlan simple;
+  simple.input_file_name = plan[0][1];
+  simple.projected_attributes = split(plan[0][2], "===");
+  simple.output_file_name = plan[2][0];
+  simple.base_uri = plan[3][0];
+  simple.s_content = split(plan[1][1], "===");
+  simple.p_content = split(plan[1][2], "===");
+  simple.o_content = split(plan[1][3], "===");
+  if (plan[1].size() > 4) {
+    simple.generate_graph = true;
+    simple.g_content = split(plan[1][4], "===");
+  }
+  return simple;
+}
+
+PhysicalPlan plan_to_physical_plan(const Plan& plan) {
+  PhysicalPlan physical_plan;
+  physical_plan.has_function_call = plan_to_string(plan).find("==FUNC==") != std::string::npos;
+  if (plan.size() == 5) {
+    physical_plan.kind = PhysicalPlanKind::Simple;
+    physical_plan.simple = plan_to_simple_plan(plan);
+  } else if (plan.size() == 7) {
+    physical_plan.kind = PhysicalPlanKind::Complex;
+    physical_plan.raw = plan_to_string(plan);
+    while (!physical_plan.raw.empty() && (physical_plan.raw.back() == '\n' || physical_plan.raw.back() == '\r')) {
+      physical_plan.raw.pop_back();
+    }
+  } else {
+    throw std::runtime_error("Unsupported physical plan size: " + std::to_string(plan.size()));
+  }
+  return physical_plan;
+}
+
+std::vector<PlanPartition> to_typed_partitions(const std::vector<std::vector<Plan>>& partitions) {
+  std::vector<PlanPartition> typed_partitions;
+  typed_partitions.reserve(partitions.size());
+  for (const auto& partition : partitions) {
+    PlanPartition typed_partition;
+    typed_partition.plans.reserve(partition.size());
+    for (const auto& plan : partition) {
+      PhysicalPlan physical_plan = plan_to_physical_plan(plan);
+      typed_partition.has_function_call = typed_partition.has_function_call || physical_plan.has_function_call;
+      typed_partition.plans.push_back(std::move(physical_plan));
+    }
+    typed_partitions.push_back(std::move(typed_partition));
+  }
+  return typed_partitions;
+}
+
 std::vector<std::string> parse_base_uris(const char* value) {
   if (value == nullptr) {
     return {};
@@ -459,4 +517,27 @@ std::string create_plan_partitions_string(const std::string& ra_text,
       continue_on_error);
   auto partitions = group_plans(ids, plans, heuristic_ordering, can_order);
   return serialize_partitions(partitions);
+}
+
+std::vector<PlanPartition> create_plan_partitions(const std::string& ra_text,
+                                                  const std::string& base_uris_text,
+                                                  const std::string& default_base_uri,
+                                                  const std::string& output_file_path,
+                                                  const std::string& continue_on_error,
+                                                  bool materialize_constants,
+                                                  bool heuristic_ordering,
+                                                  bool can_order) {
+  auto expressions = parse_ra(ra_text);
+  auto ids = partition_ids(expressions);
+  if (materialize_constants) {
+    constant_folding(expressions);
+  }
+  auto plans = create_physical_plans(
+      expressions,
+      parse_base_uris(base_uris_text.c_str()),
+      default_base_uri,
+      output_file_path,
+      continue_on_error);
+  auto partitions = group_plans(ids, plans, heuristic_ordering, can_order);
+  return to_typed_partitions(partitions);
 }
