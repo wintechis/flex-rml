@@ -18,13 +18,88 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "definitions.h"
 #include "utils.h"
+#include "xxhash.h"
 
 namespace fs = std::filesystem;
 
 constexpr std::size_t kOutputBufferReserve = 64 * 1024;
+
+struct TripleHash128 {
+  XXH64_hash_t low = 0;
+  XXH64_hash_t high = 0;
+
+  bool operator==(const TripleHash128& other) const {
+    return low == other.low && high == other.high;
+  }
+};
+
+class FlatTripleHashSet {
+ public:
+  bool insert(const TripleHash128& key) {
+    const TripleHash128 stored_key = key.low == 0 && key.high == 0 ? TripleHash128{0, 1} : key;
+    if (buckets_.empty() || (size_ + 1) * 100 >= buckets_.size() * 97) {
+      rehash(buckets_.empty() ? 1024 : buckets_.size() * 2);
+    }
+
+    std::size_t index = bucket_index(stored_key);
+    while (is_occupied(buckets_[index])) {
+      if (buckets_[index] == stored_key) {
+        return false;
+      }
+      index = (index + 1) & (buckets_.size() - 1);
+    }
+
+    buckets_[index] = stored_key;
+    ++size_;
+    return true;
+  }
+
+ private:
+  static std::size_t next_power_of_two(std::size_t value) {
+    std::size_t result = 1;
+    while (result < value) {
+      result <<= 1;
+    }
+    return result;
+  }
+
+  static bool is_occupied(const TripleHash128& key) {
+    return key.low != 0 || key.high != 0;
+  }
+
+  static std::size_t hash_key(const TripleHash128& key) {
+    return static_cast<std::size_t>(key.low ^ (key.high + 0x9e3779b97f4a7c15ULL + (key.low << 6) + (key.low >> 2)));
+  }
+
+  std::size_t bucket_index(const TripleHash128& key) const {
+    return hash_key(key) & (buckets_.size() - 1);
+  }
+
+  void rehash(std::size_t requested_size) {
+    std::vector<TripleHash128> old_buckets = std::move(buckets_);
+    buckets_.clear();
+    buckets_.resize(next_power_of_two(requested_size));
+    size_ = 0;
+
+    for (const TripleHash128& bucket : old_buckets) {
+      if (is_occupied(bucket)) {
+        insert(bucket);
+      }
+    }
+  }
+
+  std::vector<TripleHash128> buckets_;
+  std::size_t size_ = 0;
+};
+
+static TripleHash128 hash_triple(std::string_view triple) {
+  const XXH128_hash_t hash = XXH3_128bits(triple.data(), triple.size());
+  return TripleHash128{hash.low64, hash.high64};
+}
 
 static void create_parent_directories_if_needed(const fs::path& path) {
   const auto parent = path.parent_path();
@@ -89,7 +164,7 @@ static void project_row_into(const std::vector<std::string>& split_line,
 /// Data setup
 ///////////////////////////////////////////////////////////////
 struct SetupData {
-  std::unordered_set<uint64_t> unique_hashes;
+  FlatTripleHashSet unique_triple_hashes;
 
   std::string line;
   std::vector<std::string> split_line;
@@ -98,7 +173,6 @@ struct SetupData {
 
   size_t triple_counter = 0;
   size_t write_cnt = 0;
-  uint64_t hash = 0;
   bool skip = false;
   size_t buffer_limit = 20000;
 
@@ -257,12 +331,6 @@ int execute_simple_with_graph(const std::string& input_file_name,
       continue;
     }
 
-    // Eliminate duplicates
-    setup_data.hash = combinedHash(setup_data.projected_row);
-    if (!(setup_data.unique_hashes.insert(setup_data.hash).second)) {
-      continue;
-    }
-
     auto& row = setup_data.row;
     update_row_map(row, projected_header, setup_data.projected_row);
 
@@ -318,6 +386,9 @@ int execute_simple_with_graph(const std::string& input_file_name,
     }
 
     setup_data.res = format_statement(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph);
+    if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res))) {
+      continue;
+    }
     setup_data.triple_counter++;
 
     setup_data.buffered_res += setup_data.res;
@@ -398,12 +469,6 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
       continue;
     }
 
-    // Eliminate duplicates
-    setup_data.hash = combinedHash(setup_data.projected_row);
-    if (!(setup_data.unique_hashes.insert(setup_data.hash).second)) {
-      continue;
-    }
-
     auto& row = setup_data.row;
     update_row_map(row, projected_header, setup_data.projected_row);
 
@@ -459,7 +524,9 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
     }
 
     setup_data.res = format_statement(setup_data.subject, setup_data.predicate, setup_data.object, setup_data.graph);
-    unique_triple.insert(setup_data.res);
+    if (!unique_triple.insert(setup_data.res).second) {
+      continue;
+    }
     setup_data.triple_counter++;
   }
 
@@ -523,12 +590,6 @@ int execute_simple(const std::string& input_file_name,
       continue;
     }
 
-    // Eliminate duplicates
-    setup_data.hash = combinedHash(setup_data.projected_row);
-    if (!(setup_data.unique_hashes.insert(setup_data.hash).second)) {
-      continue;
-    }
-
     auto& row = setup_data.row;
     update_row_map(row, projected_header, setup_data.projected_row);
 
@@ -576,6 +637,9 @@ int execute_simple(const std::string& input_file_name,
     }
 
     setup_data.res = setup_data.subject + " " + setup_data.predicate + " " + setup_data.object + " .\n";
+    if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res))) {
+      continue;
+    }
     setup_data.triple_counter++;
 
     setup_data.buffered_res += setup_data.res;
@@ -657,14 +721,6 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
       continue;
     }
 
-    if (!function_called) {
-      // Eliminate duplicates
-      setup_data.hash = combinedHash(setup_data.projected_row);
-      if (!(setup_data.unique_hashes.insert(setup_data.hash).second)) {
-        continue;
-      }
-    }
-
     auto& row = setup_data.row;
     update_row_map(row, projected_header, setup_data.projected_row);
 
@@ -712,9 +768,10 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
     }
 
     setup_data.res = setup_data.subject + " " + setup_data.predicate + " " + setup_data.object + " .\n";
+    if (!unique_triple.insert(setup_data.res).second) {
+      continue;
+    }
     setup_data.triple_counter++;
-
-    unique_triple.insert(setup_data.res);
   }
 
   return unique_triple;
