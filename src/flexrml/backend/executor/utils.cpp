@@ -643,12 +643,15 @@ std::string resolve_annotation_value(const std::string& annotation,
   }
 
   std::string resolved = annotation;
-  std::vector<std::string> matches = extract_substrings(resolved);
-  if (!matches.empty()) {
-    for (const auto& match : matches) {
-      resolved = replace_substring(resolved, "{" + match + "}", map[match]);
+  if (resolved.find('{') != std::string::npos) {
+    std::vector<std::string> matches = extract_substrings(resolved);
+    if (!matches.empty()) {
+      for (const auto& match : matches) {
+        auto it = map.find(match);
+        resolved = replace_substring(resolved, "{" + match + "}", it != map.end() ? it->second : std::string{});
+      }
+      return unmaskString(resolved);
     }
-    return unmaskString(resolved);
   }
 
   auto it = map.find(annotation);
@@ -763,6 +766,65 @@ std::string infer_literal_datatype(const std::string& rdf_term,
   return data_type;
 }
 
+std::string expand_template_term(const std::string& term_map,
+                                 const std::string& term_type,
+                                 std::unordered_map<std::string, std::string>& map) {
+  std::string result;
+  result.reserve(term_map.size());
+
+  for (std::size_t i = 0; i < term_map.size();) {
+    if (term_map[i] == '\\' && i + 1 < term_map.size() &&
+        (term_map[i + 1] == '{' || term_map[i + 1] == '}')) {
+      result.push_back(term_map[i + 1]);
+      i += 2;
+      continue;
+    }
+
+    if (term_map[i] != '{') {
+      result.push_back(term_map[i]);
+      ++i;
+      continue;
+    }
+
+    const std::size_t placeholder_start = i;
+    ++i;
+    std::string match;
+    bool closed = false;
+    for (; i < term_map.size(); ++i) {
+      if (term_map[i] == '\\' && i + 1 < term_map.size() &&
+          (term_map[i + 1] == '{' || term_map[i + 1] == '}')) {
+        match.push_back(term_map[i + 1]);
+        ++i;
+      } else if (term_map[i] == '}') {
+        closed = true;
+        ++i;
+        break;
+      } else {
+        match.push_back(term_map[i]);
+      }
+    }
+
+    if (!closed) {
+      result.append(term_map, placeholder_start, std::string::npos);
+      break;
+    }
+
+    auto it = map.find(match);
+    if (it == map.end()) {
+      continue;
+    }
+    if (term_type == "uri") {
+      result += make_safe_iri(it->second, true);
+    } else if (term_type == "iri") {
+      result += make_safe_iri(it->second, false);
+    } else {
+      result += it->second;
+    }
+  }
+
+  return result;
+}
+
 std::string create_operator(const std::string& term_map,
                             const std::string& term_map_type,
                             const std::string& term_type,
@@ -771,6 +833,7 @@ std::string create_operator(const std::string& term_map,
                             const std::string& base_uri,
                             std::unordered_map<std::string, std::string>& map) {
   std::string rdf_term = term_map;
+  const bool is_literal = term_type == "literal";
 
   auto normalize_iri_annotation = [&base_uri](std::string& annotation_value) {
     if (annotation_value == "None") {
@@ -783,36 +846,16 @@ std::string create_operator(const std::string& term_map,
 
   // Handle template
   if (term_map_type == "template") {
-    std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
-    std::string effective_data_type = resolve_annotation_value(data_type, map);
-    normalize_iri_annotation(effective_data_type);
+    std::string effective_lang_tag = "None";
+    std::string effective_data_type = "None";
+    if (is_literal) {
+      effective_lang_tag = resolve_annotation_value(lang_tag, map);
+      effective_data_type = resolve_annotation_value(data_type, map);
+      normalize_iri_annotation(effective_data_type);
+    }
 
     if (rdf_term.find('{') != std::string::npos) {
-      // Find all matches in term_map
-      std::vector<std::string> matches = extract_substrings(rdf_term);
-
-      // Fill in template
-      for (const auto& match : matches) {
-        // Get data of row at match
-        std::string data = map[match];
-        // If IRI make data safes
-        if (term_type == "uri") {
-          data = make_safe_iri(data, true);
-        } else if (term_type == "iri") {
-          data = make_safe_iri(data, false);
-        }
-
-        // Replace reference id with actual data
-        std::string placeholder = "{" + match + "}";
-        rdf_term = replace_substring(rdf_term, placeholder, data);
-        if (rdf_term.find(placeholder) == std::string::npos) {
-          std::string escaped_placeholder = "{" + escape_braces(match) + "}";
-          rdf_term = replace_substring(rdf_term, escaped_placeholder, data);
-        }
-
-        // unmask data, remove \\ in fromt of { or }
-        rdf_term = unmaskString(rdf_term);
-      }
+      rdf_term = expand_template_term(rdf_term, term_type, map);
     }
 
     // Add base iri if needed
@@ -826,12 +869,15 @@ std::string create_operator(const std::string& term_map,
   }
   // Handle reference
   else if (term_map_type == "reference") {
-    std::string data = map[term_map];
-    std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
-    std::string effective_data_type = resolve_annotation_value(data_type, map);
-    normalize_iri_annotation(effective_data_type);
+    auto value = map.find(term_map);
+    std::string data = value != map.end() ? value->second : std::string{};
+    std::string effective_lang_tag = "None";
+    std::string effective_data_type = "None";
 
-    if (term_type == "literal") {
+    if (is_literal) {
+      effective_lang_tag = resolve_annotation_value(lang_tag, map);
+      effective_data_type = resolve_annotation_value(data_type, map);
+      normalize_iri_annotation(effective_data_type);
       effective_data_type = infer_literal_datatype(data, effective_lang_tag, effective_data_type);
     }
 
@@ -846,10 +892,12 @@ std::string create_operator(const std::string& term_map,
 
     return rdf_term;
   } else if (term_map_type == "constant") {
-    std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
-    std::string effective_data_type = resolve_annotation_value(data_type, map);
-    normalize_iri_annotation(effective_data_type);
-    if (term_type == "literal") {
+    std::string effective_lang_tag = "None";
+    std::string effective_data_type = "None";
+    if (is_literal) {
+      effective_lang_tag = resolve_annotation_value(lang_tag, map);
+      effective_data_type = resolve_annotation_value(data_type, map);
+      normalize_iri_annotation(effective_data_type);
       effective_data_type = infer_literal_datatype(rdf_term, effective_lang_tag, effective_data_type);
     }
     rdf_term = handle_term_type(term_type, rdf_term, effective_lang_tag, effective_data_type);
