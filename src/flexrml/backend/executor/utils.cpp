@@ -84,6 +84,32 @@ void split_csv_line_into(const std::string& str, char separator, std::vector<std
   result.resize(column + 1);
 }
 
+bool split_csv_line_views_into(const std::string& str, char separator, std::vector<std::string_view>& result) {
+  if (result.capacity() < 64) {
+    result.reserve(64);
+  }
+
+  result.clear();
+  std::size_t field_start = 0;
+
+  for (std::size_t i = 0; i < str.size(); ++i) {
+    const unsigned char c = static_cast<unsigned char>(str[i]);
+    if (c == '"') {
+      return false;
+    }
+    if (std::iscntrl(c)) {
+      return false;
+    }
+    if (str[i] == separator) {
+      result.emplace_back(str.data() + field_start, i - field_start);
+      field_start = i + 1;
+    }
+  }
+
+  result.emplace_back(str.data() + field_start, str.size() - field_start);
+  return true;
+}
+
 std::vector<std::string> split_csv_line(const std::string& str, char separator) {
   std::vector<std::string> result;
   split_csv_line_into(str, separator, result);
@@ -475,7 +501,7 @@ std::vector<std::string> extract_substrings(const std::string& str) {
   return substrings;
 }
 
-std::string make_safe_iri(std::string_view node, bool encode_non_ascii = true) {
+void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& out) {
   static constexpr std::array<std::string_view, 128> encode_map = [] {
     std::array<std::string_view, 128> map{};
     map[' '] = "%20";
@@ -523,24 +549,31 @@ std::string make_safe_iri(std::string_view node, bool encode_non_ascii = true) {
   }
 
   if (!needs_encoding) {
-    return std::string(node);
+    out.append(node);
+    return;
   }
 
-  std::string result;
-  result.reserve(encoded_size);
+  const std::size_t required_size = out.size() + encoded_size;
+  if (out.capacity() < required_size) {
+    out.reserve(required_size);
+  }
 
   for (unsigned char c : node) {
     if (c < encode_map.size() && !encode_map[c].empty()) {
-      result.append(encode_map[c]);
+      out.append(encode_map[c]);
     } else if (encode_non_ascii && c > 127) {
-      result.push_back('%');
-      result.push_back(hex_digits[(c >> 4) & 0x0F]);
-      result.push_back(hex_digits[c & 0x0F]);
+      out.push_back('%');
+      out.push_back(hex_digits[(c >> 4) & 0x0F]);
+      out.push_back(hex_digits[c & 0x0F]);
     } else {
-      result.push_back(static_cast<char>(c));
+      out.push_back(static_cast<char>(c));
     }
   }
+}
 
+std::string make_safe_iri(std::string_view node, bool encode_non_ascii) {
+  std::string result;
+  append_safe_iri(node, encode_non_ascii, result);
   return result;
 }
 
@@ -635,7 +668,10 @@ void handle_term_type_into(const std::string& term_type,
       error_msg += "Stop!";
       throw std::runtime_error(error_msg);
     }
-    out.reserve(rdf_term.size() + 2);
+    const std::size_t required_size = rdf_term.size() + 2;
+    if (out.capacity() < required_size) {
+      out.reserve(required_size);
+    }
     out.push_back('<');
     out.append(rdf_term);
     out.push_back('>');
@@ -644,14 +680,20 @@ void handle_term_type_into(const std::string& term_type,
 
   if (term_type == "blanknode") {
     std::string rdf_term_clean = clean_blank_node(rdf_term);
-    out.reserve(rdf_term_clean.size() + 2);
+    const std::size_t required_size = rdf_term_clean.size() + 2;
+    if (out.capacity() < required_size) {
+      out.reserve(required_size);
+    }
     out.append("_:");
     out.append(rdf_term_clean);
     return;
   }
 
   if (term_type == "literal") {
-    out.reserve(rdf_term.size() + data_type.size() + lang_tag.size() + 6);
+    const std::size_t required_size = rdf_term.size() + data_type.size() + lang_tag.size() + 6;
+    if (out.capacity() < required_size) {
+      out.reserve(required_size);
+    }
     out.push_back('"');
     out.append(rdf_term);
     out.push_back('"');

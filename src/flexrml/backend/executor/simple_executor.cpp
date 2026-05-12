@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -14,6 +15,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -92,7 +94,7 @@ static void initialize_row_map(std::unordered_map<std::string, std::string>& row
 
 static void update_row_map(std::unordered_map<std::string, std::string>& row,
                            const std::vector<std::string>& projected_header,
-                           const std::vector<std::string>& projected_row) {
+                           const std::vector<std::string_view>& projected_row) {
   for (std::size_t i = 0; i < projected_row.size(); i++) {
     auto it = row.find(projected_header[i]);
     if (it != row.end()) {
@@ -113,6 +115,269 @@ static void project_row_into(const std::vector<std::string>& split_line,
   projected_row.resize(projected_indices.size());
 }
 
+static void project_row_into(const std::vector<std::string_view>& split_line,
+                             const std::vector<int>& projected_indices,
+                             std::vector<std::string_view>& projected_row) {
+  if (projected_row.size() < projected_indices.size()) {
+    projected_row.resize(projected_indices.size());
+  }
+  for (std::size_t i = 0; i < projected_indices.size(); i++) {
+    projected_row[i] = split_line[projected_indices[i]];
+  }
+  projected_row.resize(projected_indices.size());
+}
+
+static void project_row_views_from_strings(const std::vector<std::string>& projected_row,
+                                           std::vector<std::string_view>& projected_row_views) {
+  if (projected_row_views.size() < projected_row.size()) {
+    projected_row_views.resize(projected_row.size());
+  }
+  for (std::size_t i = 0; i < projected_row.size(); ++i) {
+    projected_row_views[i] = projected_row[i];
+  }
+  projected_row_views.resize(projected_row.size());
+}
+
+static bool row_has_skip_value(const std::vector<std::string_view>& projected_row) {
+  for (const auto& target : values_to_skip) {
+    if (std::any_of(projected_row.begin(), projected_row.end(), [&target](std::string_view value) { return value == target; })) {
+      return true;
+    }
+  }
+  return false;
+}
+
+enum class CompiledTermMapType {
+  Preformatted,
+  Constant,
+  Reference,
+  Template
+};
+
+struct CompiledTemplatePart {
+  std::string literal;
+  int reference_index = -1;
+};
+
+struct CompiledTerm {
+  bool usable = false;
+  CompiledTermMapType map_type = CompiledTermMapType::Constant;
+  std::string term_map;
+  std::string term_type;
+  std::string lang_tag = "None";
+  std::string data_type = "None";
+  std::vector<CompiledTemplatePart> parts;
+  int reference_index = -1;
+  bool infer_datatype = false;
+  bool add_base_iri = false;
+};
+
+static int projected_column_index(const std::vector<std::string>& projected_header,
+                                  std::string_view name) {
+  for (std::size_t i = 0; i < projected_header.size(); ++i) {
+    if (projected_header[i] == name) {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
+static bool is_dynamic_annotation(const std::string& annotation,
+                                  const std::vector<std::string>& projected_header) {
+  return annotation.starts_with("==FUNC==") ||
+         annotation.find('{') != std::string::npos ||
+         projected_column_index(projected_header, annotation) >= 0;
+}
+
+static bool compile_template_parts(const std::string& term_map,
+                                   const std::vector<std::string>& projected_header,
+                                   std::vector<CompiledTemplatePart>& parts) {
+  std::string literal;
+  literal.reserve(term_map.size());
+
+  for (std::size_t i = 0; i < term_map.size();) {
+    if (term_map[i] == '\\' && i + 1 < term_map.size() &&
+        (term_map[i + 1] == '{' || term_map[i + 1] == '}')) {
+      literal.push_back(term_map[i + 1]);
+      i += 2;
+      continue;
+    }
+
+    if (term_map[i] != '{') {
+      literal.push_back(term_map[i]);
+      ++i;
+      continue;
+    }
+
+    const std::size_t placeholder_start = i;
+    ++i;
+    std::string reference_name;
+    bool closed = false;
+    for (; i < term_map.size(); ++i) {
+      if (term_map[i] == '\\' && i + 1 < term_map.size() &&
+          (term_map[i + 1] == '{' || term_map[i + 1] == '}')) {
+        reference_name.push_back(term_map[i + 1]);
+        ++i;
+      } else if (term_map[i] == '}') {
+        closed = true;
+        ++i;
+        break;
+      } else {
+        reference_name.push_back(term_map[i]);
+      }
+    }
+
+    if (!closed) {
+      literal.append(term_map, placeholder_start, std::string::npos);
+      break;
+    }
+
+    if (!literal.empty()) {
+      parts.push_back(CompiledTemplatePart{std::move(literal), -1});
+      literal.clear();
+    }
+
+    const int index = projected_column_index(projected_header, reference_name);
+    if (index < 0) {
+      return false;
+    }
+    parts.push_back(CompiledTemplatePart{"", index});
+  }
+
+  if (!literal.empty()) {
+    parts.push_back(CompiledTemplatePart{std::move(literal), -1});
+  }
+  return true;
+}
+
+static CompiledTerm compile_term(const std::vector<std::string>& content,
+                                 const std::vector<std::string>& projected_header,
+                                 const std::string& base_uri) {
+  CompiledTerm term;
+  if (content.size() < 3 || content[1] == "function") {
+    return term;
+  }
+
+  term.term_map = content[0];
+  term.term_type = content[2];
+  const bool is_literal = term.term_type == "literal";
+  if (is_literal) {
+    if (content.size() > 3) {
+      term.lang_tag = content[3];
+    }
+    if (content.size() > 4) {
+      term.data_type = content[4];
+    }
+    if (is_dynamic_annotation(term.lang_tag, projected_header) ||
+        is_dynamic_annotation(term.data_type, projected_header)) {
+      return term;
+    }
+    if (term.data_type != "None" &&
+        !(term.data_type.starts_with("http://") || term.data_type.starts_with("https://"))) {
+      term.data_type = base_uri + term.data_type;
+    }
+  }
+
+  term.add_base_iri = term.term_type == "uri" || term.term_type == "iri" || term.term_type == "unsafeiri";
+
+  if (content[1] == "preformatted") {
+    term.map_type = CompiledTermMapType::Preformatted;
+  } else if (content[1] == "constant") {
+    term.map_type = CompiledTermMapType::Constant;
+    term.infer_datatype = is_literal && term.lang_tag == "None" && term.data_type == "None";
+  } else if (content[1] == "reference") {
+    term.map_type = CompiledTermMapType::Reference;
+    term.reference_index = projected_column_index(projected_header, term.term_map);
+    if (term.reference_index < 0) {
+      return CompiledTerm{};
+    }
+    term.infer_datatype = is_literal && term.lang_tag == "None" && term.data_type == "None";
+  } else if (content[1] == "template") {
+    term.map_type = CompiledTermMapType::Template;
+    if (!compile_template_parts(term.term_map, projected_header, term.parts)) {
+      return CompiledTerm{};
+    }
+  } else {
+    return term;
+  }
+
+  term.usable = true;
+  return term;
+}
+
+static bool term_needs_row_map(const std::vector<std::string>& content, const CompiledTerm& compiled) {
+  return content.size() > 1 && (content[1] == "function" || !compiled.usable);
+}
+
+static void render_compiled_term(const CompiledTerm& term,
+                                 const std::vector<std::string_view>& projected_row,
+                                 const std::string& base_uri,
+                                 std::string& out,
+                                 std::string& scratch) {
+  if (term.map_type == CompiledTermMapType::Preformatted) {
+    out = term.term_map;
+    return;
+  }
+
+  scratch.clear();
+  std::string_view rdf_term = term.term_map;
+  if (term.map_type == CompiledTermMapType::Reference) {
+    rdf_term = projected_row[term.reference_index];
+  } else if (term.map_type == CompiledTermMapType::Template) {
+    if (scratch.capacity() < term.term_map.size()) {
+      scratch.reserve(term.term_map.size());
+    }
+    for (const CompiledTemplatePart& part : term.parts) {
+      if (part.reference_index >= 0) {
+        const std::string_view value = projected_row[part.reference_index];
+        if (term.term_type == "uri") {
+          append_safe_iri(value, true, scratch);
+        } else if (term.term_type == "iri") {
+          append_safe_iri(value, false, scratch);
+        } else {
+          scratch += value;
+        }
+      } else {
+        scratch += part.literal;
+      }
+    }
+    rdf_term = scratch;
+  }
+
+  if ((term.map_type == CompiledTermMapType::Reference || term.map_type == CompiledTermMapType::Template) &&
+      term.add_base_iri &&
+      !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
+    if (rdf_term.data() != scratch.data()) {
+      scratch.assign(rdf_term);
+    }
+    scratch.insert(0, base_uri);
+    rdf_term = scratch;
+  }
+
+  const std::string datatype = term.infer_datatype ? infer_literal_datatype(rdf_term, term.lang_tag, term.data_type) : term.data_type;
+  handle_term_type_into(term.term_type, rdf_term, term.lang_tag, datatype, out);
+}
+
+static void render_runtime_term(const CompiledTerm& compiled,
+                                const RuntimeTerm& runtime_term,
+                                const std::vector<std::string>& content,
+                                const std::vector<std::string_view>& projected_row,
+                                const std::string& base_uri,
+                                std::unordered_map<std::string, std::string>& row,
+                                std::string& out,
+                                std::string& scratch) {
+  if (*runtime_term.map_type == "preformatted") {
+    out = *runtime_term.value;
+  } else if (compiled.usable && runtime_term.value == &content[0] && runtime_term.map_type == &content[1]) {
+    render_compiled_term(compiled, projected_row, base_uri, out, scratch);
+  } else {
+    create_operator_into(*runtime_term.value, *runtime_term.map_type, content[2],
+                         content.size() > 3 ? content[3] : "",
+                         content.size() > 4 ? content[4] : "",
+                         base_uri, row, out, scratch);
+  }
+}
+
 ///////////////////////////////////////////////////////////////
 /// Data setup
 ///////////////////////////////////////////////////////////////
@@ -121,7 +386,9 @@ struct SetupData {
 
   std::string line;
   std::vector<std::string> split_line;
+  std::vector<std::string_view> split_line_views;
   std::vector<std::string> projected_row;
+  std::vector<std::string_view> projected_row_views;
   std::unordered_map<std::string, std::string> row;
 
   size_t triple_counter = 0;
@@ -149,7 +416,9 @@ SetupData initialize_setup(const fs::path& output_file_name) {
   // Reserve memory for strings and vectors
   data.line.reserve(512);
   data.split_line.reserve(32);
+  data.split_line_views.reserve(32);
   data.projected_row.reserve(32);
+  data.projected_row_views.reserve(32);
   data.row.reserve(32);
 
   data.subject.reserve(512);
@@ -182,7 +451,9 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   // Reserve memory for strings and vectors
   data.line.reserve(512);
   data.split_line.reserve(32);
+  data.split_line_views.reserve(32);
   data.projected_row.reserve(32);
+  data.projected_row_views.reserve(32);
   data.row.reserve(32);
 
   data.subject.reserve(512);
@@ -197,6 +468,18 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   data.graph_scratch.reserve(512);
 
   return data;
+}
+
+static void split_project_current_line(SetupData& setup_data,
+                                       const std::vector<int>& projected_indices) {
+  if (split_csv_line_views_into(setup_data.line, ',', setup_data.split_line_views)) {
+    project_row_into(setup_data.split_line_views, projected_indices, setup_data.projected_row_views);
+    return;
+  }
+
+  split_csv_line_into(setup_data.line, ',', setup_data.split_line);
+  project_row_into(setup_data.split_line, projected_indices, setup_data.projected_row);
+  project_row_views_from_strings(setup_data.projected_row, setup_data.projected_row_views);
 }
 
 ///////////////////////////////////////////////////////////////7
@@ -274,30 +557,32 @@ int execute_simple_with_graph(const std::string& input_file_name,
     projected_header.push_back(header[i]);
   }
   initialize_row_map(setup_data.row, projected_header);
+  const CompiledTerm s_compiled = compile_term(s_content, projected_header, base_uri);
+  const CompiledTerm p_compiled = compile_term(p_content, projected_header, base_uri);
+  const CompiledTerm o_compiled = compile_term(o_content, projected_header, base_uri);
+  const CompiledTerm g_compiled = compile_term(g_content, projected_header, base_uri);
+  const bool needs_row_map = term_needs_row_map(s_content, s_compiled) ||
+                             term_needs_row_map(p_content, p_compiled) ||
+                             term_needs_row_map(o_content, o_compiled) ||
+                             term_needs_row_map(g_content, g_compiled) ||
+                             (o_content.size() > 5 && o_content[5] != "None");
 
   // Iterate over file line by line
   int line_count = 0;
   // Iterate over file line by line
   while (std::getline(*file, setup_data.line)) {
-    split_csv_line_into(setup_data.line, ',', setup_data.split_line);
-
-    ////// PROJECTION //////
-    project_row_into(setup_data.split_line, projected_indices, setup_data.projected_row);
+    split_project_current_line(setup_data, projected_indices);
 
     // Check for NULL values
-    setup_data.skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(setup_data.projected_row.begin(), setup_data.projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        setup_data.skip = true;
-        break;
-      }
-    }
+    setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
     if (setup_data.skip) {
       continue;
     }
 
     auto& row = setup_data.row;
-    update_row_map(row, projected_header, setup_data.projected_row);
+    if (needs_row_map) {
+      update_row_map(row, projected_header, setup_data.projected_row_views);
+    }
 
     std::string s_function_value;
     std::string p_function_value;
@@ -317,30 +602,10 @@ int execute_simple_with_graph(const std::string& input_file_name,
 
     ////// CREATE //////
     try {
-      // SUBJECT
-      if (*s_term.map_type == "preformatted") {
-        setup_data.subject = *s_term.value;
-      } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
-      }
-      // PREDICATE
-      if (*p_term.map_type == "preformatted") {
-        setup_data.predicate = *p_term.value;
-      } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
-      }
-      // OBJECT
-      if (*o_term.map_type == "preformatted") {
-        setup_data.object = *o_term.value;
-      } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
-      }
-      // GRAPH
-      if (*g_term.map_type == "preformatted") {
-        setup_data.graph = *g_term.value;
-      } else {
-        create_operator_into(*g_term.value, *g_term.map_type, g_content[2], "", "", base_uri, row, setup_data.graph, setup_data.graph_scratch);
-      }
+      render_runtime_term(s_compiled, s_term, s_content, setup_data.projected_row_views, base_uri, row, setup_data.subject, setup_data.subject_scratch);
+      render_runtime_term(p_compiled, p_term, p_content, setup_data.projected_row_views, base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
+      render_runtime_term(o_compiled, o_term, o_content, setup_data.projected_row_views, base_uri, row, setup_data.object, setup_data.object_scratch);
+      render_runtime_term(g_compiled, g_term, g_content, setup_data.projected_row_views, base_uri, row, setup_data.graph, setup_data.graph_scratch);
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
         std::cout << e.what() << std::endl;
@@ -410,32 +675,33 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
     projected_header.push_back(header[i]);
   }
   initialize_row_map(setup_data.row, projected_header);
-
+  const CompiledTerm s_compiled = compile_term(s_content, projected_header, base_uri);
+  const CompiledTerm p_compiled = compile_term(p_content, projected_header, base_uri);
+  const CompiledTerm o_compiled = compile_term(o_content, projected_header, base_uri);
+  const CompiledTerm g_compiled = compile_term(g_content, projected_header, base_uri);
+  const bool needs_row_map = term_needs_row_map(s_content, s_compiled) ||
+                             term_needs_row_map(p_content, p_compiled) ||
+                             term_needs_row_map(o_content, o_compiled) ||
+                             term_needs_row_map(g_content, g_compiled) ||
+                             (o_content.size() > 5 && o_content[5] != "None");
 
   // Iterate over file line by line
   int line_count = 0;
   while (std::getline(*file, setup_data.line)) {
     line_count++;
 
-    split_csv_line_into(setup_data.line, ',', setup_data.split_line);
-
-    ////// PROJECTION //////
-    project_row_into(setup_data.split_line, projected_indices, setup_data.projected_row);
+    split_project_current_line(setup_data, projected_indices);
 
     // Check for NULL values
-    setup_data.skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(setup_data.projected_row.begin(), setup_data.projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        setup_data.skip = true;
-        break;
-      }
-    }
+    setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
     if (setup_data.skip) {
       continue;
     }
 
     auto& row = setup_data.row;
-    update_row_map(row, projected_header, setup_data.projected_row);
+    if (needs_row_map) {
+      update_row_map(row, projected_header, setup_data.projected_row_views);
+    }
 
     std::string s_function_value;
     std::string p_function_value;
@@ -455,30 +721,10 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
 
     ////// CREATE //////
     try {
-      // SUBJECT
-      if (*s_term.map_type == "preformatted") {
-        setup_data.subject = *s_term.value;
-      } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
-      }
-      // PREDICATE
-      if (*p_term.map_type == "preformatted") {
-        setup_data.predicate = *p_term.value;
-      } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
-      }
-      // OBJECT
-      if (*o_term.map_type == "preformatted") {
-        setup_data.object = *o_term.value;
-      } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
-      }
-      // GRAPH
-      if (*g_term.map_type == "preformatted") {
-        setup_data.graph = *g_term.value;
-      } else {
-        create_operator_into(*g_term.value, *g_term.map_type, g_content[2], "", "", base_uri, row, setup_data.graph, setup_data.graph_scratch);
-      }
+      render_runtime_term(s_compiled, s_term, s_content, setup_data.projected_row_views, base_uri, row, setup_data.subject, setup_data.subject_scratch);
+      render_runtime_term(p_compiled, p_term, p_content, setup_data.projected_row_views, base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
+      render_runtime_term(o_compiled, o_term, o_content, setup_data.projected_row_views, base_uri, row, setup_data.object, setup_data.object_scratch);
+      render_runtime_term(g_compiled, g_term, g_content, setup_data.projected_row_views, base_uri, row, setup_data.graph, setup_data.graph_scratch);
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
         std::cout << e.what() << std::endl;
@@ -532,31 +778,31 @@ int execute_simple(const std::string& input_file_name,
     projected_header.push_back(header[i]);
   }
   initialize_row_map(setup_data.row, projected_header);
+  const CompiledTerm s_compiled = compile_term(s_content, projected_header, base_uri);
+  const CompiledTerm p_compiled = compile_term(p_content, projected_header, base_uri);
+  const CompiledTerm o_compiled = compile_term(o_content, projected_header, base_uri);
+  const bool needs_row_map = term_needs_row_map(s_content, s_compiled) ||
+                             term_needs_row_map(p_content, p_compiled) ||
+                             term_needs_row_map(o_content, o_compiled) ||
+                             (o_content.size() > 5 && o_content[5] != "None");
 
   int line_count = 0;
   // Iterate over file line by line
   while (std::getline(*file, setup_data.line)) {
     line_count++;
 
-    split_csv_line_into(setup_data.line, ',', setup_data.split_line);
-
-    ////// PROJECTION //////
-    project_row_into(setup_data.split_line, projected_indices, setup_data.projected_row);
+    split_project_current_line(setup_data, projected_indices);
 
     // Check for NULL values
-    setup_data.skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(setup_data.projected_row.begin(), setup_data.projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        setup_data.skip = true;
-        break;
-      }
-    }
+    setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
     if (setup_data.skip) {
       continue;
     }
 
     auto& row = setup_data.row;
-    update_row_map(row, projected_header, setup_data.projected_row);
+    if (needs_row_map) {
+      update_row_map(row, projected_header, setup_data.projected_row_views);
+    }
 
     std::string s_function_value;
     std::string p_function_value;
@@ -574,24 +820,9 @@ int execute_simple(const std::string& input_file_name,
 
     ////// CREATE //////
     try {
-      // SUBJECT
-      if (*s_term.map_type == "preformatted") {
-        setup_data.subject = *s_term.value;
-      } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
-      }
-      // PREDICATE
-      if (*p_term.map_type == "preformatted") {
-        setup_data.predicate = *p_term.value;
-      } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
-      }
-      // OBJECT
-      if (*o_term.map_type == "preformatted") {
-        setup_data.object = *o_term.value;
-      } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
-      }
+      render_runtime_term(s_compiled, s_term, s_content, setup_data.projected_row_views, base_uri, row, setup_data.subject, setup_data.subject_scratch);
+      render_runtime_term(p_compiled, p_term, p_content, setup_data.projected_row_views, base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
+      render_runtime_term(o_compiled, o_term, o_content, setup_data.projected_row_views, base_uri, row, setup_data.object, setup_data.object_scratch);
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
         std::cout << e.what() << std::endl;
@@ -658,6 +889,13 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
     projected_header.push_back(header[i]);
   }
   initialize_row_map(setup_data.row, projected_header);
+  const CompiledTerm s_compiled = compile_term(s_content, projected_header, base_uri);
+  const CompiledTerm p_compiled = compile_term(p_content, projected_header, base_uri);
+  const CompiledTerm o_compiled = compile_term(o_content, projected_header, base_uri);
+  const bool needs_row_map = term_needs_row_map(s_content, s_compiled) ||
+                             term_needs_row_map(p_content, p_compiled) ||
+                             term_needs_row_map(o_content, o_compiled) ||
+                             (o_content.size() > 5 && o_content[5] != "None");
 
   // Iterate over file line by line
   int line_count = 0;
@@ -668,26 +906,19 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
   while (std::getline(*file, setup_data.line)) {
     line_count++;
 
-    split_csv_line_into(setup_data.line, ',', setup_data.split_line);
-
-    ////// PROJECTION //////
-    project_row_into(setup_data.split_line, projected_indices, setup_data.projected_row);
+    split_project_current_line(setup_data, projected_indices);
 
     // Check for NULL values
-    setup_data.skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(setup_data.projected_row.begin(), setup_data.projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        setup_data.skip = true;
-        break;
-      }
-    }
+    setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
 
     if (setup_data.skip && !function_called) {
       continue;
     }
 
     auto& row = setup_data.row;
-    update_row_map(row, projected_header, setup_data.projected_row);
+    if (needs_row_map) {
+      update_row_map(row, projected_header, setup_data.projected_row_views);
+    }
 
     std::string s_function_value;
     std::string p_function_value;
@@ -705,24 +936,9 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
 
     ////// CREATE //////
     try {
-      // SUBJECT
-      if (*s_term.map_type == "preformatted") {
-        setup_data.subject = *s_term.value;
-      } else {
-        create_operator_into(*s_term.value, *s_term.map_type, s_content[2], "", "", base_uri, row, setup_data.subject, setup_data.subject_scratch);
-      }
-      // PREDICATE
-      if (*p_term.map_type == "preformatted") {
-        setup_data.predicate = *p_term.value;
-      } else {
-        create_operator_into(*p_term.value, *p_term.map_type, p_content[2], "", "", base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
-      }
-      // OBJECT
-      if (*o_term.map_type == "preformatted") {
-        setup_data.object = *o_term.value;
-      } else {
-        create_operator_into(*o_term.value, *o_term.map_type, o_content[2], o_content[3], o_content[4], base_uri, row, setup_data.object, setup_data.object_scratch);
-      }
+      render_runtime_term(s_compiled, s_term, s_content, setup_data.projected_row_views, base_uri, row, setup_data.subject, setup_data.subject_scratch);
+      render_runtime_term(p_compiled, p_term, p_content, setup_data.projected_row_views, base_uri, row, setup_data.predicate, setup_data.predicate_scratch);
+      render_runtime_term(o_compiled, o_term, o_content, setup_data.projected_row_views, base_uri, row, setup_data.object, setup_data.object_scratch);
     } catch (const std::runtime_error& e) {
       if (continue_on_error == false) {
         std::cout << e.what() << std::endl;

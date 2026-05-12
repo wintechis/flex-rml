@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -21,9 +22,20 @@ int get_index(const std::vector<std::string>& input_vector, std::string searched
 
 std::vector<std::string> split_csv_line(const std::string& str, char separator);
 void split_csv_line_into(const std::string& str, char separator, std::vector<std::string>& result);
+bool split_csv_line_views_into(const std::string& str, char separator, std::vector<std::string_view>& result);
 bool is_default_graph_marker(const std::string& graph);
 std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object);
 std::string format_statement(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph);
+std::string make_safe_iri(std::string_view node, bool encode_non_ascii = true);
+void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& out);
+std::string infer_literal_datatype(std::string_view rdf_term,
+                                   const std::string& lang_tag,
+                                   const std::string& data_type);
+void handle_term_type_into(const std::string& term_type,
+                           std::string_view rdf_term,
+                           const std::string& lang_tag,
+                           const std::string& data_type,
+                           std::string& out);
 
 void handle_constant(const std::vector<std::string>& s_content, const std::vector<std::string>& p_content,
                      const std::vector<std::string>& o_content, const std::vector<std::string>& g_content,
