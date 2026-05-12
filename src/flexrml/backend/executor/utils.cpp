@@ -451,35 +451,69 @@ std::vector<std::string> extract_substrings(const std::string& str) {
   return substrings;
 }
 
-std::string make_safe_iri(const std::string& node, bool encode_non_ascii = true) {
-  // Lookup table for encoding special characters
-  // clang-format off
-      static const std::unordered_map<char, std::string> encode_map = {
-          {' ', "%20"}, {'!', "%21"}, {'\"', "%22"}, {'#', "%23"}, {'$', "%24"}, 
-          {'%', "%25"}, {'&', "%26"}, {'\'', "%27"}, {'(', "%28"}, {')', "%29"}, 
-          {'*', "%2A"}, {'+', "%2B"}, {',', "%2C"}, {'/', "%2F"}, {':', "%3A"}, 
-          {';', "%3B"}, {'<', "%3C"}, {'=', "%3D"}, {'>', "%3E"}, {'?', "%3F"}, 
-          {'@', "%40"}, {'[', "%5B"}, {'\\', "%5C"}, {']', "%5D"}, {'{', "%7B"}, 
-          {'|', "%7C"}, {'}', "%7D"}
-        };
-  // clang-format on
-
-  // Reserved size
-  constexpr size_t fixed_reserve_size = 800;
-  std::string result;
-  result.reserve(fixed_reserve_size);
+std::string make_safe_iri(std::string_view node, bool encode_non_ascii = true) {
+  static constexpr std::array<std::string_view, 128> encode_map = [] {
+    std::array<std::string_view, 128> map{};
+    map[' '] = "%20";
+    map['!'] = "%21";
+    map['"'] = "%22";
+    map['#'] = "%23";
+    map['$'] = "%24";
+    map['%'] = "%25";
+    map['&'] = "%26";
+    map['\''] = "%27";
+    map['('] = "%28";
+    map[')'] = "%29";
+    map['*'] = "%2A";
+    map['+'] = "%2B";
+    map[','] = "%2C";
+    map['/'] = "%2F";
+    map[':'] = "%3A";
+    map[';'] = "%3B";
+    map['<'] = "%3C";
+    map['='] = "%3D";
+    map['>'] = "%3E";
+    map['?'] = "%3F";
+    map['@'] = "%40";
+    map['['] = "%5B";
+    map['\\'] = "%5C";
+    map[']'] = "%5D";
+    map['{'] = "%7B";
+    map['|'] = "%7C";
+    map['}'] = "%7D";
+    return map;
+  }();
 
   static constexpr char hex_digits[] = "0123456789ABCDEF";
+  bool needs_encoding = false;
+  std::size_t encoded_size = node.size();
 
   for (unsigned char c : node) {
-    if (encode_map.count(c)) {
-      result += encode_map.at(c);  // Append the encoded value
+    if (c < encode_map.size() && !encode_map[c].empty()) {
+      needs_encoding = true;
+      encoded_size += encode_map[c].size() - 1;
     } else if (encode_non_ascii && c > 127) {
-      result += '%';
-      result += hex_digits[(c >> 4) & 0x0F];
-      result += hex_digits[c & 0x0F];
+      needs_encoding = true;
+      encoded_size += 2;
+    }
+  }
+
+  if (!needs_encoding) {
+    return std::string(node);
+  }
+
+  std::string result;
+  result.reserve(encoded_size);
+
+  for (unsigned char c : node) {
+    if (c < encode_map.size() && !encode_map[c].empty()) {
+      result.append(encode_map[c]);
+    } else if (encode_non_ascii && c > 127) {
+      result.push_back('%');
+      result.push_back(hex_digits[(c >> 4) & 0x0F]);
+      result.push_back(hex_digits[c & 0x0F]);
     } else {
-      result += c;  // Append the character as-is
+      result.push_back(static_cast<char>(c));
     }
   }
 
@@ -487,14 +521,14 @@ std::string make_safe_iri(const std::string& node, bool encode_non_ascii = true)
 }
 
 // Check if a string contains any invalid characters
-bool contains_invalid_chars(const std::string& str,
+bool contains_invalid_chars(std::string_view str,
                             const std::unordered_set<char>& invalidChars) {
   return std::ranges::any_of(
       str, [&invalidChars](char c) { return invalidChars.contains(c); });
 }
 
 std::string handle_term_type(const std::string& term_type,
-                             const std::string& rdf_term,
+                             std::string_view rdf_term,
                              const std::string& lang_tag,
                              const std::string& data_type) {
   static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
@@ -503,26 +537,46 @@ std::string handle_term_type(const std::string& term_type,
   if (term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") {
     // Check for invalid characters
     if ((term_type == "uri" || term_type == "iri") && contains_invalid_chars(rdf_term, errorChars)) {
-      std::string error_msg = "Error: invalid IRI detected for node: '" + rdf_term + "'. ";
+      std::string error_msg;
+      error_msg.reserve(rdf_term.size() + 58);
+      error_msg.append("Error: invalid IRI detected for node: '");
+      error_msg.append(rdf_term);
+      error_msg.append("'. ");
       if (continue_on_error == true) {
         std::cout << error_msg << "Skipping!\n";
       }
       error_msg += "Stop!";
       throw std::runtime_error(error_msg);
     }
-    return "<" + rdf_term + ">";
+    std::string result;
+    result.reserve(rdf_term.size() + 2);
+    result.push_back('<');
+    result.append(rdf_term);
+    result.push_back('>');
+    return result;
   } else if (term_type == "blanknode") {
     std::string rdf_term_clean = clean_blank_node(rdf_term);
-    return "_:" + rdf_term_clean;
+    std::string result;
+    result.reserve(rdf_term_clean.size() + 2);
+    result.append("_:");
+    result.append(rdf_term_clean);
+    return result;
 
   } else if (term_type == "literal") {
-    std::string literal = "\"" + rdf_term + "\"";
+    std::string literal;
+    literal.reserve(rdf_term.size() + data_type.size() + lang_tag.size() + 6);
+    literal.push_back('"');
+    literal.append(rdf_term);
+    literal.push_back('"');
 
     // datatype is more important then langtag
     if (data_type != "None") {
-      literal += "^^<" + data_type + ">";
+      literal.append("^^<");
+      literal.append(data_type);
+      literal.push_back('>');
     } else if (lang_tag != "None") {
-      literal += "@" + lang_tag;
+      literal.push_back('@');
+      literal.append(lang_tag);
     }
     return literal;
   }
@@ -535,7 +589,11 @@ std::string handle_term_type(const std::string& term_type,
   throw std::runtime_error(error_msg);
 }
 
-std::string unmaskString(const std::string& input) {
+std::string unmaskString(std::string_view input) {
+  if (input.find('\\') == std::string_view::npos) {
+    return std::string(input);
+  }
+
   std::string output;
   output.reserve(input.size());
 
@@ -543,11 +601,11 @@ std::string unmaskString(const std::string& input) {
     if (input[i] == '\\' && (i + 1 < input.size()) &&
         (input[i + 1] == '{' || input[i + 1] == '}')) {
       // Skip the backslash and add the next character
-      output += input[i + 1];
+      output.push_back(input[i + 1]);
       ++i;  // Skip the next character since it is already added
     } else {
       // Add the current character to the output
-      output += input[i];
+      output.push_back(input[i]);
     }
   }
 
