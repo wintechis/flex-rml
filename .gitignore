@@ -24,9 +24,13 @@ CMakeUserPresets.json
 # Generated validation output
 /validation_report.md
 /mapping
+/*.nt
 /*.nq
 /*.csv
 /*.ttl
+
+# Generated profiling output
+/heaptrack.*.zst
 
 # External conformance test-case checkouts
 /test_cases/*

@@ -1,6 +1,7 @@
 #include "utils.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -33,30 +34,45 @@ std::vector<std::string> split_by_substring(const std::string& str, const std::s
   return result;
 }
 
-std::vector<std::string> split_csv_line(const std::string& str, char separator) {
-  std::vector<std::string> result;
-  result.reserve(64);
+void split_csv_line_into(const std::string& str, char separator, std::vector<std::string>& result) {
+  if (result.capacity() < 64) {
+    result.reserve(64);
+  }
 
-  std::string token;
-  token.reserve(str.size());
+  std::size_t column = 0;
+  if (result.empty()) {
+    result.emplace_back();
+  } else {
+    result[0].clear();
+  }
+
+  auto next_token = [&result, &column]() -> std::string& {
+    ++column;
+    if (column == result.size()) {
+      result.emplace_back();
+    } else {
+      result[column].clear();
+    }
+    return result[column];
+  };
+
+  std::string* token = &result[0];
   bool insideQuotes = false;
 
   for (char c : str) {
     if (c == '"') {
       // Handle quote escaping
-      if (insideQuotes && !token.empty() && token.back() == '"') {
-        token.pop_back();
+      if (insideQuotes && !token->empty() && token->back() == '"') {
+        token->pop_back();
       } else {
         insideQuotes = !insideQuotes;
       }
     } else if (c == separator && !insideQuotes) {
-      // End of token, push and clear
-      result.push_back(std::move(token));
-      token.clear();
+      token = &next_token();
     } else {
       // Only append non-control characters.
       if (!iscntrl(static_cast<unsigned char>(c))) {
-        token.push_back(c);
+        token->push_back(c);
       }
     }
   }
@@ -65,8 +81,12 @@ std::vector<std::string> split_csv_line(const std::string& str, char separator) 
     std::cout << "Runtime error occurred. Malformed CSV: unmatched quote." << std::endl;
     std::exit(1);
   }
-  result.push_back(std::move(token));
+  result.resize(column + 1);
+}
 
+std::vector<std::string> split_csv_line(const std::string& str, char separator) {
+  std::vector<std::string> result;
+  split_csv_line_into(str, separator, result);
   return result;
 }
 
@@ -752,46 +772,47 @@ std::string create_operator(const std::string& term_map,
                             std::unordered_map<std::string, std::string>& map) {
   std::string rdf_term = term_map;
 
-  auto normalize_iri_annotation = [&base_uri](std::string annotation_value) {
+  auto normalize_iri_annotation = [&base_uri](std::string& annotation_value) {
     if (annotation_value == "None") {
-      return annotation_value;
+      return;
     }
     if (!(annotation_value.starts_with("http://") || annotation_value.starts_with("https://"))) {
       annotation_value = base_uri + annotation_value;
     }
-    return annotation_value;
   };
 
   // Handle template
   if (term_map_type == "template") {
     std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
     std::string effective_data_type = resolve_annotation_value(data_type, map);
-    effective_data_type = normalize_iri_annotation(effective_data_type);
+    normalize_iri_annotation(effective_data_type);
 
-    // Find all matches in term_map
-    std::vector<std::string> matches = extract_substrings(rdf_term);
+    if (rdf_term.find('{') != std::string::npos) {
+      // Find all matches in term_map
+      std::vector<std::string> matches = extract_substrings(rdf_term);
 
-    // Fill in template
-    for (const auto& match : matches) {
-      // Get data of row at match
-      std::string data = map[match];
-      // If IRI make data safes
-      if (term_type == "uri") {
-        data = make_safe_iri(data, true);
-      } else if (term_type == "iri") {
-        data = make_safe_iri(data, false);
+      // Fill in template
+      for (const auto& match : matches) {
+        // Get data of row at match
+        std::string data = map[match];
+        // If IRI make data safes
+        if (term_type == "uri") {
+          data = make_safe_iri(data, true);
+        } else if (term_type == "iri") {
+          data = make_safe_iri(data, false);
+        }
+
+        // Replace reference id with actual data
+        std::string placeholder = "{" + match + "}";
+        rdf_term = replace_substring(rdf_term, placeholder, data);
+        if (rdf_term.find(placeholder) == std::string::npos) {
+          std::string escaped_placeholder = "{" + escape_braces(match) + "}";
+          rdf_term = replace_substring(rdf_term, escaped_placeholder, data);
+        }
+
+        // unmask data, remove \\ in fromt of { or }
+        rdf_term = unmaskString(rdf_term);
       }
-
-      // Replace reference id with actual data
-      std::string placeholder = "{" + match + "}";
-      rdf_term = replace_substring(rdf_term, placeholder, data);
-      if (rdf_term.find(placeholder) == std::string::npos) {
-        std::string escaped_placeholder = "{" + escape_braces(match) + "}";
-        rdf_term = replace_substring(rdf_term, escaped_placeholder, data);
-      }
-
-      // unmask data, remove \\ in fromt of { or }
-      rdf_term = unmaskString(rdf_term);
     }
 
     // Add base iri if needed
@@ -808,14 +829,13 @@ std::string create_operator(const std::string& term_map,
     std::string data = map[term_map];
     std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
     std::string effective_data_type = resolve_annotation_value(data_type, map);
-    effective_data_type = normalize_iri_annotation(effective_data_type);
+    normalize_iri_annotation(effective_data_type);
 
     if (term_type == "literal") {
       effective_data_type = infer_literal_datatype(data, effective_lang_tag, effective_data_type);
     }
 
-    // Replace reference id with actual data
-    rdf_term = replace_substring(rdf_term, term_map, data);
+    rdf_term = std::move(data);
 
     // Add base iri if needed
     if ((term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") && !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
@@ -828,7 +848,7 @@ std::string create_operator(const std::string& term_map,
   } else if (term_map_type == "constant") {
     std::string effective_lang_tag = resolve_annotation_value(lang_tag, map);
     std::string effective_data_type = resolve_annotation_value(data_type, map);
-    effective_data_type = normalize_iri_annotation(effective_data_type);
+    normalize_iri_annotation(effective_data_type);
     if (term_type == "literal") {
       effective_data_type = infer_literal_datatype(rdf_term, effective_lang_tag, effective_data_type);
     }
