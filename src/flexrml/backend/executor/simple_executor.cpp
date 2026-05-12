@@ -12,6 +12,7 @@
 #include <queue>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -22,6 +23,13 @@
 #include "utils.h"
 
 namespace fs = std::filesystem;
+
+static void create_parent_directories_if_needed(const fs::path& path) {
+  const auto parent = path.parent_path();
+  if (!parent.empty()) {
+    fs::create_directories(parent);
+  }
+}
 
 ///////////////////////////////////////////////////////////////
 /// Data setup
@@ -65,7 +73,7 @@ SetupData initialize_setup(const fs::path& output_file_name) {
   data.buffered_res.reserve(204800);
 
   // Open output file
-  fs::create_directories(output_file_name.parent_path());
+  create_parent_directories_if_needed(output_file_name);
   data.outputFile.open(output_file_name, std::ios::app);
 
   if (!data.outputFile) {
@@ -130,7 +138,9 @@ static std::unique_ptr<std::istream> open_from_map_or_file(
   }
 
   auto f = std::make_unique<std::ifstream>(path);
-  if (!f->is_open()) return nullptr;
+  if (!f->is_open()) {
+    throw std::runtime_error("Could not open logical source: " + path);
+  }
   return f;
 }
 
@@ -814,12 +824,10 @@ size_t standalone_simple_mapping(const std::string& information, const std::unor
     }
   } catch (const std::runtime_error& e) {
     if (continue_on_error == false) {
-      std::cout << e.what() << std::endl;
-      std::exit(1);
+      throw;
     }
   } catch (...) {
-    std::cout << "Unknown exception caught!" << std::endl;
-    std::exit(1);
+    throw std::runtime_error("Unknown exception caught while executing simple mapping.");
   }
 
   return info.generated_triple;
@@ -864,12 +872,10 @@ std::unordered_set<std::string> dependent_simple_mapping(const std::string& info
     }
   } catch (const std::runtime_error& e) {
     if (continue_on_error == false) {
-      std::cout << e.what() << std::endl;
-      std::exit(1);
+      throw;
     }
   } catch (...) {
-    std::cout << "Unknown exception caught!" << std::endl;
-    std::exit(1);
+    throw std::runtime_error("Unknown exception caught while executing dependent simple mapping.");
   }
 
   return unique_triple;

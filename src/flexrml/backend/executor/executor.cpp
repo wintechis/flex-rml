@@ -5,6 +5,7 @@
 #include <iostream>
 #include <mutex>
 #include <queue>
+#include <exception>
 #include <string>
 #include <thread>
 #include <unordered_set>
@@ -23,6 +24,7 @@ class ThreadPool {
 
   void enqueue(std::function<void()> task);
   void shutdown();
+  void rethrow_if_failed() const;
 
  private:
   std::vector<std::thread> workers;
@@ -32,6 +34,7 @@ class ThreadPool {
   std::condition_variable condition;
   bool stop;
   bool shutdownCalled;
+  std::exception_ptr firstException;
 };
 
 ThreadPool::ThreadPool(size_t numThreads) : stop(false), shutdownCalled(false) {
@@ -47,7 +50,18 @@ ThreadPool::ThreadPool(size_t numThreads) : stop(false), shutdownCalled(false) {
           task = std::move(this->tasks.front());
           this->tasks.pop();
         }
-        task();
+        try {
+          task();
+        } catch (...) {
+          std::unique_lock<std::mutex> lock(this->queueMutex);
+          if (!this->firstException) {
+            this->firstException = std::current_exception();
+          }
+          std::queue<std::function<void()>> empty;
+          this->tasks.swap(empty);
+          this->stop = true;
+          this->condition.notify_all();
+        }
       }
     });
   }
@@ -73,6 +87,12 @@ void ThreadPool::shutdown() {
     if (worker.joinable()) {
       worker.join();
     }
+  }
+}
+
+void ThreadPool::rethrow_if_failed() const {
+  if (firstException) {
+    std::rethrow_exception(firstException);
   }
 }
 
@@ -286,6 +306,7 @@ std::string execute_physical_plans_string(const std::string& information,
 
     // Shutdown the pool to ensure all tasks finish.
     pool.shutdown();
+    pool.rethrow_if_failed();
   } 
   return std::to_string(nr_generate_triple.load()) + "|||" + output_data_str;
 }
