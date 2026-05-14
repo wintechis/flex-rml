@@ -21,6 +21,7 @@
 
 #include <ankerl/unordered_dense.h>
 
+#include "csv_row.h"
 #include "definitions.h"
 #include "utils.h"
 #include "xxhash.h"
@@ -390,15 +391,6 @@ static bool render_runtime_term(const CompiledRuntimeTerm& term,
   return false;
 }
 
-static bool row_has_skip_value(const std::vector<std::string_view>& projected_row) {
-  for (const auto& target : values_to_skip) {
-    if (std::any_of(projected_row.begin(), projected_row.end(), [&target](std::string_view value) { return value == target; })) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static uint64_t combined_hash_views(const std::vector<std::string_view>& fields) {
   uint64_t hash = 0;
   for (const auto& field : fields) {
@@ -530,41 +522,6 @@ std::vector<JoinBinding> resolve_join_bindings(const std::vector<std::string>& p
   return bindings;
 }
 
-static void project_row_views_into(const std::vector<std::string_view>& split_line,
-                                   const std::vector<int>& projected_indices,
-                                   std::vector<std::string_view>& projected_row) {
-  if (projected_row.size() < projected_indices.size()) {
-    projected_row.resize(projected_indices.size());
-  }
-  for (std::size_t i = 0; i < projected_indices.size(); ++i) {
-    projected_row[i] = split_line[projected_indices[i]];
-  }
-  projected_row.resize(projected_indices.size());
-}
-
-static void project_row_strings_into(const std::vector<std::string>& split_line,
-                                     const std::vector<int>& projected_indices,
-                                     std::vector<std::string>& projected_row) {
-  if (projected_row.size() < projected_indices.size()) {
-    projected_row.resize(projected_indices.size());
-  }
-  for (std::size_t i = 0; i < projected_indices.size(); ++i) {
-    projected_row[i] = split_line[projected_indices[i]];
-  }
-  projected_row.resize(projected_indices.size());
-}
-
-static void materialize_row_views(const std::vector<std::string_view>& projected_row_views,
-                                  std::vector<std::string>& projected_row) {
-  if (projected_row.size() < projected_row_views.size()) {
-    projected_row.resize(projected_row_views.size());
-  }
-  for (std::size_t i = 0; i < projected_row_views.size(); ++i) {
-    projected_row[i].assign(projected_row_views[i]);
-  }
-  projected_row.resize(projected_row_views.size());
-}
-
 static void append_joined_views(const std::vector<std::string>& left_row,
                                 const std::vector<std::string_view>& right_row,
                                 std::vector<std::string_view>& joined_row) {
@@ -594,10 +551,10 @@ JoinHashTable build_hash_table(std::istream& input_file,
 
   while (std::getline(input_file, line)) {
     if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_views_into(split_line_views, projected_indeces, projected_row_views);
+      project_row_into(split_line_views, projected_indeces, projected_row_views);
     } else {
       split_csv_line_into(line, ',', split_line);
-      project_row_strings_into(split_line, projected_indeces, projected_row);
+      project_row_into(split_line, projected_indeces, projected_row);
       projected_row_views.clear();
       projected_row_views.reserve(projected_row.size());
       for (const auto& value : projected_row) {
@@ -751,10 +708,10 @@ int execute_complex(const fs::path& output_file_name,
   while (getline(*right_file, line)) {
     line_count++;
     if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_views_into(split_line_views, right_proj_indices, projected_row);
+      project_row_into(split_line_views, right_proj_indices, projected_row);
     } else {
       split_csv_line_into(line, ',', split_line);
-      project_row_strings_into(split_line, right_proj_indices, projected_row_storage);
+      project_row_into(split_line, right_proj_indices, projected_row_storage);
       projected_row.clear();
       projected_row.reserve(projected_row_storage.size());
       for (const auto& value : projected_row_storage) {
@@ -929,10 +886,10 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
   while (getline(*right_file, line)) {
     line_count++;
     if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_views_into(split_line_views, right_proj_indices, projected_row);
+      project_row_into(split_line_views, right_proj_indices, projected_row);
     } else {
       split_csv_line_into(line, ',', split_line);
-      project_row_strings_into(split_line, right_proj_indices, projected_row_storage);
+      project_row_into(split_line, right_proj_indices, projected_row_storage);
       projected_row.clear();
       projected_row.reserve(projected_row_storage.size());
       for (const auto& value : projected_row_storage) {
@@ -1107,10 +1064,10 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   while (getline(*right_file, line)) {
     line_count++;
     if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_views_into(split_line_views, right_proj_indices, projected_row);
+      project_row_into(split_line_views, right_proj_indices, projected_row);
     } else {
       split_csv_line_into(line, ',', split_line);
-      project_row_strings_into(split_line, right_proj_indices, projected_row_storage);
+      project_row_into(split_line, right_proj_indices, projected_row_storage);
       projected_row.clear();
       projected_row.reserve(projected_row_storage.size());
       for (const auto& value : projected_row_storage) {
@@ -1290,10 +1247,10 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
   while (getline(*right_file, line)) {
     line_count++;
     if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_views_into(split_line_views, right_proj_indices, projected_row);
+      project_row_into(split_line_views, right_proj_indices, projected_row);
     } else {
       split_csv_line_into(line, ',', split_line);
-      project_row_strings_into(split_line, right_proj_indices, projected_row_storage);
+      project_row_into(split_line, right_proj_indices, projected_row_storage);
       projected_row.clear();
       projected_row.reserve(projected_row_storage.size());
       for (const auto& value : projected_row_storage) {

@@ -38,6 +38,7 @@ set(FLEXRML_SOURCES
   src/flexrml/core/json_preprocessor.cpp
   src/flexrml/core/backend_planner.cpp
   src/flexrml/backend/optimizations/ra_expression_partitioner.cpp
+  src/flexrml/backend/executor/csv_row.cpp
   src/flexrml/backend/executor/executor.cpp
   src/flexrml/backend/executor/simple_executor.cpp
   src/flexrml/backend/executor/utils.cpp
