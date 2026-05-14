@@ -1,8 +1,12 @@
 #include <atomic>
+#include <cerrno>
 #include <condition_variable>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <exception>
@@ -18,9 +22,12 @@
 #include "simple_executor.h"
 #include "utils.h"
 
+namespace fs = std::filesystem;
+
 namespace {
 
 constexpr std::size_t kOutputBufferReserve = 64 * 1024;
+constexpr std::size_t kMaxQueuedOutputBytes = 64 * 1024 * 1024;
 
 void write_triples_chunked(std::ostream& output, const std::unordered_set<std::string>& triples) {
   std::string buffer;
@@ -36,6 +43,24 @@ void write_triples_chunked(std::ostream& output, const std::unordered_set<std::s
 
   if (!buffer.empty()) {
     output << buffer;
+  }
+}
+
+void write_triples_chunked(OutputChunkWriter& output, const std::unordered_set<std::string>& triples) {
+  std::string buffer;
+  buffer.reserve(kOutputBufferReserve);
+
+  for (const auto& triple : triples) {
+    if (!buffer.empty() && buffer.size() + triple.size() > kOutputBufferReserve) {
+      output.write(std::move(buffer));
+      buffer.clear();
+      buffer.reserve(kOutputBufferReserve);
+    }
+    buffer += triple;
+  }
+
+  if (!buffer.empty()) {
+    output.write(std::move(buffer));
   }
 }
 
@@ -144,6 +169,136 @@ void ThreadPool::rethrow_if_failed() const {
 }
 
 ThreadPool::~ThreadPool() { shutdown(); }
+
+class SharedOutputWriter : public OutputChunkWriter {
+ public:
+  explicit SharedOutputWriter(const std::string& output_path)
+      : output_path(output_path), output(output_path, std::ios::app | std::ios::binary), closed(false) {
+    if (!output) {
+      throw std::runtime_error("Unable to open output file for writing: " + output_path);
+    }
+
+    worker = std::thread([this] { run(); });
+  }
+
+  ~SharedOutputWriter() override {
+    try {
+      close();
+    } catch (...) {
+    }
+  }
+
+  void write(std::string chunk) override {
+    if (chunk.empty()) {
+      return;
+    }
+
+    const std::size_t chunk_size = chunk.size();
+    {
+      std::unique_lock<std::mutex> lock(queue_mutex);
+      condition.wait(lock, [this, chunk_size] {
+        return closed || queued_bytes + chunk_size <= kMaxQueuedOutputBytes;
+      });
+      if (closed) {
+        rethrow_if_failed();
+        throw std::runtime_error("Cannot write to closed output writer.");
+      }
+      queued_bytes += chunk_size;
+      chunks.push(std::move(chunk));
+    }
+    condition.notify_one();
+  }
+
+  void close() {
+    {
+      std::unique_lock<std::mutex> lock(queue_mutex);
+      closed = true;
+    }
+    condition.notify_all();
+    if (worker.joinable()) {
+      worker.join();
+    }
+    rethrow_if_failed();
+  }
+
+ private:
+  void run() {
+    try {
+      for (;;) {
+        std::string chunk;
+        {
+          std::unique_lock<std::mutex> lock(queue_mutex);
+          condition.wait(lock, [this] { return closed || !chunks.empty(); });
+          if (chunks.empty()) {
+            if (closed) {
+              break;
+            }
+            continue;
+          }
+          chunk = std::move(chunks.front());
+          chunks.pop();
+          queued_bytes -= chunk.size();
+          condition.notify_all();
+        }
+        output.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        if (!output) {
+          throw write_failure(chunk.size());
+        }
+      }
+      output.flush();
+      if (!output) {
+        throw write_failure(0);
+      }
+    } catch (...) {
+      std::unique_lock<std::mutex> lock(queue_mutex);
+      if (!first_exception) {
+        first_exception = std::current_exception();
+      }
+      closed = true;
+      std::queue<std::string> empty;
+      chunks.swap(empty);
+      queued_bytes = 0;
+      condition.notify_all();
+    }
+  }
+
+  std::runtime_error write_failure(std::size_t attempted_bytes) const {
+    std::string message = "Failed while writing output to " + output_path;
+    if (attempted_bytes > 0) {
+      message += " (" + std::to_string(attempted_bytes) + " bytes)";
+    }
+
+    const int error_number = errno;
+    if (error_number != 0) {
+      message += ": " + std::string(std::strerror(error_number));
+    }
+
+    std::error_code error;
+    const auto parent = fs::path(output_path).parent_path();
+    const auto space = fs::space(parent.empty() ? fs::path(".") : parent, error);
+    if (!error) {
+      message += "; available space: " + std::to_string(space.available) + " bytes";
+    }
+
+    return std::runtime_error(message);
+  }
+
+  void rethrow_if_failed() const {
+    if (first_exception) {
+      std::rethrow_exception(first_exception);
+    }
+  }
+
+  std::string output_path;
+  std::ofstream output;
+  std::thread worker;
+  std::queue<std::string> chunks;
+  std::mutex queue_mutex;
+  std::condition_variable condition;
+  std::size_t queued_bytes = 0;
+  bool closed;
+  std::exception_ptr first_exception;
+};
 
 ///////////////////////////////////////////////////////////////
 void clear_output_file(const std::string& output_file_path) {
@@ -254,16 +409,36 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
     }
     ThreadPool pool(numThreads);
     std::mutex output_mutex;
+    bool can_use_shared_writer = !keep_in_memory;
+    for (const auto& partition : partitions) {
+      if (partition.plans.size() == 1 && !partition.has_function_call &&
+          partition.plans[0].kind == PhysicalPlanKind::Complex) {
+        can_use_shared_writer = false;
+        break;
+      }
+    }
+
+    std::unique_ptr<SharedOutputWriter> shared_writer;
+    if (can_use_shared_writer) {
+      shared_writer = std::make_unique<SharedOutputWriter>(ouput_file);
+    }
+    OutputChunkWriter* shared_writer_ptr = shared_writer.get();
 
     // Enqueue each partition as a task.
     for (const auto& partition : partitions) {
-      pool.enqueue([partition, &nr_generate_triple, &output_mutex, &ouput_file, keep_in_memory, &output_data_str, &data_map]() {
+      pool.enqueue([partition, &nr_generate_triple, &output_mutex, &ouput_file, keep_in_memory, &output_data_str, &data_map, shared_writer_ptr]() {
         // CASE 1: Partition contains only one element.
         if (partition.plans.size() == 1 && !keep_in_memory && !partition.has_function_call) {
           const PhysicalPlan& plan = partition.plans[0];
           if (plan.kind == PhysicalPlanKind::Simple) {
-            nr_generate_triple.fetch_add(execute_standalone_simple_plan(plan.simple, data_map), std::memory_order_relaxed);
+            if (shared_writer_ptr != nullptr) {
+              nr_generate_triple.fetch_add(execute_standalone_simple_plan(plan.simple, data_map, shared_writer_ptr), std::memory_order_relaxed);
+            } else {
+              std::lock_guard<std::mutex> lock(output_mutex);
+              nr_generate_triple.fetch_add(execute_standalone_simple_plan(plan.simple, data_map), std::memory_order_relaxed);
+            }
           } else {
+            std::lock_guard<std::mutex> lock(output_mutex);
             nr_generate_triple.fetch_add(standalone_complex_mapping(plan.raw, data_map), std::memory_order_relaxed);
           }
         }
@@ -279,11 +454,13 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
           }
           nr_generate_triple.fetch_add(unique_triple.size(), std::memory_order_relaxed);
 
-          // Protect file writing using a mutex.
-          std::lock_guard<std::mutex> lock(output_mutex);
           if (keep_in_memory){
+            std::lock_guard<std::mutex> lock(output_mutex);
             append_triples(output_data_str, unique_triple);
+          } else if (shared_writer_ptr != nullptr) {
+            write_triples_chunked(*shared_writer_ptr, unique_triple);
           } else {
+            std::lock_guard<std::mutex> lock(output_mutex);
             std::ofstream outputFile(ouput_file, std::ios::app);
             if (!outputFile) {
               std::cout << "Error: Unable to open file for writing." << std::endl;
@@ -299,6 +476,9 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
 
     // Shutdown the pool to ensure all tasks finish.
     pool.shutdown();
+    if (shared_writer) {
+      shared_writer->close();
+    }
     pool.rethrow_if_failed();
   } 
   return std::to_string(nr_generate_triple.load()) + "|||" + output_data_str;

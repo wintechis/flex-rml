@@ -524,10 +524,12 @@ struct SetupData {
   std::string graph_scratch;
 
   std::ofstream outputFile;
+  OutputChunkWriter* writer = nullptr;
 };
 
-SetupData initialize_setup(const fs::path& output_file_name) {
+SetupData initialize_setup(const fs::path& output_file_name, OutputChunkWriter* writer = nullptr) {
   SetupData data;
+  data.writer = writer;
 
   // Reserve memory for strings and vectors
   data.line.reserve(512);
@@ -548,18 +550,35 @@ SetupData initialize_setup(const fs::path& output_file_name) {
   data.object_scratch.reserve(512);
   data.graph_scratch.reserve(512);
 
-  // Open output file
-  create_parent_directories_if_needed(output_file_name);
-  data.outputFile.open(output_file_name, std::ios::app);
+  if (data.writer == nullptr) {
+    // Open output file
+    create_parent_directories_if_needed(output_file_name);
+    data.outputFile.open(output_file_name, std::ios::app);
 
-  if (!data.outputFile) {
-    std::cerr << "Error: Unable to open file for writing." << std::endl;
-    std::exit(1);
+    if (!data.outputFile) {
+      std::cerr << "Error: Unable to open file for writing." << std::endl;
+      std::exit(1);
+    }
   }
 
   return data;
 }
 ///////////////
+
+static void flush_setup_buffer(SetupData& setup_data) {
+  if (setup_data.buffered_res.empty()) {
+    return;
+  }
+
+  if (setup_data.writer != nullptr) {
+    setup_data.writer->write(std::move(setup_data.buffered_res));
+    setup_data.buffered_res.clear();
+    setup_data.buffered_res.reserve(kOutputBufferReserve);
+  } else {
+    setup_data.outputFile << setup_data.buffered_res;
+    setup_data.buffered_res.clear();
+  }
+}
 
 SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   SetupData data;
@@ -647,9 +666,10 @@ int execute_simple_with_graph(const std::string& input_file_name,
                               const std::vector<std::string>& p_content,
                               const std::vector<std::string>& o_content,
                               const std::vector<std::string>& g_content,
-                              const std::unordered_map<std::string, std::string>& data_map) {
+                              const std::unordered_map<std::string, std::string>& data_map,
+                              OutputChunkWriter* writer = nullptr) {
   // Setup
-  SetupData setup_data = initialize_setup(output_file_name);
+  SetupData setup_data = initialize_setup(output_file_name, writer);
 
   //////////////////////////////////////////////////////////////////////
   // Open input file
@@ -728,12 +748,11 @@ int execute_simple_with_graph(const std::string& input_file_name,
     if (setup_data.write_cnt == setup_data.buffer_limit) {
       setup_data.write_cnt = 0;
       ////// SERIALIZE //////
-      setup_data.outputFile << setup_data.buffered_res;
-      setup_data.buffered_res = "";
+      flush_setup_buffer(setup_data);
     }
   }
   ////// SERIALIZE //////
-  setup_data.outputFile << setup_data.buffered_res;
+  flush_setup_buffer(setup_data);
 
   return setup_data.triple_counter;
 }
@@ -841,9 +860,10 @@ int execute_simple(const std::string& input_file_name,
                    const std::vector<std::string>& s_content,
                    const std::vector<std::string>& p_content,
                    const std::vector<std::string>& o_content,
-                   const std::unordered_map<std::string, std::string>& data_map) {
+                   const std::unordered_map<std::string, std::string>& data_map,
+                   OutputChunkWriter* writer = nullptr) {
   ///// Setup /////
-  SetupData setup_data = initialize_setup(output_file_name);
+  SetupData setup_data = initialize_setup(output_file_name, writer);
 
   //////////////////////////////////////////////////////////////////////
   // Open input file
@@ -920,12 +940,11 @@ int execute_simple(const std::string& input_file_name,
     if (setup_data.write_cnt == setup_data.buffer_limit) {
       setup_data.write_cnt = 0;
       ////// SERIALIZE //////
-      setup_data.outputFile << setup_data.buffered_res;
-      setup_data.buffered_res = "";
+      flush_setup_buffer(setup_data);
     }
   }
   ////// SERIALIZE //////
-  setup_data.outputFile << setup_data.buffered_res;
+  flush_setup_buffer(setup_data);
 
   return setup_data.triple_counter;
 }
@@ -1065,6 +1084,58 @@ size_t standalone_simple_mapping(const std::string& information, const std::unor
 }
 
 size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unordered_map<std::string, std::string>& data_map) {
+  return execute_standalone_simple_plan(info, data_map, nullptr);
+}
+
+static void write_constant_statement(const std::vector<std::string>& s_content,
+                                     const std::vector<std::string>& p_content,
+                                     const std::vector<std::string>& o_content,
+                                     const std::vector<std::string>& g_content,
+                                     OutputChunkWriter* writer,
+                                     const fs::path& output_file_name) {
+  if (writer == nullptr) {
+    handle_constant(s_content, p_content, o_content, g_content, output_file_name);
+    return;
+  }
+
+  std::string subject;
+  std::string predicate;
+  std::string object;
+  handle_term_type_into(s_content[2], s_content[0], "", "", subject);
+  handle_term_type_into(p_content[2], p_content[0], "", "", predicate);
+  handle_term_type_into(o_content[2], o_content[0],
+                        o_content.size() > 3 ? o_content[3] : "",
+                        o_content.size() > 4 ? o_content[4] : "",
+                        object);
+  if (g_content.empty()) {
+    writer->write(format_statement(subject, predicate, object));
+    return;
+  }
+
+  std::string graph;
+  handle_term_type_into(g_content[2], g_content[0], "", "", graph);
+  writer->write(format_statement(subject, predicate, object, graph));
+}
+
+static void write_preformatted_statement(const std::vector<std::string>& s_content,
+                                         const std::vector<std::string>& p_content,
+                                         const std::vector<std::string>& o_content,
+                                         const std::vector<std::string>& g_content,
+                                         OutputChunkWriter* writer,
+                                         const fs::path& output_file_name) {
+  if (writer == nullptr) {
+    handle_constant_preformatted(s_content, p_content, o_content, g_content, output_file_name);
+    return;
+  }
+
+  if (g_content.empty()) {
+    writer->write(format_statement(s_content[0], p_content[0], o_content[0]));
+    return;
+  }
+  writer->write(format_statement(s_content[0], p_content[0], o_content[0], g_content[0]));
+}
+
+size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unordered_map<std::string, std::string>& data_map, OutputChunkWriter* writer) {
   size_t generated_triple = 0;
   ////////////////////////////////////////////////////////////
   // Execute
@@ -1073,27 +1144,27 @@ size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unorder
       // handle without graph //
       // Check if all entrries are constant
       if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant") {
-        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);  // Graph is dummy
+        write_constant_statement(info.s_content, info.p_content, info.o_content, info.g_content, writer, info.output_file_name);
         generated_triple = 1;
       } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted") {
-        handle_constant_preformatted(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
+        write_preformatted_statement(info.s_content, info.p_content, info.o_content, info.g_content, writer, info.output_file_name);
         generated_triple = 1;
       } else {
         generated_triple = execute_simple(info.input_file_name, info.output_file_name, info.base_uri,
-                                          info.projected_attributes, info.s_content, info.p_content, info.o_content, data_map);
+                                          info.projected_attributes, info.s_content, info.p_content, info.o_content, data_map, writer);
       }
     } else {
       // Handle with graph //
       if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant" && info.g_content[1] == "constant") {
-        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
+        write_constant_statement(info.s_content, info.p_content, info.o_content, info.g_content, writer, info.output_file_name);
         generated_triple = 1;
       } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted" && info.g_content[1] == "preformatted") {
-        handle_constant_preformatted(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
+        write_preformatted_statement(info.s_content, info.p_content, info.o_content, info.g_content, writer, info.output_file_name);
         generated_triple = 1;
       } else {
         // If not constant handle normal
         generated_triple = execute_simple_with_graph(info.input_file_name, info.output_file_name, info.base_uri,
-                                                     info.projected_attributes, info.s_content, info.p_content, info.o_content, info.g_content, data_map);
+                                                     info.projected_attributes, info.s_content, info.p_content, info.o_content, info.g_content, data_map, writer);
       }
     }
   } catch (const std::runtime_error& e) {

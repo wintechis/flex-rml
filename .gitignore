@@ -34,6 +34,7 @@ CMakeUserPresets.json
 
 # Generated benchmark output
 /benchmark/
+/benchmark/tmp/
 
 # External conformance test-case checkouts
 /test_cases/*

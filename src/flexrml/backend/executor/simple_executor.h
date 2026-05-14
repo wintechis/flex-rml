@@ -6,6 +6,12 @@
 #include <unordered_set>
 #include <unordered_map>
 
+class OutputChunkWriter {
+ public:
+  virtual ~OutputChunkWriter() = default;
+  virtual void write(std::string chunk) = 0;
+};
+
 struct SimplePlan {
   std::filesystem::path output_file_name;
   std::string base_uri;
@@ -20,6 +26,7 @@ struct SimplePlan {
 
 SimplePlan parse_simple_plan(const std::string& information);
 size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unordered_map<std::string, std::string>& data_map);
+size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unordered_map<std::string, std::string>& data_map, OutputChunkWriter* writer);
 std::unordered_set<std::string> execute_dependent_simple_plan(const SimplePlan& info, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map);
 
 size_t standalone_simple_mapping(const std::string& information, const std::unordered_map<std::string, std::string>& data_map);

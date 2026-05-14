@@ -10,7 +10,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -30,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build", action="store_true", help="Build the release/default preset before running.")
     parser.add_argument("--no-threading", action="store_true", help="Pass --no-threading to flexrml.")
     parser.add_argument("--keep-outputs", action="store_true", help="Keep generated .nt files under the output directory.")
+    parser.add_argument("--tmp-dir", default="benchmark/tmp", help="Directory for temporary benchmark outputs when --keep-outputs is not set.")
     parser.add_argument("--csv", default="", help="Explicit CSV result path. Defaults to output-dir/benchmark_<timestamp>.csv.")
     return parser.parse_args()
 
@@ -131,6 +131,17 @@ def parse_float(value: str) -> float | None:
         return None
 
 
+def format_rss(max_rss_kb: str) -> str:
+    value = parse_float(max_rss_kb)
+    if value is None:
+        return "mem=n/a"
+    if value >= 1024 * 1024:
+        return f"mem={value / (1024 * 1024):.2f} GB"
+    if value >= 1024:
+        return f"mem={value / 1024:.1f} MB"
+    return f"mem={value:.0f} KB"
+
+
 def print_category_summary(rows: list[dict[str, str]]) -> None:
     categories: dict[str, dict[str, float]] = {}
     for row in rows:
@@ -166,6 +177,7 @@ def main() -> int:
     benchmark_dir = (root / args.benchmark_dir).resolve()
     binary = (root / args.binary).resolve()
     output_dir = (root / args.output_dir).resolve()
+    tmp_dir = (root / args.tmp_dir).resolve()
 
     if args.repeats < 1:
         raise SystemExit("--repeats must be at least 1")
@@ -187,8 +199,7 @@ def main() -> int:
     csv_path = Path(args.csv).resolve() if args.csv else output_dir / f"benchmark_{timestamp}.csv"
 
     rows: list[dict[str, str]] = []
-    temp_context = tempfile.TemporaryDirectory(prefix="flexrml_benchmark_") if not args.keep_outputs else None
-    generated_dir = output_dir / "outputs" if args.keep_outputs else Path(temp_context.name)
+    generated_dir = output_dir / "outputs" if args.keep_outputs else tmp_dir
     generated_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -201,7 +212,10 @@ def main() -> int:
                     output_path.unlink()
                 result = run_case(root, binary, case_dir, output_path, args.no_threading)
                 status = "ok" if result["return_code"] == "0" else f"failed:{result['return_code']}"
-                print(f"{category}/{case_dir.name} warmup {warmup_index}/{args.warmups}: {status}, wall={result['wall_seconds']}s")
+                print(
+                    f"{category}/{case_dir.name} warmup {warmup_index}/{args.warmups}: "
+                    f"{status}, wall={result['wall_seconds']}s, {format_rss(result['max_rss_kb'])}"
+                )
                 if output_path.exists():
                     output_path.unlink()
                 if result["return_code"] != "0":
@@ -212,23 +226,31 @@ def main() -> int:
                 if output_path.exists():
                     output_path.unlink()
                 result = run_case(root, binary, case_dir, output_path, args.no_threading)
+                generated_triples = count_lines(output_path)
+                output_bytes = output_path.stat().st_size if output_path.exists() else 0
                 row = {
                     "category": category,
                     "case": case_dir.name,
                     "run": str(run_index),
-                    "generated_triples": str(count_lines(output_path)),
-                    "output_bytes": str(output_path.stat().st_size if output_path.exists() else 0),
+                    "generated_triples": str(generated_triples),
+                    "output_bytes": str(output_bytes),
                     **{key: value for key, value in result.items() if key not in {"stdout", "stderr"}},
                 }
                 rows.append(row)
                 status = "ok" if result["return_code"] == "0" else f"failed:{result['return_code']}"
-                print(f"{category}/{case_dir.name} run {run_index}/{args.repeats}: {status}, wall={result['wall_seconds']}s")
+                print(
+                    f"{category}/{case_dir.name} run {run_index}/{args.repeats}: "
+                    f"{status}, wall={result['wall_seconds']}s, {format_rss(result['max_rss_kb'])}"
+                )
+                if not args.keep_outputs and output_path.exists():
+                    output_path.unlink()
                 if result["return_code"] != "0":
                     print(result["stderr"], file=sys.stderr)
                     return int(result["return_code"])
     finally:
-        if temp_context is not None:
-            temp_context.cleanup()
+        if not args.keep_outputs:
+            for output_path in generated_dir.glob("*.nt"):
+                output_path.unlink(missing_ok=True)
 
     fieldnames = [
         "category",
