@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <format>
 #include <fstream>
 #include <iostream>
@@ -90,23 +91,34 @@ bool split_csv_line_views_into(const std::string& str, char separator, std::vect
   }
 
   result.clear();
-  std::size_t field_start = 0;
 
-  for (std::size_t i = 0; i < str.size(); ++i) {
-    const unsigned char c = static_cast<unsigned char>(str[i]);
-    if (c == '"') {
-      return false;
-    }
-    if (std::iscntrl(c)) {
-      return false;
-    }
-    if (str[i] == separator) {
-      result.emplace_back(str.data() + field_start, i - field_start);
-      field_start = i + 1;
-    }
+  const char* data = str.data();
+  const std::size_t size = str.size();
+  if (std::memchr(data, '"', size) != nullptr ||
+      std::memchr(data, '\r', size) != nullptr ||
+      std::memchr(data, '\n', size) != nullptr ||
+      std::memchr(data, '\t', size) != nullptr) {
+    return false;
   }
 
-  result.emplace_back(str.data() + field_start, str.size() - field_start);
+  const char* const end = data + size;
+  const char* field_start = data;
+  const char* cursor = data;
+
+  while (cursor < end) {
+    const auto remaining = static_cast<std::size_t>(end - cursor);
+    const void* match = std::memchr(cursor, separator, remaining);
+    if (match == nullptr) {
+      break;
+    }
+
+    const char* separator_pos = static_cast<const char*>(match);
+    result.emplace_back(field_start, static_cast<std::size_t>(separator_pos - field_start));
+    cursor = separator_pos + 1;
+    field_start = cursor;
+  }
+
+  result.emplace_back(field_start, static_cast<std::size_t>(end - field_start));
   return true;
 }
 
