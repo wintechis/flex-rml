@@ -19,6 +19,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <ankerl/unordered_dense.h>
+
 #include "definitions.h"
 #include "utils.h"
 #include "xxhash.h"
@@ -472,6 +474,11 @@ struct JoinKey128Hasher {
   }
 };
 
+using JoinHashTable = ankerl::unordered_dense::map<JoinKey128,
+                                                   std::vector<std::vector<std::string>>,
+                                                   JoinKey128Hasher>;
+using RowHashSet = ankerl::unordered_dense::set<uint64_t>;
+
 JoinKey128 build_join_key(const std::vector<std::string>& row,
                           const std::vector<JoinBinding>& join_bindings) {
   JoinKey128 key;
@@ -569,11 +576,11 @@ static void append_joined_views(const std::vector<std::string>& left_row,
   joined_row.insert(joined_row.end(), right_row.begin(), right_row.end());
 }
 
-std::unordered_multimap<JoinKey128, std::vector<std::string>, JoinKey128Hasher> build_hash_table(std::istream& input_file,
-                                                                                                  const std::vector<int>& projected_indeces,
-                                                                                                  const std::vector<JoinBinding>& join_bindings) {
-  std::unordered_multimap<JoinKey128, std::vector<std::string>, JoinKey128Hasher> hash_table;
-  std::unordered_set<uint64_t> unique_hashes;
+JoinHashTable build_hash_table(std::istream& input_file,
+                               const std::vector<int>& projected_indeces,
+                               const std::vector<JoinBinding>& join_bindings) {
+  JoinHashTable hash_table;
+  RowHashSet unique_hashes;
 
   std::string line;
   std::vector<std::string_view> split_line_views;
@@ -609,7 +616,11 @@ std::unordered_multimap<JoinKey128, std::vector<std::string>, JoinKey128Hasher> 
 
     JoinKey128 key = build_join_key(projected_row_views, join_bindings);
     materialize_row_views(projected_row_views, projected_row);
-    hash_table.emplace(key, projected_row);
+    auto [it, inserted] = hash_table.try_emplace(key);
+    if (inserted) {
+      it->second.reserve(1);
+    }
+    it->second.push_back(projected_row);
   }
 
   return hash_table;
@@ -649,7 +660,7 @@ int execute_complex(const fs::path& output_file_name,
                      const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
   size_t triple_counter = 0;
   size_t write_cnt = 0;
   size_t buffer_limit = 20000;
@@ -763,11 +774,14 @@ int execute_complex(const fs::path& output_file_name,
     }
 
     JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto range = hash_table.equal_range(key);
+    auto matching_rows = hash_table.find(key);
+    if (matching_rows == hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (const auto& left_row : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(it->second, projected_row, joined_row);
+      append_joined_views(left_row, projected_row, joined_row);
 
       // Generate triple
       if (render_plan.needs_row_map) {
@@ -837,7 +851,7 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
                                                           const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
   std::string subject;
   std::string predicate;
   std::string object;
@@ -938,11 +952,14 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
     }
 
     JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto range = hash_table.equal_range(key);
+    auto matching_rows = hash_table.find(key);
+    if (matching_rows == hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (const auto& left_row : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(it->second, projected_row, joined_row);
+      append_joined_views(left_row, projected_row, joined_row);
 
       if (render_plan.needs_row_map) {
         update_row_map(row_map, joined_headers, joined_row);
@@ -996,7 +1013,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
                                const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
   size_t triple_counter = 0;
 
   size_t write_cnt = 0;
@@ -1113,11 +1130,14 @@ int execute_complex_with_graph(const fs::path& output_file_name,
     }
 
     JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto range = hash_table.equal_range(key);
+    auto matching_rows = hash_table.find(key);
+    if (matching_rows == hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (const auto& left_row : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(it->second, projected_row, joined_row);
+      append_joined_views(left_row, projected_row, joined_row);
 
       ////// CREATE //////
       if (render_plan.needs_row_map) {
@@ -1189,7 +1209,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
                                                                      const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
   std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
   std::string subject;
   std::string predicate;
   std::string object;
@@ -1293,11 +1313,14 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
     }
 
     JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto range = hash_table.equal_range(key);
+    auto matching_rows = hash_table.find(key);
+    if (matching_rows == hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (const auto& left_row : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(it->second, projected_row, joined_row);
+      append_joined_views(left_row, projected_row, joined_row);
 
       ////// CREATE //////
       if (render_plan.needs_row_map) {
