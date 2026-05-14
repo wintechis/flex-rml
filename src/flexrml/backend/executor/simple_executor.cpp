@@ -613,6 +613,11 @@ struct FusedSimpleRuntime {
   std::string graph_scratch;
 };
 
+struct FusedSimpleGroup {
+  std::vector<std::size_t> runtime_indices;
+  bool reuse_subject_predicate_object = false;
+};
+
 static void initialize_fused_runtime(FusedSimpleRuntime& runtime) {
   runtime.projected_row_storage.reserve(runtime.prepared.projected_indices.size());
   runtime.projected_row.reserve(runtime.prepared.projected_indices.size());
@@ -627,6 +632,51 @@ static void initialize_fused_runtime(FusedSimpleRuntime& runtime) {
   if (runtime.prepared.compiled.needs_row_map) {
     initialize_row_map(runtime.row, runtime.prepared.projected_header);
   }
+}
+
+static bool can_reuse_subject_predicate_object(const FusedSimpleRuntime& runtime) {
+  const CompiledSimplePlan& plan = runtime.prepared.compiled;
+  return plan.has_graph &&
+         !plan.needs_row_map &&
+         !plan.function_called &&
+         !plan.has_object_condition;
+}
+
+static bool has_same_subject_predicate_object_group(const FusedSimpleRuntime& left,
+                                                    const FusedSimpleRuntime& right) {
+  return left.prepared.source.base_uri == right.prepared.source.base_uri &&
+         left.prepared.source.projected_attributes == right.prepared.source.projected_attributes &&
+         left.prepared.source.s_content == right.prepared.source.s_content &&
+         left.prepared.source.p_content == right.prepared.source.p_content &&
+         left.prepared.source.o_content == right.prepared.source.o_content;
+}
+
+static std::vector<FusedSimpleGroup> build_fused_simple_groups(const std::vector<FusedSimpleRuntime>& runtimes) {
+  std::vector<FusedSimpleGroup> groups;
+  for (std::size_t i = 0; i < runtimes.size(); ++i) {
+    if (!can_reuse_subject_predicate_object(runtimes[i])) {
+      groups.push_back(FusedSimpleGroup{{i}, false});
+      continue;
+    }
+
+    bool added = false;
+    for (auto& group : groups) {
+      if (!group.reuse_subject_predicate_object) {
+        continue;
+      }
+      const FusedSimpleRuntime& representative = runtimes[group.runtime_indices.front()];
+      if (has_same_subject_predicate_object_group(representative, runtimes[i])) {
+        group.runtime_indices.push_back(i);
+        added = true;
+        break;
+      }
+    }
+
+    if (!added) {
+      groups.push_back(FusedSimpleGroup{{i}, true});
+    }
+  }
+  return groups;
 }
 
 static bool is_single_constant_statement(const SimplePlan& plan) {
@@ -1232,6 +1282,7 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
     initialize_fused_runtime(runtime);
     runtimes.push_back(std::move(runtime));
   }
+  const std::vector<FusedSimpleGroup> groups = build_fused_simple_groups(runtimes);
 
   int line_count = 0;
   while (std::getline(*file, setup_data.line)) {
@@ -1242,7 +1293,71 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
       split_csv_line_into(setup_data.line, ',', setup_data.split_line);
     }
 
-    for (auto& runtime : runtimes) {
+    for (const auto& group : groups) {
+      if (group.reuse_subject_predicate_object && group.runtime_indices.size() > 1) {
+        FusedSimpleRuntime& representative = runtimes[group.runtime_indices.front()];
+        const CompiledSimplePlan& representative_plan = representative.prepared.compiled;
+        if (use_views) {
+          project_row_into(setup_data.split_line_views, representative.prepared.projected_indices, representative.projected_row);
+        } else {
+          project_row_into(setup_data.split_line, representative.prepared.projected_indices, representative.projected_row_storage);
+          project_row_views_from_strings(representative.projected_row_storage, representative.projected_row);
+        }
+
+        if (row_has_skip_value(representative.projected_row)) {
+          continue;
+        }
+
+        std::string s_function_value;
+        std::string p_function_value;
+        std::string o_function_value;
+        try {
+          if (!render_runtime_term(representative_plan.subject, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.subject, representative.subject_scratch, s_function_value) ||
+              !render_runtime_term(representative_plan.predicate, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.predicate, representative.predicate_scratch, p_function_value) ||
+              !render_runtime_term(representative_plan.object, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.object, representative.object_scratch, o_function_value)) {
+            continue;
+          }
+        } catch (const std::runtime_error& e) {
+          if (continue_on_error == false) {
+            std::cout << e.what() << std::endl;
+            std::exit(1);
+          }
+          continue;
+        }
+
+        for (std::size_t runtime_index : group.runtime_indices) {
+          FusedSimpleRuntime& runtime = runtimes[runtime_index];
+          const CompiledSimplePlan& plan = runtime.prepared.compiled;
+          std::string g_function_value;
+          try {
+            if (!render_runtime_term(plan.graph, line_count, input_file_name, representative.projected_row, runtime.prepared.source.base_uri, runtime.row, runtime.graph, runtime.graph_scratch, g_function_value)) {
+              continue;
+            }
+          } catch (const std::runtime_error& e) {
+            if (continue_on_error == false) {
+              std::cout << e.what() << std::endl;
+              std::exit(1);
+            }
+            continue;
+          }
+
+          format_statement_into(representative.subject, representative.predicate, representative.object, runtime.graph, setup_data.res);
+          if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
+            continue;
+          }
+
+          setup_data.triple_counter++;
+          setup_data.buffered_res += setup_data.res;
+          setup_data.write_cnt++;
+          if (setup_data.write_cnt == setup_data.buffer_limit) {
+            setup_data.write_cnt = 0;
+            flush_setup_buffer(setup_data);
+          }
+        }
+        continue;
+      }
+
+      FusedSimpleRuntime& runtime = runtimes[group.runtime_indices.front()];
       const CompiledSimplePlan& plan = runtime.prepared.compiled;
       if (use_views) {
         project_row_into(setup_data.split_line_views, runtime.prepared.projected_indices, runtime.projected_row);
