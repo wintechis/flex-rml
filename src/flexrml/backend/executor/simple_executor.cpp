@@ -475,6 +475,183 @@ static bool render_runtime_term(const CompiledRuntimeTerm& term,
   return false;
 }
 
+static bool has_invalid_iri_char(std::string_view value) {
+  for (const char c : value) {
+    switch (c) {
+      case ' ':
+      case '!':
+      case '"':
+      case '\'':
+      case '(':
+      case ')':
+      case ',':
+      case '[':
+      case ']':
+        return true;
+      default:
+        break;
+    }
+  }
+  return false;
+}
+
+static void append_literal_term(std::string_view rdf_term,
+                                const std::string& lang_tag,
+                                const std::string& data_type,
+                                bool infer_datatype,
+                                std::string& out) {
+  const std::string effective_data_type =
+      infer_datatype ? infer_literal_datatype(rdf_term, lang_tag, data_type) : data_type;
+  const std::size_t required_size = out.size() + rdf_term.size() + effective_data_type.size() + lang_tag.size() + 6;
+  if (out.capacity() < required_size) {
+    out.reserve(required_size);
+  }
+  out.push_back('"');
+  out.append(rdf_term);
+  out.push_back('"');
+  if (effective_data_type != "None") {
+    out.append("^^<");
+    out.append(effective_data_type);
+    out.push_back('>');
+  } else if (lang_tag != "None") {
+    out.push_back('@');
+    out.append(lang_tag);
+  }
+}
+
+static bool append_fast_compiled_term(const CompiledRuntimeTerm& runtime_term,
+                                      const std::vector<std::string_view>& projected_row,
+                                      const std::string& base_uri,
+                                      std::string& out,
+                                      std::string& scratch) {
+  if (runtime_term.render_op == CompiledRuntimeTerm::RenderOp::Preformatted) {
+    out.append(runtime_term.content[0]);
+    return true;
+  }
+  if (runtime_term.render_op != CompiledRuntimeTerm::RenderOp::Compiled) {
+    return false;
+  }
+
+  const CompiledTerm& term = runtime_term.compiled;
+  if (!term.usable || term.term_type == "blanknode") {
+    return false;
+  }
+
+  scratch.clear();
+  std::string_view rdf_term = term.term_map;
+  if (term.map_type == CompiledTermMapType::Reference) {
+    rdf_term = projected_row[term.reference_index];
+  } else if (term.map_type == CompiledTermMapType::Template) {
+    if (scratch.capacity() < term.term_map.size()) {
+      scratch.reserve(term.term_map.size());
+    }
+    for (const CompiledTemplatePart& part : term.parts) {
+      if (part.reference_index >= 0) {
+        const std::string_view value = projected_row[part.reference_index];
+        if (term.term_type == "uri") {
+          append_safe_iri(value, true, scratch);
+        } else if (term.term_type == "iri") {
+          append_safe_iri(value, false, scratch);
+        } else {
+          scratch += value;
+        }
+      } else {
+        scratch += part.literal;
+      }
+    }
+    rdf_term = scratch;
+  }
+
+  if ((term.map_type == CompiledTermMapType::Reference || term.map_type == CompiledTermMapType::Template) &&
+      term.add_base_iri &&
+      !(rdf_term.starts_with("http://") || rdf_term.starts_with("https://"))) {
+    if (rdf_term.data() != scratch.data()) {
+      scratch.assign(rdf_term);
+    }
+    scratch.insert(0, base_uri);
+    rdf_term = scratch;
+  }
+
+  if (term.term_type == "literal") {
+    append_literal_term(rdf_term, term.lang_tag, term.data_type, term.infer_datatype, out);
+    return true;
+  }
+
+  if (term.term_type == "uri" || term.term_type == "iri" || term.term_type == "unsafeiri") {
+    if ((term.term_type == "uri" || term.term_type == "iri") && has_invalid_iri_char(rdf_term)) {
+      std::string error_msg;
+      error_msg.reserve(rdf_term.size() + 58);
+      error_msg.append("Error: invalid IRI detected for node: '");
+      error_msg.append(rdf_term);
+      error_msg.append("'. ");
+      if (continue_on_error == true) {
+        std::cout << error_msg << "Skipping!\n";
+      }
+      error_msg += "Stop!";
+      throw std::runtime_error(error_msg);
+    }
+    out.push_back('<');
+    out.append(rdf_term);
+    out.push_back('>');
+    return true;
+  }
+
+  return false;
+}
+
+static bool can_fast_emit_simple_plan(const CompiledSimplePlan& plan) {
+  const auto can_fast_term = [](const CompiledRuntimeTerm& term) {
+    if (term.render_op == CompiledRuntimeTerm::RenderOp::Preformatted) {
+      return true;
+    }
+    return term.render_op == CompiledRuntimeTerm::RenderOp::Compiled &&
+           term.compiled.usable &&
+           term.compiled.term_type != "blanknode";
+  };
+  return !plan.needs_row_map &&
+         !plan.function_called &&
+         !plan.has_object_condition &&
+         can_fast_term(plan.subject) &&
+         can_fast_term(plan.predicate) &&
+         can_fast_term(plan.object) &&
+         (!plan.has_graph || can_fast_term(plan.graph));
+}
+
+static bool emit_fast_statement(const CompiledSimplePlan& plan,
+                                const std::vector<std::string_view>& projected_row,
+                                const std::string& base_uri,
+                                std::string& out,
+                                std::string& subject_scratch,
+                                std::string& predicate_scratch,
+                                std::string& object_scratch,
+                                std::string& graph,
+                                std::string& graph_scratch) {
+  out.clear();
+  if (!append_fast_compiled_term(plan.subject, projected_row, base_uri, out, subject_scratch)) {
+    return false;
+  }
+  out.push_back(' ');
+  if (!append_fast_compiled_term(plan.predicate, projected_row, base_uri, out, predicate_scratch)) {
+    return false;
+  }
+  out.push_back(' ');
+  if (!append_fast_compiled_term(plan.object, projected_row, base_uri, out, object_scratch)) {
+    return false;
+  }
+  if (plan.has_graph) {
+    graph.clear();
+    if (!append_fast_compiled_term(plan.graph, projected_row, base_uri, graph, graph_scratch)) {
+      return false;
+    }
+    if (!graph.empty() && !is_default_graph_marker(graph)) {
+      out.push_back(' ');
+      out.append(graph);
+    }
+  }
+  out.append(" .\n");
+  return true;
+}
+
 ///////////////////////////////////////////////////////////////
 /// Data setup
 ///////////////////////////////////////////////////////////////
@@ -782,6 +959,33 @@ int execute_simple_with_graph(const std::string& input_file_name,
       update_row_map(row, prepared.projected_header, setup_data.projected_row_views);
     }
 
+    if (can_fast_emit_simple_plan(plan)) {
+      try {
+        if (!emit_fast_statement(plan, setup_data.projected_row_views, base_uri, setup_data.res,
+                                 setup_data.subject_scratch, setup_data.predicate_scratch,
+                                 setup_data.object_scratch, setup_data.graph, setup_data.graph_scratch)) {
+          continue;
+        }
+      } catch (const std::runtime_error& e) {
+        if (continue_on_error == false) {
+          std::cout << e.what() << std::endl;
+          std::exit(1);
+        }
+        continue;
+      }
+      if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
+        continue;
+      }
+      setup_data.triple_counter++;
+      setup_data.buffered_res += setup_data.res;
+      setup_data.write_cnt++;
+      if (setup_data.write_cnt == setup_data.buffer_limit) {
+        setup_data.write_cnt = 0;
+        flush_setup_buffer(setup_data);
+      }
+      continue;
+    }
+
     std::string s_function_value;
     std::string p_function_value;
     std::string o_function_value;
@@ -886,6 +1090,27 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
       update_row_map(row, prepared.projected_header, setup_data.projected_row_views);
     }
 
+    if (can_fast_emit_simple_plan(plan)) {
+      try {
+        if (!emit_fast_statement(plan, setup_data.projected_row_views, base_uri, setup_data.res,
+                                 setup_data.subject_scratch, setup_data.predicate_scratch,
+                                 setup_data.object_scratch, setup_data.graph, setup_data.graph_scratch)) {
+          continue;
+        }
+      } catch (const std::runtime_error& e) {
+        if (continue_on_error == false) {
+          std::cout << e.what() << std::endl;
+          std::exit(1);
+        }
+        continue;
+      }
+      if (!unique_triple.insert(setup_data.res).second) {
+        continue;
+      }
+      setup_data.triple_counter++;
+      continue;
+    }
+
     std::string s_function_value;
     std::string p_function_value;
     std::string o_function_value;
@@ -974,6 +1199,33 @@ int execute_simple(const std::string& input_file_name,
     auto& row = setup_data.row;
     if (plan.needs_row_map) {
       update_row_map(row, prepared.projected_header, setup_data.projected_row_views);
+    }
+
+    if (can_fast_emit_simple_plan(plan)) {
+      try {
+        if (!emit_fast_statement(plan, setup_data.projected_row_views, base_uri, setup_data.res,
+                                 setup_data.subject_scratch, setup_data.predicate_scratch,
+                                 setup_data.object_scratch, setup_data.graph, setup_data.graph_scratch)) {
+          continue;
+        }
+      } catch (const std::runtime_error& e) {
+        if (continue_on_error == false) {
+          std::cout << e.what() << std::endl;
+          std::exit(1);
+        }
+        continue;
+      }
+      if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
+        continue;
+      }
+      setup_data.triple_counter++;
+      setup_data.buffered_res += setup_data.res;
+      setup_data.write_cnt++;
+      if (setup_data.write_cnt == setup_data.buffer_limit) {
+        setup_data.write_cnt = 0;
+        flush_setup_buffer(setup_data);
+      }
+      continue;
     }
 
     std::string s_function_value;
@@ -1077,6 +1329,27 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
     auto& row = setup_data.row;
     if (plan.needs_row_map) {
       update_row_map(row, prepared.projected_header, setup_data.projected_row_views);
+    }
+
+    if (can_fast_emit_simple_plan(plan)) {
+      try {
+        if (!emit_fast_statement(plan, setup_data.projected_row_views, base_uri, setup_data.res,
+                                 setup_data.subject_scratch, setup_data.predicate_scratch,
+                                 setup_data.object_scratch, setup_data.graph, setup_data.graph_scratch)) {
+          continue;
+        }
+      } catch (const std::runtime_error& e) {
+        if (continue_on_error == false) {
+          std::cout << e.what() << std::endl;
+          std::exit(1);
+        }
+        continue;
+      }
+      if (!unique_triple.insert(setup_data.res).second) {
+        continue;
+      }
+      setup_data.triple_counter++;
+      continue;
     }
 
     std::string s_function_value;
@@ -1308,14 +1581,25 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
           continue;
         }
 
-        std::string s_function_value;
-        std::string p_function_value;
-        std::string o_function_value;
         try {
-          if (!render_runtime_term(representative_plan.subject, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.subject, representative.subject_scratch, s_function_value) ||
-              !render_runtime_term(representative_plan.predicate, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.predicate, representative.predicate_scratch, p_function_value) ||
-              !render_runtime_term(representative_plan.object, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.object, representative.object_scratch, o_function_value)) {
-            continue;
+          if (can_fast_emit_simple_plan(representative_plan)) {
+            representative.subject.clear();
+            representative.predicate.clear();
+            representative.object.clear();
+            if (!append_fast_compiled_term(representative_plan.subject, representative.projected_row, representative.prepared.source.base_uri, representative.subject, representative.subject_scratch) ||
+                !append_fast_compiled_term(representative_plan.predicate, representative.projected_row, representative.prepared.source.base_uri, representative.predicate, representative.predicate_scratch) ||
+                !append_fast_compiled_term(representative_plan.object, representative.projected_row, representative.prepared.source.base_uri, representative.object, representative.object_scratch)) {
+              continue;
+            }
+          } else {
+            std::string s_function_value;
+            std::string p_function_value;
+            std::string o_function_value;
+            if (!render_runtime_term(representative_plan.subject, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.subject, representative.subject_scratch, s_function_value) ||
+                !render_runtime_term(representative_plan.predicate, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.predicate, representative.predicate_scratch, p_function_value) ||
+                !render_runtime_term(representative_plan.object, line_count, input_file_name, representative.projected_row, representative.prepared.source.base_uri, representative.row, representative.object, representative.object_scratch, o_function_value)) {
+              continue;
+            }
           }
         } catch (const std::runtime_error& e) {
           if (continue_on_error == false) {
@@ -1328,10 +1612,17 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
         for (std::size_t runtime_index : group.runtime_indices) {
           FusedSimpleRuntime& runtime = runtimes[runtime_index];
           const CompiledSimplePlan& plan = runtime.prepared.compiled;
-          std::string g_function_value;
           try {
-            if (!render_runtime_term(plan.graph, line_count, input_file_name, representative.projected_row, runtime.prepared.source.base_uri, runtime.row, runtime.graph, runtime.graph_scratch, g_function_value)) {
-              continue;
+            if (can_fast_emit_simple_plan(plan)) {
+              runtime.graph.clear();
+              if (!append_fast_compiled_term(plan.graph, representative.projected_row, runtime.prepared.source.base_uri, runtime.graph, runtime.graph_scratch)) {
+                continue;
+              }
+            } else {
+              std::string g_function_value;
+              if (!render_runtime_term(plan.graph, line_count, input_file_name, representative.projected_row, runtime.prepared.source.base_uri, runtime.row, runtime.graph, runtime.graph_scratch, g_function_value)) {
+                continue;
+              }
             }
           } catch (const std::runtime_error& e) {
             if (continue_on_error == false) {
@@ -1373,6 +1664,34 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
 
       if (plan.needs_row_map) {
         update_row_map(runtime.row, runtime.prepared.projected_header, runtime.projected_row);
+      }
+
+      if (can_fast_emit_simple_plan(plan)) {
+        try {
+          if (!emit_fast_statement(plan, runtime.projected_row, runtime.prepared.source.base_uri, setup_data.res,
+                                   runtime.subject_scratch, runtime.predicate_scratch,
+                                   runtime.object_scratch, runtime.graph, runtime.graph_scratch)) {
+            continue;
+          }
+        } catch (const std::runtime_error& e) {
+          if (continue_on_error == false) {
+            std::cout << e.what() << std::endl;
+            std::exit(1);
+          }
+          continue;
+        }
+        if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
+          continue;
+        }
+
+        setup_data.triple_counter++;
+        setup_data.buffered_res += setup_data.res;
+        setup_data.write_cnt++;
+        if (setup_data.write_cnt == setup_data.buffer_limit) {
+          setup_data.write_cnt = 0;
+          flush_setup_buffer(setup_data);
+        }
+        continue;
       }
 
       std::string s_function_value;
