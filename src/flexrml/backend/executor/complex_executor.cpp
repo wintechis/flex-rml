@@ -1,20 +1,11 @@
 #include <algorithm>
-#include <atomic>
-#include <cctype>
-#include <chrono>
-#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
-#include <format>
 #include <fstream>
-#include <functional>
 #include <iostream>
-#include <mutex>
-#include <queue>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -88,17 +79,6 @@ struct CompiledComplexRenderPlan {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////77
 //// HELPER FUNCTIONS ////
-
-// Function to join strings with a delimiter
-std::string join(const std::vector<std::string>& vec, const std::string& delimiter) {
-  std::string joined;
-  for (size_t i = 0; i < vec.size(); ++i) {
-    joined += vec[i];
-    if (i < vec.size() - 1)
-      joined += delimiter;
-  }
-  return joined;
-}
 
 static int projected_column_index(const std::vector<std::string>& projected_header,
                                   std::string_view name) {
@@ -434,18 +414,6 @@ std::vector<int> get_projected_indices(const std::vector<std::string>& proj_attr
   return indices;
 }
 
-// Determine the join index within the projected attributes.
-int get_join_index(const std::vector<std::string>& proj_attrs, const std::string& prefix, const std::string& join_attr) {
-  for (size_t i = 0; i < proj_attrs.size(); ++i) {
-    if (prefix + "_" + proj_attrs[i] == join_attr) {
-      return static_cast<int>(i);  // Found index
-    }
-  }
-
-  std::cerr << "Error: Join attribute " << join_attr << " not found in projected attributes." << std::endl;
-  std::exit(1);
-}
-
 struct JoinBinding {
   int index = -1;
   std::string constant;
@@ -555,11 +523,7 @@ JoinHashTable build_hash_table(std::istream& input_file,
     } else {
       split_csv_line_into(line, ',', split_line);
       project_row_into(split_line, projected_indeces, projected_row);
-      projected_row_views.clear();
-      projected_row_views.reserve(projected_row.size());
-      for (const auto& value : projected_row) {
-        projected_row_views.emplace_back(value);
-      }
+      project_row_views_from_strings(projected_row, projected_row_views);
     }
 
     if (row_has_skip_value(projected_row_views)) {
@@ -712,11 +676,7 @@ int execute_complex(const fs::path& output_file_name,
     } else {
       split_csv_line_into(line, ',', split_line);
       project_row_into(split_line, right_proj_indices, projected_row_storage);
-      projected_row.clear();
-      projected_row.reserve(projected_row_storage.size());
-      for (const auto& value : projected_row_storage) {
-        projected_row.emplace_back(value);
-      }
+      project_row_views_from_strings(projected_row_storage, projected_row);
     }
 
     // Check for unwanted values
@@ -890,11 +850,7 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
     } else {
       split_csv_line_into(line, ',', split_line);
       project_row_into(split_line, right_proj_indices, projected_row_storage);
-      projected_row.clear();
-      projected_row.reserve(projected_row_storage.size());
-      for (const auto& value : projected_row_storage) {
-        projected_row.emplace_back(value);
-      }
+      project_row_views_from_strings(projected_row_storage, projected_row);
     }
 
     // Check for unwanted values
@@ -1068,11 +1024,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
     } else {
       split_csv_line_into(line, ',', split_line);
       project_row_into(split_line, right_proj_indices, projected_row_storage);
-      projected_row.clear();
-      projected_row.reserve(projected_row_storage.size());
-      for (const auto& value : projected_row_storage) {
-        projected_row.emplace_back(value);
-      }
+      project_row_views_from_strings(projected_row_storage, projected_row);
     }
 
     // Check for unwanted values
@@ -1251,11 +1203,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
     } else {
       split_csv_line_into(line, ',', split_line);
       project_row_into(split_line, right_proj_indices, projected_row_storage);
-      projected_row.clear();
-      projected_row.reserve(projected_row_storage.size());
-      for (const auto& value : projected_row_storage) {
-        projected_row.emplace_back(value);
-      }
+      project_row_views_from_strings(projected_row_storage, projected_row);
     }
 
     // Check for unwanted values
@@ -1440,8 +1388,6 @@ std::unordered_set<std::string> dependent_complex_mapping(const std::string& inf
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  size_t generated_triple = 0;
-
   std::vector<std::string> s_content = split_by_substring(split_info_fourth[1], "===");
   std::vector<std::string> p_content = split_by_substring(split_info_fourth[2], "===");
   std::vector<std::string> o_content = split_by_substring(split_info_fourth[3], "===");
@@ -1452,10 +1398,8 @@ std::unordered_set<std::string> dependent_complex_mapping(const std::string& inf
       // Check if all entrries are constant
       if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant") {
         handle_constant(s_content, p_content, o_content, g_content, output_file_name);
-        generated_triple = 1;
       } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
         handle_constant_preformatted_dependent(s_content, p_content, o_content, g_content, output_file_name, unique_triple);
-        generated_triple = 1;
       } else {
         unique_triple = execute_complex_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attrs, right_join_attrs, base_uri,
                                                   projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, unique_triple, data_map);
@@ -1465,10 +1409,8 @@ std::unordered_set<std::string> dependent_complex_mapping(const std::string& inf
       g_content = split_by_substring(split_info_fourth[4], "===");
       if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant" && g_content[1] == "constant") {
         handle_constant(s_content, p_content, o_content, g_content, output_file_name);
-        generated_triple = 1;
       } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
         handle_constant_preformatted_dependent(s_content, p_content, o_content, g_content, output_file_name, unique_triple);
-        generated_triple = 1;
       } else {
         unique_triple = execute_complex_with_graph_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attrs, right_join_attrs, base_uri,
                                                              projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, unique_triple, data_map);

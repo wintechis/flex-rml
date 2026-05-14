@@ -87,6 +87,46 @@ PhysicalPlan parse_physical_plan(const std::string& plan_str) {
   return plan;
 }
 
+bool is_single_constant_simple_plan(const SimplePlan& plan) {
+  if (!plan.generate_graph) {
+    return (plan.s_content[1] == "constant" && plan.p_content[1] == "constant" && plan.o_content[1] == "constant") ||
+           (plan.s_content[1] == "preformatted" && plan.p_content[1] == "preformatted" && plan.o_content[1] == "preformatted");
+  }
+  return (plan.s_content[1] == "constant" && plan.p_content[1] == "constant" && plan.o_content[1] == "constant" && plan.g_content[1] == "constant") ||
+         (plan.s_content[1] == "preformatted" && plan.p_content[1] == "preformatted" && plan.o_content[1] == "preformatted" && plan.g_content[1] == "preformatted");
+}
+
+bool can_fuse_simple_partition(const PlanPartition& partition) {
+  if (partition.plans.size() < 2 || partition.has_function_call) {
+    return false;
+  }
+
+  const SimplePlan* first = nullptr;
+  for (const auto& plan : partition.plans) {
+    if (plan.kind != PhysicalPlanKind::Simple || is_single_constant_simple_plan(plan.simple)) {
+      return false;
+    }
+    if (first == nullptr) {
+      first = &plan.simple;
+      continue;
+    }
+    if (plan.simple.input_file_name != first->input_file_name ||
+        plan.simple.output_file_name != first->output_file_name) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<SimplePlan> collect_simple_plans(const PlanPartition& partition) {
+  std::vector<SimplePlan> plans;
+  plans.reserve(partition.plans.size());
+  for (const auto& plan : partition.plans) {
+    plans.push_back(plan.simple);
+  }
+  return plans;
+}
+
 }  // namespace
 
 class ThreadPool {
@@ -376,6 +416,11 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
       }
       // CASE 2: Partition contains multiple elements
       else {
+        if (!keep_in_memory && can_fuse_simple_partition(partition)) {
+          nr_generate_triple += execute_fused_simple_plans(collect_simple_plans(partition), data_map, nullptr);
+          continue;
+        }
+
         std::unordered_set<std::string> unique_triple;
         for (const auto& plan : partition.plans) {
           if (plan.kind == PhysicalPlanKind::Simple) {
@@ -444,6 +489,17 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
         }
         // CASE 2: Partition contains multiple elements.
         else {
+          if (!keep_in_memory && can_fuse_simple_partition(partition)) {
+            const auto simple_plans = collect_simple_plans(partition);
+            if (shared_writer_ptr != nullptr) {
+              nr_generate_triple.fetch_add(execute_fused_simple_plans(simple_plans, data_map, shared_writer_ptr), std::memory_order_relaxed);
+            } else {
+              std::lock_guard<std::mutex> lock(output_mutex);
+              nr_generate_triple.fetch_add(execute_fused_simple_plans(simple_plans, data_map, nullptr), std::memory_order_relaxed);
+            }
+            return;
+          }
+
           std::unordered_set<std::string> unique_triple;
           for (const auto& plan : partition.plans) {
             if (plan.kind == PhysicalPlanKind::Simple) {

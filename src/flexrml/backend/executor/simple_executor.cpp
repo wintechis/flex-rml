@@ -363,6 +363,30 @@ static bool prepare_simple_plan(const SimplePlan& source,
   return true;
 }
 
+static void prepare_simple_plan_from_header(const SimplePlan& source,
+                                            const std::vector<std::string>& header,
+                                            PreparedSimplePlan& prepared) {
+  prepared.source = source;
+  if (!(source.projected_attributes.size() == 1 && source.projected_attributes[0] == "")) {
+    std::istringstream unused;
+    prepared.projected_indices = get_attribute_index(unused, header, source.projected_attributes);
+  }
+
+  prepared.projected_header.clear();
+  prepared.projected_header.reserve(prepared.projected_indices.size());
+  for (int index : prepared.projected_indices) {
+    prepared.projected_header.push_back(header[index]);
+  }
+
+  prepared.compiled = compile_simple_plan(
+      prepared.projected_header,
+      source.base_uri,
+      source.s_content,
+      source.p_content,
+      source.o_content,
+      source.generate_graph ? &source.g_content : nullptr);
+}
+
 static void render_compiled_term(const CompiledTerm& term,
                                  const std::vector<std::string_view>& projected_row,
                                  const std::string& base_uri,
@@ -574,6 +598,46 @@ static void split_project_current_line(SetupData& setup_data,
   project_row_views_from_strings(setup_data.projected_row, setup_data.projected_row_views);
 }
 
+struct FusedSimpleRuntime {
+  PreparedSimplePlan prepared;
+  std::vector<std::string> projected_row_storage;
+  std::vector<std::string_view> projected_row;
+  std::unordered_map<std::string, std::string> row;
+  std::string subject;
+  std::string predicate;
+  std::string object;
+  std::string graph;
+  std::string subject_scratch;
+  std::string predicate_scratch;
+  std::string object_scratch;
+  std::string graph_scratch;
+};
+
+static void initialize_fused_runtime(FusedSimpleRuntime& runtime) {
+  runtime.projected_row_storage.reserve(runtime.prepared.projected_indices.size());
+  runtime.projected_row.reserve(runtime.prepared.projected_indices.size());
+  runtime.subject.reserve(512);
+  runtime.predicate.reserve(512);
+  runtime.object.reserve(512);
+  runtime.graph.reserve(512);
+  runtime.subject_scratch.reserve(512);
+  runtime.predicate_scratch.reserve(512);
+  runtime.object_scratch.reserve(512);
+  runtime.graph_scratch.reserve(512);
+  if (runtime.prepared.compiled.needs_row_map) {
+    initialize_row_map(runtime.row, runtime.prepared.projected_header);
+  }
+}
+
+static bool is_single_constant_statement(const SimplePlan& plan) {
+  if (!plan.generate_graph) {
+    return (plan.s_content[1] == "constant" && plan.p_content[1] == "constant" && plan.o_content[1] == "constant") ||
+           (plan.s_content[1] == "preformatted" && plan.p_content[1] == "preformatted" && plan.o_content[1] == "preformatted");
+  }
+  return (plan.s_content[1] == "constant" && plan.p_content[1] == "constant" && plan.o_content[1] == "constant" && plan.g_content[1] == "constant") ||
+         (plan.s_content[1] == "preformatted" && plan.p_content[1] == "preformatted" && plan.o_content[1] == "preformatted" && plan.g_content[1] == "preformatted");
+}
+
 ///////////////////////////////////////////////////////////////7
 /// HELPER FUNCTIONS
 //////////////////////////////////////////////////////////////
@@ -650,10 +714,11 @@ int execute_simple_with_graph(const std::string& input_file_name,
   initialize_row_map(setup_data.row, prepared.projected_header);
   const CompiledSimplePlan& plan = prepared.compiled;
 
-  // Iterate over file line by line
   int line_count = 0;
   // Iterate over file line by line
   while (std::getline(*file, setup_data.line)) {
+    line_count++;
+
     split_project_current_line(setup_data, prepared.projected_indices);
 
     // Check for NULL values
@@ -1133,6 +1198,116 @@ size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unorder
   }
 
   return generated_triple;
+}
+
+size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
+                                  const std::unordered_map<std::string, std::string>& data_map,
+                                  OutputChunkWriter* writer) {
+  if (plans.empty()) {
+    return 0;
+  }
+
+  const std::string& input_file_name = plans.front().input_file_name;
+  const fs::path& output_file_name = plans.front().output_file_name;
+  for (const auto& plan : plans) {
+    if (plan.input_file_name != input_file_name || plan.output_file_name != output_file_name || is_single_constant_statement(plan)) {
+      throw std::runtime_error("Simple plans are not compatible with fused execution.");
+    }
+  }
+
+  SetupData setup_data = initialize_setup(output_file_name, writer);
+  auto file = open_from_map_or_file(data_map, input_file_name);
+
+  std::string header_line;
+  if (!std::getline(*file, header_line)) {
+    return 0;
+  }
+  std::vector<std::string> header = split_csv_line(header_line, ',');
+
+  std::vector<FusedSimpleRuntime> runtimes;
+  runtimes.reserve(plans.size());
+  for (const auto& plan : plans) {
+    FusedSimpleRuntime runtime;
+    prepare_simple_plan_from_header(plan, header, runtime.prepared);
+    initialize_fused_runtime(runtime);
+    runtimes.push_back(std::move(runtime));
+  }
+
+  int line_count = 0;
+  while (std::getline(*file, setup_data.line)) {
+    line_count++;
+
+    const bool use_views = split_csv_line_views_into(setup_data.line, ',', setup_data.split_line_views);
+    if (!use_views) {
+      split_csv_line_into(setup_data.line, ',', setup_data.split_line);
+    }
+
+    for (auto& runtime : runtimes) {
+      const CompiledSimplePlan& plan = runtime.prepared.compiled;
+      if (use_views) {
+        project_row_into(setup_data.split_line_views, runtime.prepared.projected_indices, runtime.projected_row);
+      } else {
+        project_row_into(setup_data.split_line, runtime.prepared.projected_indices, runtime.projected_row_storage);
+        project_row_views_from_strings(runtime.projected_row_storage, runtime.projected_row);
+      }
+
+      const bool skip = row_has_skip_value(runtime.projected_row);
+      if (skip && !plan.function_called) {
+        continue;
+      }
+
+      if (plan.needs_row_map) {
+        update_row_map(runtime.row, runtime.prepared.projected_header, runtime.projected_row);
+      }
+
+      std::string s_function_value;
+      std::string p_function_value;
+      std::string o_function_value;
+      std::string g_function_value;
+      if (plan.has_object_condition &&
+          handle_function_call(plan.object.content[5], line_count, input_file_name, runtime.row) != "true") {
+        continue;
+      }
+
+      try {
+        if (!render_runtime_term(plan.subject, line_count, input_file_name, runtime.projected_row, runtime.prepared.source.base_uri, runtime.row, runtime.subject, runtime.subject_scratch, s_function_value) ||
+            !render_runtime_term(plan.predicate, line_count, input_file_name, runtime.projected_row, runtime.prepared.source.base_uri, runtime.row, runtime.predicate, runtime.predicate_scratch, p_function_value) ||
+            !render_runtime_term(plan.object, line_count, input_file_name, runtime.projected_row, runtime.prepared.source.base_uri, runtime.row, runtime.object, runtime.object_scratch, o_function_value)) {
+          continue;
+        }
+        if (plan.has_graph &&
+            !render_runtime_term(plan.graph, line_count, input_file_name, runtime.projected_row, runtime.prepared.source.base_uri, runtime.row, runtime.graph, runtime.graph_scratch, g_function_value)) {
+          continue;
+        }
+      } catch (const std::runtime_error& e) {
+        if (continue_on_error == false) {
+          std::cout << e.what() << std::endl;
+          std::exit(1);
+        }
+        continue;
+      }
+
+      if (plan.has_graph) {
+        format_statement_into(runtime.subject, runtime.predicate, runtime.object, runtime.graph, setup_data.res);
+      } else {
+        format_statement_into(runtime.subject, runtime.predicate, runtime.object, setup_data.res);
+      }
+      if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
+        continue;
+      }
+
+      setup_data.triple_counter++;
+      setup_data.buffered_res += setup_data.res;
+      setup_data.write_cnt++;
+      if (setup_data.write_cnt == setup_data.buffer_limit) {
+        setup_data.write_cnt = 0;
+        flush_setup_buffer(setup_data);
+      }
+    }
+  }
+
+  flush_setup_buffer(setup_data);
+  return setup_data.triple_counter;
 }
 
 std::unordered_set<std::string> dependent_simple_mapping(const std::string& information, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
