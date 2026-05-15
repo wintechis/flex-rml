@@ -1,6 +1,7 @@
 #include "simple_executor.h"
 
 #include <algorithm>
+#include <array>
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
@@ -36,6 +37,7 @@
 namespace fs = std::filesystem;
 
 constexpr std::size_t kOutputBufferReserve = 64 * 1024;
+constexpr std::size_t kSharedDedupBatchSize = 16 * 1024;
 
 struct TripleHash128 {
   XXH64_hash_t low = 0;
@@ -59,6 +61,60 @@ using TripleHashSet = ankerl::unordered_dense::set<TripleHash128, TripleHash128H
 static TripleHash128 hash_triple(std::string_view triple) {
   const XXH128_hash_t hash = XXH3_128bits(triple.data(), triple.size());
   return TripleHash128{hash.low64, hash.high64};
+}
+
+class ConcurrentTripleDeduper final : public TripleDeduper {
+ public:
+  bool insert(std::string_view triple) override {
+    const TripleHash128 hash = hash_triple(triple);
+    Shard& shard = shards_[hash.low % shards_.size()];
+    std::lock_guard<std::mutex> lock(shard.mutex);
+    return shard.hashes.insert(hash).second;
+  }
+
+  std::size_t append_unique(std::vector<std::string>& triples, std::string& output) override {
+    std::array<std::vector<std::pair<TripleHash128, std::size_t>>, 64> batches;
+    for (std::size_t index = 0; index < triples.size(); ++index) {
+      const TripleHash128 hash = hash_triple(triples[index]);
+      batches[hash.low % batches.size()].push_back({hash, index});
+    }
+
+    std::vector<std::size_t> unique_indices;
+    unique_indices.reserve(triples.size());
+    for (std::size_t shard_index = 0; shard_index < batches.size(); ++shard_index) {
+      auto& batch = batches[shard_index];
+      if (batch.empty()) {
+        continue;
+      }
+
+      Shard& shard = shards_[shard_index];
+      std::lock_guard<std::mutex> lock(shard.mutex);
+      for (const auto& [hash, triple_index] : batch) {
+        if (shard.hashes.insert(hash).second) {
+          unique_indices.push_back(triple_index);
+        }
+      }
+    }
+
+    for (const std::size_t triple_index : unique_indices) {
+      output += triples[triple_index];
+    }
+
+    triples.clear();
+    return unique_indices.size();
+  }
+
+ private:
+  struct Shard {
+    std::mutex mutex;
+    TripleHashSet hashes;
+  };
+
+  std::array<Shard, 64> shards_;
+};
+
+std::shared_ptr<TripleDeduper> create_concurrent_triple_deduper() {
+  return std::make_shared<ConcurrentTripleDeduper>();
 }
 
 static void create_parent_directories_if_needed(const fs::path& path) {
@@ -369,6 +425,50 @@ static void flush_setup_buffer(SetupData& setup_data) {
   } else {
     setup_data.outputFile << setup_data.buffered_res;
     setup_data.buffered_res.clear();
+  }
+}
+
+static bool insert_unique_triple(SetupData& setup_data, TripleDeduper* shared_deduper) {
+  if (shared_deduper != nullptr) {
+    return shared_deduper->insert(setup_data.res);
+  }
+  return setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second;
+}
+
+static void flush_shared_dedup_batch(SetupData& setup_data,
+                                     TripleDeduper* shared_deduper,
+                                     std::vector<std::string>& pending_triples) {
+  if (shared_deduper == nullptr || pending_triples.empty()) {
+    return;
+  }
+
+  setup_data.triple_counter += shared_deduper->append_unique(pending_triples, setup_data.buffered_res);
+  if (setup_data.buffered_res.size() >= kOutputBufferReserve) {
+    flush_setup_buffer(setup_data);
+  }
+}
+
+static void emit_unique_result(SetupData& setup_data,
+                               TripleDeduper* shared_deduper,
+                               std::vector<std::string>& pending_shared_triples) {
+  if (shared_deduper != nullptr) {
+    pending_shared_triples.push_back(setup_data.res);
+    if (pending_shared_triples.size() >= kSharedDedupBatchSize) {
+      flush_shared_dedup_batch(setup_data, shared_deduper, pending_shared_triples);
+    }
+    return;
+  }
+
+  if (!insert_unique_triple(setup_data, nullptr)) {
+    return;
+  }
+
+  setup_data.triple_counter++;
+  setup_data.buffered_res += setup_data.res;
+  setup_data.write_cnt++;
+  if (setup_data.write_cnt == setup_data.buffer_limit) {
+    setup_data.write_cnt = 0;
+    flush_setup_buffer(setup_data);
   }
 }
 
@@ -1054,7 +1154,8 @@ size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unorder
 
 size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
                                   const std::unordered_map<std::string, std::string>& data_map,
-                                  OutputChunkWriter* writer) {
+                                  OutputChunkWriter* writer,
+                                  TripleDeduper* shared_deduper) {
   if (plans.empty()) {
     return 0;
   }
@@ -1077,6 +1178,10 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
   std::vector<FusedSimpleRuntime>& runtimes = program.runtimes;
   const std::vector<FusedSimpleGroup>& groups = program.groups;
   std::vector<TermCacheEntry>& term_cache_entries = program.term_cache_entries;
+  std::vector<std::string> pending_shared_triples;
+  if (shared_deduper != nullptr) {
+    pending_shared_triples.reserve(kSharedDedupBatchSize);
+  }
 
   int line_count = 0;
   RowView source_row;
@@ -1146,17 +1251,7 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
           }
 
           format_statement_into(representative.subject, representative.predicate, representative.object, runtime.graph, setup_data.res);
-          if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
-            continue;
-          }
-
-          setup_data.triple_counter++;
-          setup_data.buffered_res += setup_data.res;
-          setup_data.write_cnt++;
-          if (setup_data.write_cnt == setup_data.buffer_limit) {
-            setup_data.write_cnt = 0;
-            flush_setup_buffer(setup_data);
-          }
+          emit_unique_result(setup_data, shared_deduper, pending_shared_triples);
         }
         continue;
       }
@@ -1197,17 +1292,7 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
           }
           continue;
         }
-        if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
-          continue;
-        }
-
-        setup_data.triple_counter++;
-        setup_data.buffered_res += setup_data.res;
-        setup_data.write_cnt++;
-        if (setup_data.write_cnt == setup_data.buffer_limit) {
-          setup_data.write_cnt = 0;
-          flush_setup_buffer(setup_data);
-        }
+        emit_unique_result(setup_data, shared_deduper, pending_shared_triples);
         continue;
       }
 
@@ -1243,20 +1328,11 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
       } else {
         format_statement_into(runtime.subject, runtime.predicate, runtime.object, setup_data.res);
       }
-      if (!setup_data.unique_triple_hashes.insert(hash_triple(setup_data.res)).second) {
-        continue;
-      }
-
-      setup_data.triple_counter++;
-      setup_data.buffered_res += setup_data.res;
-      setup_data.write_cnt++;
-      if (setup_data.write_cnt == setup_data.buffer_limit) {
-        setup_data.write_cnt = 0;
-        flush_setup_buffer(setup_data);
-      }
+      emit_unique_result(setup_data, shared_deduper, pending_shared_triples);
     }
   }
 
+  flush_shared_dedup_batch(setup_data, shared_deduper, pending_shared_triples);
   flush_setup_buffer(setup_data);
   return setup_data.triple_counter;
 }

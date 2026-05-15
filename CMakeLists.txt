@@ -5,6 +5,7 @@ project(flexrml VERSION 3.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(FLEXRML_OUTPUT_NAME "flexrml" CACHE STRING "Name of the generated FlexRML executable")
 
 set(FLEXRML_VCPKG_TRIPLET "$ENV{VCPKG_TRIPLET}")
 if(NOT FLEXRML_VCPKG_TRIPLET)
@@ -83,8 +84,11 @@ target_link_libraries(flexrml PRIVATE
 )
 
 set_target_properties(flexrml PROPERTIES
+  OUTPUT_NAME "${FLEXRML_OUTPUT_NAME}"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )
+
+set(FLEXRML_RUNTIME_BINARY "${CMAKE_CURRENT_SOURCE_DIR}/${FLEXRML_OUTPUT_NAME}")
 
 set(FLEXRML_VALIDATOR_PYTHON "${CMAKE_CURRENT_SOURCE_DIR}/env/bin/python")
 if(NOT EXISTS "${FLEXRML_VALIDATOR_PYTHON}")
@@ -93,7 +97,8 @@ if(NOT EXISTS "${FLEXRML_VALIDATOR_PYTHON}")
 endif()
 
 add_custom_target(validate
-  COMMAND "${FLEXRML_VALIDATOR_PYTHON}" scripts/validate_test_cases.py
+  COMMAND "${CMAKE_COMMAND}" -E env "FLEXRML_BINARY=${FLEXRML_RUNTIME_BINARY}"
+          "${FLEXRML_VALIDATOR_PYTHON}" scripts/validate_test_cases.py
   DEPENDS flexrml
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
   COMMENT "Running FlexRML validation test cases"
@@ -101,7 +106,7 @@ add_custom_target(validate
 )
 
 add_custom_target(benchmark
-  COMMAND "${FLEXRML_VALIDATOR_PYTHON}" scripts/run_benchmarks.py
+  COMMAND "${FLEXRML_VALIDATOR_PYTHON}" scripts/run_benchmarks.py --binary "${FLEXRML_RUNTIME_BINARY}"
   DEPENDS flexrml
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
   COMMENT "Running FlexRML benchmarks"

@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TEST_CASES_DIR = ROOT / "test_cases"
 REPORT_PATH = ROOT / "validation_report.md"
 PYPROJECT_PATH = ROOT / "pyproject.toml"
-FLEXRML_BINARY = ROOT / "flexrml"
+FLEXRML_BINARY = Path(os.environ.get("FLEXRML_BINARY", ROOT / "flexrml"))
 
 
 @dataclass

@@ -91,8 +91,39 @@ def build_default(root: Path) -> None:
     subprocess.run(["cmake", "--build", "--preset", "default"], cwd=root, check=True)
 
 
-def run_case(root: Path, binary: Path, case_dir: Path, output_path: Path, no_threading: bool) -> dict[str, str]:
-    command = [str(binary), "-m", str(case_dir / "mapping.rml.ttl"), "-o", str(output_path)]
+SOURCE_LITERAL_RE = re.compile(r'((?:rml:source|rml:path)\s+")([^"]+)(")')
+
+
+def resolve_source_path(root: Path, case_dir: Path, source: str) -> str:
+    source_path = Path(source)
+    if source_path.is_absolute():
+        return source
+
+    candidates = [
+        case_dir / source_path,
+        root / source_path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate.resolve())
+
+    return str((case_dir / source_path).resolve())
+
+
+def prepare_mapping(root: Path, case_dir: Path, generated_dir: Path, output_stem: str) -> Path:
+    mapping_path = case_dir / "mapping.rml.ttl"
+    text = mapping_path.read_text()
+
+    def replace_source(match: re.Match[str]) -> str:
+        return f'{match.group(1)}{resolve_source_path(root, case_dir, match.group(2))}{match.group(3)}'
+
+    prepared_mapping = generated_dir / f"{output_stem}_mapping.rml.ttl"
+    prepared_mapping.write_text(SOURCE_LITERAL_RE.sub(replace_source, text))
+    return prepared_mapping
+
+
+def run_case(root: Path, binary: Path, mapping_path: Path, output_path: Path, no_threading: bool) -> dict[str, str]:
+    command = [str(binary), "-m", str(mapping_path), "-o", str(output_path)]
     if no_threading:
         command.append("--no-threading")
 
@@ -206,11 +237,12 @@ def main() -> int:
         for case_dir in cases:
             category = category_for_case(benchmark_dir, case_dir)
             output_stem = safe_output_stem(benchmark_dir, case_dir)
+            mapping_path = prepare_mapping(root, case_dir, generated_dir, output_stem)
             for warmup_index in range(1, args.warmups + 1):
                 output_path = generated_dir / f"{output_stem}_warmup{warmup_index}.nt"
                 if output_path.exists():
                     output_path.unlink()
-                result = run_case(root, binary, case_dir, output_path, args.no_threading)
+                result = run_case(root, binary, mapping_path, output_path, args.no_threading)
                 status = "ok" if result["return_code"] == "0" else f"failed:{result['return_code']}"
                 print(
                     f"{category}/{case_dir.name} warmup {warmup_index}/{args.warmups}: "
@@ -225,7 +257,7 @@ def main() -> int:
                 output_path = generated_dir / f"{output_stem}_run{run_index}.nt"
                 if output_path.exists():
                     output_path.unlink()
-                result = run_case(root, binary, case_dir, output_path, args.no_threading)
+                result = run_case(root, binary, mapping_path, output_path, args.no_threading)
                 generated_triples = count_lines(output_path)
                 output_bytes = output_path.stat().st_size if output_path.exists() else 0
                 row = {
@@ -251,6 +283,8 @@ def main() -> int:
         if not args.keep_outputs:
             for output_path in generated_dir.glob("*.nt"):
                 output_path.unlink(missing_ok=True)
+            for mapping_path in generated_dir.glob("*_mapping.rml.ttl"):
+                mapping_path.unlink(missing_ok=True)
 
     fieldnames = [
         "category",

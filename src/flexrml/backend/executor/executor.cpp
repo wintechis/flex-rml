@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <condition_variable>
 #include <cstring>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -28,6 +29,7 @@ namespace {
 
 constexpr std::size_t kOutputBufferReserve = 64 * 1024;
 constexpr std::size_t kMaxQueuedOutputBytes = 64 * 1024 * 1024;
+constexpr std::size_t kMinFusedPlansForParallelSplit = 8;
 
 void write_triples_chunked(std::ostream& output, const std::unordered_set<std::string>& triples) {
   std::string buffer;
@@ -108,6 +110,13 @@ std::vector<SimplePlan> collect_simple_plans(const PlanPartition& partition) {
     plans.push_back(plan.simple);
   }
   return plans;
+}
+
+bool should_parallelize_fused_partition(const PlanPartition& partition, bool keep_in_memory, bool can_use_shared_writer) {
+  return !keep_in_memory &&
+         can_use_shared_writer &&
+         can_fuse_simple_partition(partition) &&
+         partition.plans.size() >= kMinFusedPlansForParallelSplit;
 }
 
 }  // namespace
@@ -452,6 +461,25 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
 
     // Enqueue each partition as a task.
     for (const auto& partition : partitions) {
+      if (should_parallelize_fused_partition(partition, keep_in_memory, can_use_shared_writer)) {
+        const auto simple_plans = collect_simple_plans(partition);
+        const std::size_t chunk_count = std::min<std::size_t>(numThreads, simple_plans.size());
+        const std::size_t chunk_size = (simple_plans.size() + chunk_count - 1) / chunk_count;
+        auto shared_deduper = create_concurrent_triple_deduper();
+
+        for (std::size_t chunk_begin = 0; chunk_begin < simple_plans.size(); chunk_begin += chunk_size) {
+          const std::size_t chunk_end = std::min(simple_plans.size(), chunk_begin + chunk_size);
+          std::vector<SimplePlan> chunk(simple_plans.begin() + static_cast<std::ptrdiff_t>(chunk_begin),
+                                        simple_plans.begin() + static_cast<std::ptrdiff_t>(chunk_end));
+          pool.enqueue([chunk = std::move(chunk), shared_deduper, &nr_generate_triple, &data_map, shared_writer_ptr]() {
+            nr_generate_triple.fetch_add(
+                execute_fused_simple_plans(chunk, data_map, shared_writer_ptr, shared_deduper.get()),
+                std::memory_order_relaxed);
+          });
+        }
+        continue;
+      }
+
       pool.enqueue([partition, &nr_generate_triple, &output_mutex, &ouput_file, keep_in_memory, &output_data_str, &data_map, shared_writer_ptr]() {
         // CASE 1: Partition contains only one element.
         if (partition.plans.size() == 1 && !keep_in_memory && !partition.has_function_call) {
