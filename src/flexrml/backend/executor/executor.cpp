@@ -383,11 +383,9 @@ std::unordered_map<std::string, std::string> parse_json_data_map(const std::stri
 
 std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& partitions,
                                              const std::string& mode,
-                                             const std::string& continue_error,
                                              const std::string& output_file_path,
                                              bool keep_in_memory,
                                              const std::string& json_data) {
-  (void)continue_error;
   std::string threading_enabled(mode);
   std::string ouput_file(output_file_path);
 
@@ -542,7 +540,6 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
 
 std::string execute_physical_plans_string(const std::string& information,
                                           const std::string& mode,
-                                          const std::string& continue_error,
                                           const std::string& output_file_path,
                                           bool keep_in_memory,
                                           const std::string& json_data) {
@@ -570,5 +567,5 @@ std::string execute_physical_plans_string(const std::string& information,
     }
   }
 
-  return execute_physical_plan_partitions(partitions, mode, continue_error, output_file_path, keep_in_memory, json_data);
+  return execute_physical_plan_partitions(partitions, mode, output_file_path, keep_in_memory, json_data);
 }

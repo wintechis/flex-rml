@@ -32,6 +32,7 @@ Native dependencies are managed with vcpkg manifest mode:
 
 - `jsoncons`
 - `serd`
+- `unordered-dense`
 - `xxhash`
 
 Install vcpkg, make sure `vcpkg` is on your `PATH`, then install dependencies from the project root:
@@ -40,10 +41,10 @@ Install vcpkg, make sure `vcpkg` is on your `PATH`, then install dependencies fr
 vcpkg install
 ```
 
-The CMake build detects dependencies in `vcpkg_installed/<triplet>`. For a classic vcpkg install, set `VCPKG_ROOT` before building:
+The CMake build detects dependencies in `vcpkg_installed/<triplet>` when you use vcpkg manifest mode. If you use a classic vcpkg checkout instead, configure CMake with the vcpkg toolchain file:
 
 ```bash
-export VCPKG_ROOT=$HOME/vcpkg
+cmake --preset default -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
 ```
 
 **Compilation Process:**
@@ -85,14 +86,14 @@ cmake --preset default -DVCPKG_TARGET_TRIPLET=x64-linux
 
 Use the `test` preset for fast local rebuilds while working on code. It disables optimization and debug-symbol generation.
 
-The executable links FlexRML code, Serd, jsoncons, and xxHash into one binary; it still depends on normal system runtime libraries such as `libstdc++` and `libc`.
+The build produces one CLI executable. Dependency linkage depends on the vcpkg triplet and system packages, the executable still depends on normal system runtime libraries such as `libstdc++` and `libc`.
 
 ### Versioning
 
 The project version is set in `CMakeLists.txt`:
 
 ```cmake
-project(flexrml VERSION 2.2.0 LANGUAGES CXX)
+project(flexrml VERSION 3.0.0 LANGUAGES CXX)
 ```
 
 CMake generates the runtime version header from that value. Check the built executable with:
@@ -103,19 +104,42 @@ CMake generates the runtime version header from that value. Check the built exec
 
 ## Getting Started
 
-To execute a mapping use: 
+To execute a mapping and print triples to stdout:
 
 ```bash
-./flexrml -m [path]
+./flexrml -m mapping.rml.ttl
 ```
 
-More information about available flags can be found using the `-h` flag.
+To write triples to a file:
+
+```bash
+./flexrml -m mapping.rml.ttl -o output.nt
+```
+
+Useful CLI options:
+
+```bash
+./flexrml -m mapping.rml.ttl -b http://example.com/base/
+./flexrml -m mapping.rml.ttl --no-threading
+./flexrml --version
+./flexrml --help
+```
+
+## Architecture
+
+FlexRML is structured as a frontend/backend pipeline. The frontend parses and normalizes mappings into an intermediate representation. The backend turns that representation into executable programs and runs the hot loops.
+
+The intended layering is:
+
+```text
+frontend -> backend/planner -> backend/optimizer -> backend/program -> backend/executor
+```
 
 ## Conformance
 
 FlexRML passes all official [`RML-Core test cases`](https://github.com/kg-construct/rml-core/tree/main/test-cases) and all official [`RML-FNML test cases`](https://github.com/kg-construct/rml-fnml/tree/main/test-cases).
 
-The runtime is C++; Python is only used for validation tooling. To run conformance validation, install the Python test dependency:
+The runtime is C++. Python is only used for validation tooling. To run conformance validation, install the Python test dependency:
 
 ```bash
 python3 -m venv env
@@ -144,6 +168,36 @@ python scripts/validate_test_cases.py rml-core/RMLTC0000-JSON
 ```
 
 The validator also generates a Markdown report at `validation_report.md`.
+
+## Benchmarking
+
+Benchmark cases live under `benchmark/`. Each case directory must contain a
+`mapping.rml.ttl` file. Run the benchmark suite with warmups and repeated
+measured runs:
+
+```bash
+cmake --build --preset default
+python scripts/run_benchmarks.py --repeats 5 --warmups 1
+```
+
+For focused optimization work, run only selected cases:
+
+```bash
+python scripts/run_benchmarks.py --case namedgraph --case mappings_10_5 --repeats 5 --warmups 1
+```
+
+The script writes CSV files to `benchmark/results/`. Compare a candidate result
+against a baseline with:
+
+```bash
+python scripts/compare_benchmarks.py benchmark/results/baseline.csv benchmark/results/candidate.csv
+```
+
+To fail a check when any common case regresses by at least 10 percent:
+
+```bash
+python scripts/compare_benchmarks.py benchmark/results/baseline.csv benchmark/results/candidate.csv --fail-wall-regression 10
+```
 
 ## Microcontroller Compatible Version
 

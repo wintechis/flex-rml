@@ -35,12 +35,17 @@ configure_file(
 
 set(FLEXRML_SOURCES
   src/flexrml/main.cpp
-  src/flexrml/core/json_preprocessor.cpp
-  src/flexrml/core/backend_planner.cpp
-  src/flexrml/backend/optimizations/ra_expression_partitioner.cpp
+  src/flexrml/cli.cpp
+  src/flexrml/pipeline.cpp
+  src/flexrml/frontend/json/json_preprocessor.cpp
+  src/flexrml/backend/planner/backend_planner.cpp
+  src/flexrml/backend/optimizer/ra_expression_partitioner.cpp
   src/flexrml/backend/executor/csv_row.cpp
   src/flexrml/backend/executor/executor.cpp
   src/flexrml/backend/executor/simple_executor.cpp
+  src/flexrml/backend/program/join_program.cpp
+  src/flexrml/backend/program/simple_program.cpp
+  src/flexrml/backend/program/term_program.cpp
   src/flexrml/backend/executor/utils.cpp
   src/flexrml/backend/executor/complex_executor.cpp
   src/flexrml/frontend/rdf_parser/rdf_parser_lib.cpp
@@ -54,7 +59,10 @@ add_executable(flexrml ${FLEXRML_SOURCES})
 
 target_include_directories(flexrml PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}/generated"
-  src/flexrml/core
+  src/flexrml
+  src/flexrml/frontend/json
+  src/flexrml/backend/planner
+  src/flexrml/backend/program
   src/flexrml/backend/executor
 )
 
