@@ -226,6 +226,24 @@ bool is_relative_source_path(const std::string& value) {
   return std::filesystem::path(value).is_relative();
 }
 
+std::string resolve_relative_source_path(const std::filesystem::path& base_dir,
+                                         const std::string& value) {
+  const auto source_path = std::filesystem::path(value);
+  const auto mapping_relative = (base_dir / source_path).lexically_normal();
+  std::error_code ec;
+  if (std::filesystem::exists(mapping_relative, ec)) {
+    return mapping_relative.string();
+  }
+
+  ec.clear();
+  const auto cwd_relative = (std::filesystem::current_path(ec) / source_path).lexically_normal();
+  if (!ec && std::filesystem::exists(cwd_relative, ec)) {
+    return cwd_relative.string();
+  }
+
+  return mapping_relative.string();
+}
+
 std::string canonicalize_mapping_graph(const std::string& rml_string,
                                        const std::filesystem::path& base_dir) {
   const auto raw_lines = raw_non_empty_lines(rml_string);
@@ -251,7 +269,7 @@ std::string canonicalize_mapping_graph(const std::string& rml_string,
     triple[2] = canonicalize_mapping_term(triple[2]);
     const bool object_is_node = std::find(subjects.begin(), subjects.end(), triple[2]) != subjects.end();
     if (!object_is_node && is_source_path_predicate(triple[1]) && is_relative_source_path(triple[2])) {
-      triple[2] = (base_dir / triple[2]).lexically_normal().string();
+      triple[2] = resolve_relative_source_path(base_dir, triple[2]);
     }
     lines.push_back(join(triple, "|||"));
   }

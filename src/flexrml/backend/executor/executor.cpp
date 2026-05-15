@@ -104,6 +104,12 @@ bool can_fuse_simple_partition(const PlanPartition& partition) {
   return true;
 }
 
+bool is_standalone_complex_partition(const PlanPartition& partition) {
+  return partition.plans.size() == 1 &&
+         !partition.has_function_call &&
+         partition.plans[0].kind == PhysicalPlanKind::Complex;
+}
+
 std::vector<SimplePlan> collect_simple_plans(const PlanPartition& partition) {
   std::vector<SimplePlan> plans;
   plans.reserve(partition.plans.size());
@@ -455,22 +461,21 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
     ThreadPool pool(numThreads);
     std::mutex output_mutex;
     bool can_use_shared_writer = !keep_in_memory;
-    for (const auto& partition : partitions) {
-      if (partition.plans.size() == 1 && !partition.has_function_call &&
-          partition.plans[0].kind == PhysicalPlanKind::Complex) {
-        can_use_shared_writer = false;
-        break;
-      }
-    }
 
     std::unique_ptr<SharedOutputWriter> shared_writer;
     if (can_use_shared_writer) {
       shared_writer = std::make_unique<SharedOutputWriter>(ouput_file);
     }
     OutputChunkWriter* shared_writer_ptr = shared_writer.get();
+    std::vector<PlanPartition> deferred_standalone_complex_partitions;
 
     // Enqueue each partition as a task.
     for (const auto& partition : partitions) {
+      if (shared_writer_ptr != nullptr && is_standalone_complex_partition(partition)) {
+        deferred_standalone_complex_partitions.push_back(partition);
+        continue;
+      }
+
       if (should_parallelize_fused_partition(partition, keep_in_memory, can_use_shared_writer)) {
         const auto simple_plans = collect_simple_plans(partition);
         const std::size_t chunk_count = std::min<std::size_t>(numThreads, simple_plans.size());
@@ -555,6 +560,12 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
       shared_writer->close();
     }
     pool.rethrow_if_failed();
+
+    for (const auto& partition : deferred_standalone_complex_partitions) {
+      nr_generate_triple.fetch_add(
+          execute_standalone_complex_plan(partition.plans[0].complex, data_map),
+          std::memory_order_relaxed);
+    }
   } 
   return std::to_string(nr_generate_triple.load()) + "|||" + output_data_str;
 }
