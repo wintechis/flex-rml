@@ -11,7 +11,9 @@ RML (RDF Mapping Language) is central to knowledge acquisition. FlexRML is a fle
 - Single Board Computers
 - Microcontrollers (Separate Repository)
 
-Currently, FlexRML supports data in CSV and JSON format.
+Currently, FlexRML supports CSV, JSON, and XML logical sources. CSV is read as
+rows, JSON supports JSONPath-style iterators for object arrays, and XML supports
+XPath iterators through the shared source reader abstraction.
 
 ## Installation
 
@@ -31,6 +33,7 @@ sudo apt install build-essential cmake pkg-config
 Native dependencies are managed with vcpkg manifest mode:
 
 - `jsoncons`
+- `pugixml`
 - `serd`
 - `unordered-dense`
 - `xxhash`
@@ -121,23 +124,27 @@ Useful CLI options:
 ```bash
 ./flexrml -m mapping.rml.ttl -b http://example.com/base/
 ./flexrml -m mapping.rml.ttl --no-threading
+./flexrml -m mapping.rml.ttl -gp
 ./flexrml --version
 ./flexrml --help
 ```
 
 ## Architecture
 
-FlexRML is structured as a frontend/backend pipeline. The frontend parses and normalizes mappings into an intermediate representation. The backend turns that representation into executable programs and runs the hot loops.
+FlexRML is structured as a frontend/backend pipeline. The frontend parses and normalizes mappings into an intermediate representation. The backend plans, optimizes, and executes typed programs against source readers.
 
 The intended layering is:
 
 ```text
-frontend -> backend/planner -> backend/optimizer -> backend/program -> backend/executor
+frontend -> backend/planner -> backend/optimizer -> backend/program -> backend/source -> backend/executor
 ```
+
+Source handling is implemented in C++ under `src/flexrml/backend/source/`. CSV,
+JSON, and XML are exposed to the executors through the same row-oriented interface.
 
 ## Conformance
 
-FlexRML passes all official [`RML-Core test cases`](https://github.com/kg-construct/rml-core/tree/main/test-cases) and all official [`RML-FNML test cases`](https://github.com/kg-construct/rml-fnml/tree/main/test-cases).
+FlexRML passes the configured validation categories for RML-Core JSON cases and RML-FNML cases. The test data itself is not tracked in this repository, copy the suites into `test_cases/` before running validation.
 
 The runtime is C++. Python is only used for validation tooling. To run conformance validation, install the Python test dependency:
 
@@ -148,7 +155,7 @@ pip install -r requirements.txt
 ```
 
 Place the official test cases in `test_cases/`. Category subfolders such as
-`test_cases/rml-core/` are supported. Build and run validation through CMake with:
+`test_cases/rml-core/` and `test_cases/rml-fnml/` are supported. Build and run validation through CMake with:
 
 ```bash
 cmake --build --preset test --target validate
@@ -180,14 +187,22 @@ cmake --build --preset default
 python scripts/run_benchmarks.py --repeats 5 --warmups 1
 ```
 
+There is also a CMake target for the default benchmark run:
+
+```bash
+cmake --build --preset default --target benchmark
+```
+
 For focused optimization work, run only selected cases:
 
 ```bash
 python scripts/run_benchmarks.py --case namedgraph --case mappings_10_5 --repeats 5 --warmups 1
 ```
 
-The script writes CSV files to `benchmark/results/`. Compare a candidate result
-against a baseline with:
+The script prints wall time and peak RSS for each run, writes CSV files to
+`benchmark/results/`, and removes generated `.nt` files by default. Use
+`--keep-outputs` when you need to inspect generated triples. Compare a candidate
+result against a baseline with:
 
 ```bash
 python scripts/compare_benchmarks.py benchmark/results/baseline.csv benchmark/results/candidate.csv
@@ -227,4 +242,6 @@ This project uses external C++ libraries managed through vcpkg:
 
 - [Serd](https://github.com/drobilla/serd) is licensed under the ISC License.
 - [jsoncons](https://github.com/danielaparker/jsoncons) is licensed under the Boost Software License 1.0.
+- [pugixml](https://pugixml.org/) is licensed under the MIT License.
 - [xxHash](https://github.com/Cyan4973/xxHash) is licensed under the BSD 2-Clause License.
+- [unordered_dense](https://github.com/martinus/unordered_dense) is licensed under the MIT License.
