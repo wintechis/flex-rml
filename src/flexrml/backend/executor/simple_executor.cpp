@@ -999,45 +999,6 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-SimplePlan parse_simple_plan(const std::string& information) {
-  SimplePlan data;
-
-  // Extract relevant parts
-  std::vector<std::string> split_info = split_by_substring(information, "\n");
-  if (split_info.size() != 5) {
-    std::cout << "Plan is too long for standalone simple mapping. Got size: " << split_info.size() << std::endl;
-    std::exit(1);
-  }
-
-  data.output_file_name = split_info[2];
-  data.base_uri = split_info[3];
-
-  std::vector<std::string> split_info_first = split_by_substring(split_info[0], "|||");
-  std::vector<std::string> split_info_second = split_by_substring(split_info[1], "|||");
-
-  data.input_file_name = split_info_first[1];
-  data.projected_attributes = split_by_substring(split_info_first[2], "===");
-
-  data.s_content = split_by_substring(split_info_second[1], "===");
-  data.p_content = split_by_substring(split_info_second[2], "===");
-  data.o_content = split_by_substring(split_info_second[3], "===");
-
-  if (split_info_second.size() == 4) {
-    data.generate_graph = false;
-  } else {
-    data.generate_graph = true;
-    data.g_content = split_by_substring(split_info_second[4], "===");
-  }
-
-  return data;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-size_t standalone_simple_mapping(const std::string& information, const std::unordered_map<std::string, std::string>& data_map) {
-  return execute_standalone_simple_plan(parse_simple_plan(information), data_map);
-}
-
 size_t execute_standalone_simple_plan(const SimplePlan& info, const std::unordered_map<std::string, std::string>& data_map) {
   return execute_standalone_simple_plan(info, data_map, nullptr);
 }
@@ -1357,10 +1318,6 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
 
   flush_setup_buffer(setup_data);
   return setup_data.triple_counter;
-}
-
-std::unordered_set<std::string> dependent_simple_mapping(const std::string& information, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
-  return execute_dependent_simple_plan(parse_simple_plan(information), unique_triple, data_map);
 }
 
 std::unordered_set<std::string> execute_dependent_simple_plan(const SimplePlan& info, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {

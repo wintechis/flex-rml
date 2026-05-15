@@ -70,23 +70,6 @@ void append_triples(std::string& output, const std::unordered_set<std::string>& 
   }
 }
 
-PhysicalPlan parse_physical_plan(const std::string& plan_str) {
-  PhysicalPlan plan;
-  plan.has_function_call = plan_str.find("==FUNC==") != std::string::npos;
-
-  const int plan_size = static_cast<int>(split_by_substring(plan_str, "\n").size());
-  if (plan_size == 5) {
-    plan.kind = PhysicalPlanKind::Simple;
-    plan.simple = parse_simple_plan(plan_str);
-  } else if (plan_size == 7) {
-    plan.kind = PhysicalPlanKind::Complex;
-    plan.raw = plan_str;
-  } else {
-    throw std::runtime_error("Unsupported physical plan size: " + std::to_string(plan_size));
-  }
-  return plan;
-}
-
 bool is_single_constant_simple_plan(const SimplePlan& plan) {
   if (!plan.generate_graph) {
     return (plan.s_content[1] == "constant" && plan.p_content[1] == "constant" && plan.o_content[1] == "constant") ||
@@ -409,7 +392,7 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
         if (plan.kind == PhysicalPlanKind::Simple) {
           nr_generate_triple += execute_standalone_simple_plan(plan.simple, data_map);
         } else {
-          nr_generate_triple += standalone_complex_mapping(plan.raw, data_map);
+          nr_generate_triple += execute_standalone_complex_plan(plan.complex, data_map);
         }
       }
       // CASE 2: Partition contains multiple elements
@@ -424,7 +407,7 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
           if (plan.kind == PhysicalPlanKind::Simple) {
             unique_triple = execute_dependent_simple_plan(plan.simple, unique_triple, data_map);
           } else {
-            unique_triple = dependent_complex_mapping(plan.raw, unique_triple, data_map);
+            unique_triple = execute_dependent_complex_plan(plan.complex, unique_triple, data_map);
           }
         }
 
@@ -482,7 +465,7 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
             }
           } else {
             std::lock_guard<std::mutex> lock(output_mutex);
-            nr_generate_triple.fetch_add(standalone_complex_mapping(plan.raw, data_map), std::memory_order_relaxed);
+            nr_generate_triple.fetch_add(execute_standalone_complex_plan(plan.complex, data_map), std::memory_order_relaxed);
           }
         }
         // CASE 2: Partition contains multiple elements.
@@ -503,7 +486,7 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
             if (plan.kind == PhysicalPlanKind::Simple) {
               unique_triple = execute_dependent_simple_plan(plan.simple, unique_triple, data_map);
             } else {
-              unique_triple = dependent_complex_mapping(plan.raw, unique_triple, data_map);
+              unique_triple = execute_dependent_complex_plan(plan.complex, unique_triple, data_map);
             }
           }
           nr_generate_triple.fetch_add(unique_triple.size(), std::memory_order_relaxed);
@@ -536,36 +519,4 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
     pool.rethrow_if_failed();
   } 
   return std::to_string(nr_generate_triple.load()) + "|||" + output_data_str;
-}
-
-std::string execute_physical_plans_string(const std::string& information,
-                                          const std::string& mode,
-                                          const std::string& output_file_path,
-                                          bool keep_in_memory,
-                                          const std::string& json_data) {
-  std::vector<std::string> plan_partitions = split_by_substring(information, "TTTtttTTTtttTTT");
-
-  std::vector<PlanPartition> partitions;
-  for (const auto& partition : plan_partitions) {
-    if (partition.empty()) {
-      continue;
-    }
-
-    std::vector<std::string> separated_plans_str = split_by_substring(partition, "PxPwPePrP");
-
-    PlanPartition parsed_partition;
-    for (const auto& plan_str : separated_plans_str) {
-      if (!plan_str.empty()) {
-        PhysicalPlan plan = parse_physical_plan(plan_str);
-        parsed_partition.has_function_call = parsed_partition.has_function_call || plan.has_function_call;
-        parsed_partition.plans.push_back(std::move(plan));
-      }
-    }
-
-    if (!parsed_partition.plans.empty()) {
-      partitions.push_back(std::move(parsed_partition));
-    }
-  }
-
-  return execute_physical_plan_partitions(partitions, mode, output_file_path, keep_in_memory, json_data);
 }

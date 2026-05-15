@@ -3,7 +3,8 @@
 #include <string>
 #include <vector>
 
-#include "simple_executor.h"
+#include "complex_plan.h"
+#include "simple_plan.h"
 
 enum class PhysicalPlanKind {
   Simple,
@@ -12,8 +13,8 @@ enum class PhysicalPlanKind {
 
 struct PhysicalPlan {
   PhysicalPlanKind kind = PhysicalPlanKind::Simple;
-  std::string raw;
   SimplePlan simple;
+  ComplexPlan complex;
   bool has_function_call = false;
 };
 

@@ -1,3 +1,5 @@
+#include "complex_executor.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -1050,78 +1052,36 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
 }
 
 //////////////////////////////////////////////////////////////
-size_t standalone_complex_mapping(const std::string& information, const std::unordered_map<std::string, std::string>& data_map) {
-  // Extract relevant parts
-  std::vector<std::string> split_info = split_by_substring(information, "\n");
-  if (split_info.size() != 7) {
-    std::cout << "Plan is too long. Got size: " << split_info.size() << std::endl;
-    std::exit(1);
-  }
-  fs::path output_file_name = split_info[4];
-  std::string base_uri = split_info[5];
-
-  std::vector<std::string> split_info_first = split_by_substring(split_info[0], "|||");
-  std::vector<std::string> split_info_second = split_by_substring(split_info[1], "|||");
-  std::vector<std::string> split_info_third = split_by_substring(split_info[2], "|||");
-  std::vector<std::string> split_info_fourth = split_by_substring(split_info[3], "|||");
-
-  std::string left_path = split_info_first[1];
-  std::vector<std::string> projected_attributes_left = split_by_substring(split_info_first[2], "===");
-  std::string left_name = split_info_first[3];
-
-  std::string right_path = split_info_second[1];
-  std::vector<std::string> projected_attributes_right = split_by_substring(split_info_second[2], "===");
-  std::string right_name = split_info_second[3];
-
-  std::vector<std::string> join_mapping = split_by_substring(split_info_third[1], "===");
-  if (join_mapping.size() < 2 || join_mapping.size() % 2 != 0) {
-    throw std::runtime_error("Invalid complex join mapping.");
-  }
-  std::vector<std::string> left_join_attrs;
-  std::vector<std::string> right_join_attrs;
-  left_join_attrs.reserve(join_mapping.size() / 2);
-  right_join_attrs.reserve(join_mapping.size() / 2);
-  for (size_t i = 0; i + 1 < join_mapping.size(); i += 2) {
-    left_join_attrs.push_back(join_mapping[i]);
-    right_join_attrs.push_back(join_mapping[i + 1]);
-  }
-
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+size_t execute_standalone_complex_plan(const ComplexPlan& info, const std::unordered_map<std::string, std::string>& data_map) {
   size_t generated_triple = 0;
 
-  std::vector<std::string> s_content = split_by_substring(split_info_fourth[1], "===");
-  std::vector<std::string> p_content = split_by_substring(split_info_fourth[2], "===");
-  std::vector<std::string> o_content = split_by_substring(split_info_fourth[3], "===");
-  std::vector<std::string> g_content;
   try {
-    if (split_info_fourth.size() == 4) {
+    if (!info.generate_graph) {
       // handle without graph //
       // Check if all entrries are constant
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
 
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
-        handle_constant_preformatted(s_content, p_content, o_content, g_content, output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted") {
+        handle_constant_preformatted(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
       } else {
-        generated_triple = execute_complex(output_file_name, left_path, right_path, left_name, right_name, left_join_attrs, right_join_attrs, base_uri,
-                                           projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, data_map);
+        generated_triple = execute_complex(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                           info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, data_map);
       }
     } else {
       // Handle with graph
-      g_content = split_by_substring(split_info_fourth[4], "===");
-
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant" && g_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant" && info.g_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted" && g_content[1] == "preformatted") {
-        handle_constant_preformatted(s_content, p_content, o_content, g_content, output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted" && info.g_content[1] == "preformatted") {
+        handle_constant_preformatted(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
       } else {
         // If not constant handle normal
-        generated_triple = execute_complex_with_graph(output_file_name, left_path, right_path, left_name, right_name, left_join_attrs, right_join_attrs, base_uri,
-                                                      projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, data_map);
+        generated_triple = execute_complex_with_graph(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                                      info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, info.g_content, data_map);
       }
     }
   } catch (const std::runtime_error& e) {
@@ -1135,70 +1095,28 @@ size_t standalone_complex_mapping(const std::string& information, const std::uno
   return generated_triple;
 }
 
-std::unordered_set<std::string> dependent_complex_mapping(const std::string& information, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
-  // Extract relevant parts
-  std::vector<std::string> split_info = split_by_substring(information, "\n");
-  if (split_info.size() != 7) {
-    std::cout << "Plan is too long. Got size: " << split_info.size() << std::endl;
-    std::exit(1);
-  }
-
-  fs::path output_file_name = split_info[4];
-  std::string base_uri = split_info[5];
-
-  std::vector<std::string> split_info_first = split_by_substring(split_info[0], "|||");
-  std::vector<std::string> split_info_second = split_by_substring(split_info[1], "|||");
-  std::vector<std::string> split_info_third = split_by_substring(split_info[2], "|||");
-  std::vector<std::string> split_info_fourth = split_by_substring(split_info[3], "|||");
-
-  std::string left_path = split_info_first[1];
-  std::vector<std::string> projected_attributes_left = split_by_substring(split_info_first[2], "===");
-  std::string left_name = split_info_first[3];
-
-  std::string right_path = split_info_second[1];
-  std::vector<std::string> projected_attributes_right = split_by_substring(split_info_second[2], "===");
-  std::string right_name = split_info_second[3];
-
-  std::vector<std::string> join_mapping = split_by_substring(split_info_third[1], "===");
-  if (join_mapping.size() < 2 || join_mapping.size() % 2 != 0) {
-    throw std::runtime_error("Invalid complex join mapping.");
-  }
-  std::vector<std::string> left_join_attrs;
-  std::vector<std::string> right_join_attrs;
-  left_join_attrs.reserve(join_mapping.size() / 2);
-  right_join_attrs.reserve(join_mapping.size() / 2);
-  for (size_t i = 0; i + 1 < join_mapping.size(); i += 2) {
-    left_join_attrs.push_back(join_mapping[i]);
-    right_join_attrs.push_back(join_mapping[i + 1]);
-  }
-
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  std::vector<std::string> s_content = split_by_substring(split_info_fourth[1], "===");
-  std::vector<std::string> p_content = split_by_substring(split_info_fourth[2], "===");
-  std::vector<std::string> o_content = split_by_substring(split_info_fourth[3], "===");
-  std::vector<std::string> g_content;
+std::unordered_set<std::string> execute_dependent_complex_plan(const ComplexPlan& info, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
   try {
-    if (split_info_fourth.size() == 4) {
+    if (!info.generate_graph) {
       // handle without graph //
       // Check if all entrries are constant
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
-        handle_constant_preformatted_dependent(s_content, p_content, o_content, g_content, output_file_name, unique_triple);
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted") {
+        handle_constant_preformatted_dependent(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name, unique_triple);
       } else {
-        unique_triple = execute_complex_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attrs, right_join_attrs, base_uri,
-                                                  projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, unique_triple, data_map);
+        unique_triple = execute_complex_dependent(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                                  info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, unique_triple, data_map);
       }
     } else {
       // Handle with graph //
-      g_content = split_by_substring(split_info_fourth[4], "===");
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant" && g_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
-        handle_constant_preformatted_dependent(s_content, p_content, o_content, g_content, output_file_name, unique_triple);
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant" && info.g_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted") {
+        handle_constant_preformatted_dependent(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name, unique_triple);
       } else {
-        unique_triple = execute_complex_with_graph_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attrs, right_join_attrs, base_uri,
-                                                             projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, unique_triple, data_map);
+        unique_triple = execute_complex_with_graph_dependent(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                                             info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, info.g_content, unique_triple, data_map);
       }
     }
   } catch (const std::runtime_error& e) {
