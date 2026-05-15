@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -189,8 +190,49 @@ struct JoinKey128Hasher {
   }
 };
 
+struct JoinRowBucket {
+  std::size_t first = 0;
+  std::vector<std::size_t> overflow;
+  bool has_first = false;
+
+  void push_back(std::size_t row_index) {
+    if (!has_first) {
+      first = row_index;
+      has_first = true;
+      return;
+    }
+    overflow.push_back(row_index);
+  }
+
+  struct Iterator {
+    const JoinRowBucket* bucket = nullptr;
+    std::size_t position = 0;
+
+    std::size_t operator*() const {
+      return position == 0 ? bucket->first : bucket->overflow[position - 1];
+    }
+
+    Iterator& operator++() {
+      ++position;
+      return *this;
+    }
+
+    bool operator!=(const Iterator& other) const {
+      return bucket != other.bucket || position != other.position;
+    }
+  };
+
+  Iterator begin() const {
+    return {this, 0};
+  }
+
+  Iterator end() const {
+    return {this, has_first ? overflow.size() + 1 : 0};
+  }
+};
+
 using JoinHashTable = ankerl::unordered_dense::map<JoinKey128,
-                                                   std::vector<std::size_t>,
+                                                   JoinRowBucket,
                                                    JoinKey128Hasher>;
 using RowHashSet = ankerl::unordered_dense::set<uint64_t>;
 
@@ -227,20 +269,60 @@ static std::optional<std::uintmax_t> file_size_hint(const std::string& path) {
 static bool should_build_right_side(const SourceReader& left_reader,
                                     const SourceReader& right_reader,
                                     const std::string& left_path,
-                                    const std::string& right_path) {
+                                    const std::string& right_path,
+                                    std::size_t left_projected_columns,
+                                    std::size_t right_projected_columns) {
+  constexpr long double kBuildSideSwitchMargin = 0.90L;
+  const auto projected_width = [](std::size_t columns) -> long double {
+    return static_cast<long double>(std::max<std::size_t>(columns, 1));
+  };
+  const auto should_switch = [kBuildSideSwitchMargin](long double left_cost, long double right_cost) {
+    return right_cost < left_cost * kBuildSideSwitchMargin;
+  };
+
   const auto left_count_hint = left_reader.row_count_hint();
   const auto right_count_hint = right_reader.row_count_hint();
   if (left_count_hint && right_count_hint) {
-    return *right_count_hint < *left_count_hint;
+    const long double left_cost = static_cast<long double>(*left_count_hint) * projected_width(left_projected_columns);
+    const long double right_cost = static_cast<long double>(*right_count_hint) * projected_width(right_projected_columns);
+    return should_switch(left_cost, right_cost);
   }
 
   const auto left_size_hint = file_size_hint(left_path);
   const auto right_size_hint = file_size_hint(right_path);
   if (left_size_hint && right_size_hint) {
-    return *right_size_hint < *left_size_hint;
+    const long double left_cost = static_cast<long double>(*left_size_hint) * projected_width(left_projected_columns);
+    const long double right_cost = static_cast<long double>(*right_size_hint) * projected_width(right_projected_columns);
+    return should_switch(left_cost, right_cost);
   }
 
   return false;
+}
+
+static std::optional<std::size_t> estimate_build_rows(const SourceReader& reader,
+                                                      const std::string& path) {
+  if (const auto row_count = reader.row_count_hint()) {
+    return row_count;
+  }
+
+  constexpr std::uintmax_t kEstimatedCsvRowBytes = 192;
+  const auto size_hint = file_size_hint(path);
+  if (!size_hint) {
+    return std::nullopt;
+  }
+
+  return static_cast<std::size_t>(std::max<std::uintmax_t>(1, *size_hint / kEstimatedCsvRowBytes));
+}
+
+static std::size_t estimated_cell_count(std::size_t rows, std::size_t columns) {
+  if (rows == 0 || columns == 0) {
+    return 0;
+  }
+  const std::size_t max_size = std::numeric_limits<std::size_t>::max();
+  if (rows > max_size / columns) {
+    return max_size;
+  }
+  return rows * columns;
 }
 
 JoinKey128 build_join_key(const std::vector<std::string>& row,
@@ -315,10 +397,17 @@ static void append_joined_views(const JoinRowStore& left_rows,
 
 BuiltJoinHashTable build_hash_table(SourceReader& reader,
                                     const std::vector<int>& projected_indeces,
-                                    const std::vector<JoinBinding>& join_bindings) {
+                                    const std::vector<JoinBinding>& join_bindings,
+                                    const std::string& input_path) {
   BuiltJoinHashTable table;
   table.rows.column_count = projected_indeces.size();
   RowHashSet unique_hashes;
+
+  if (const auto estimated_rows = estimate_build_rows(reader, input_path)) {
+    table.rows.values.reserve(estimated_cell_count(*estimated_rows, projected_indeces.size()));
+    table.hash_table.reserve(*estimated_rows);
+    unique_hashes.reserve(*estimated_rows);
+  }
 
   std::vector<std::string_view> projected_row_views;
   projected_row_views.reserve(projected_indeces.size());
@@ -339,9 +428,6 @@ BuiltJoinHashTable build_hash_table(SourceReader& reader,
     JoinKey128 key = build_join_key(projected_row_views, join_bindings);
     const std::size_t row_index = table.rows.append_row(projected_row_views);
     auto [it, inserted] = table.hash_table.try_emplace(key);
-    if (inserted) {
-      it->second.reserve(1);
-    }
     it->second.push_back(row_index);
   }
 
@@ -416,17 +502,19 @@ int execute_complex(const fs::path& output_file_name,
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
   SourceReader& build_reader = build_right ? *right_reader : *left_reader;
   SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
   const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
   const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
   const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
   const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
   const std::string& probe_path = build_right ? left_path : right_path;
 
   // Build hash table from the smaller hinted side when available.
-  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -586,17 +674,19 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
   SourceReader& build_reader = build_right ? *right_reader : *left_reader;
   SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
   const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
   const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
   const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
   const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
   const std::string& probe_path = build_right ? left_path : right_path;
 
   // Build hash table from the smaller hinted side when available.
-  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -760,17 +850,19 @@ int execute_complex_with_graph(const fs::path& output_file_name,
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
   SourceReader& build_reader = build_right ? *right_reader : *left_reader;
   SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
   const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
   const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
   const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
   const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
   const std::string& probe_path = build_right ? left_path : right_path;
 
   // Build hash table from the smaller hinted side when available.
-  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -938,17 +1030,19 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
   SourceReader& build_reader = build_right ? *right_reader : *left_reader;
   SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
   const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
   const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
   const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
   const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
   const std::string& probe_path = build_right ? left_path : right_path;
 
   // Build hash table from the smaller hinted side when available.
-  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
