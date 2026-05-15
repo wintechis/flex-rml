@@ -27,7 +27,8 @@
       "binaryDir": "${sourceDir}/build/test",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_FLAGS_DEBUG": "-O0 -g0"
+        "CMAKE_CXX_FLAGS_DEBUG": "-O0 -g0",
+        "FLEXRML_OUTPUT_NAME": "flexrml_test"
       }
     }
   ],

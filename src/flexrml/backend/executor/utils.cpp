@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <format>
 #include <fstream>
 #include <iostream>
@@ -90,23 +91,34 @@ bool split_csv_line_views_into(const std::string& str, char separator, std::vect
   }
 
   result.clear();
-  std::size_t field_start = 0;
 
-  for (std::size_t i = 0; i < str.size(); ++i) {
-    const unsigned char c = static_cast<unsigned char>(str[i]);
-    if (c == '"') {
-      return false;
-    }
-    if (std::iscntrl(c)) {
-      return false;
-    }
-    if (str[i] == separator) {
-      result.emplace_back(str.data() + field_start, i - field_start);
-      field_start = i + 1;
-    }
+  const char* data = str.data();
+  const std::size_t size = str.size();
+  if (std::memchr(data, '"', size) != nullptr ||
+      std::memchr(data, '\r', size) != nullptr ||
+      std::memchr(data, '\n', size) != nullptr ||
+      std::memchr(data, '\t', size) != nullptr) {
+    return false;
   }
 
-  result.emplace_back(str.data() + field_start, str.size() - field_start);
+  const char* const end = data + size;
+  const char* field_start = data;
+  const char* cursor = data;
+
+  while (cursor < end) {
+    const auto remaining = static_cast<std::size_t>(end - cursor);
+    const void* match = std::memchr(cursor, separator, remaining);
+    if (match == nullptr) {
+      break;
+    }
+
+    const char* separator_pos = static_cast<const char*>(match);
+    result.emplace_back(field_start, static_cast<std::size_t>(separator_pos - field_start));
+    cursor = separator_pos + 1;
+    field_start = cursor;
+  }
+
+  result.emplace_back(field_start, static_cast<std::size_t>(end - field_start));
   return true;
 }
 
@@ -538,6 +550,38 @@ std::vector<std::string> extract_substrings(const std::string& str) {
 }
 
 void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& out) {
+  static constexpr std::array<bool, 128> needs_encoding_map = [] {
+    std::array<bool, 128> map{};
+    map[' '] = true;
+    map['!'] = true;
+    map['"'] = true;
+    map['#'] = true;
+    map['$'] = true;
+    map['%'] = true;
+    map['&'] = true;
+    map['\''] = true;
+    map['('] = true;
+    map[')'] = true;
+    map['*'] = true;
+    map['+'] = true;
+    map[','] = true;
+    map['/'] = true;
+    map[':'] = true;
+    map[';'] = true;
+    map['<'] = true;
+    map['='] = true;
+    map['>'] = true;
+    map['?'] = true;
+    map['@'] = true;
+    map['['] = true;
+    map['\\'] = true;
+    map[']'] = true;
+    map['{'] = true;
+    map['|'] = true;
+    map['}'] = true;
+    return map;
+  }();
+
   static constexpr std::array<std::string_view, 128> encode_map = [] {
     std::array<std::string_view, 128> map{};
     map[' '] = "%20";
@@ -575,7 +619,7 @@ void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& 
   std::size_t encoded_size = node.size();
 
   for (unsigned char c : node) {
-    if (c < encode_map.size() && !encode_map[c].empty()) {
+    if (c < needs_encoding_map.size() && needs_encoding_map[c]) {
       needs_encoding = true;
       encoded_size += encode_map[c].size() - 1;
     } else if (encode_non_ascii && c > 127) {
@@ -613,23 +657,33 @@ std::string make_safe_iri(std::string_view node, bool encode_non_ascii) {
   return result;
 }
 
-// Check if a string contains any invalid characters
-bool contains_invalid_chars(std::string_view str,
-                            const std::unordered_set<char>& invalidChars) {
-  return std::ranges::any_of(
-      str, [&invalidChars](char c) { return invalidChars.contains(c); });
+bool has_invalid_iri_char(std::string_view value) {
+  for (const char c : value) {
+    switch (c) {
+      case ' ':
+      case '!':
+      case '"':
+      case '\'':
+      case '(':
+      case ')':
+      case ',':
+      case '[':
+      case ']':
+        return true;
+      default:
+        break;
+    }
+  }
+  return false;
 }
 
 std::string handle_term_type(const std::string& term_type,
                              std::string_view rdf_term,
                              const std::string& lang_tag,
                              const std::string& data_type) {
-  static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
-                                                      ')', ',', '[', ']'};
-
   if (term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") {
     // Check for invalid characters
-    if ((term_type == "uri" || term_type == "iri") && contains_invalid_chars(rdf_term, errorChars)) {
+    if ((term_type == "uri" || term_type == "iri") && has_invalid_iri_char(rdf_term)) {
       std::string error_msg;
       error_msg.reserve(rdf_term.size() + 58);
       error_msg.append("Error: invalid IRI detected for node: '");
@@ -685,14 +739,11 @@ std::string handle_term_type(const std::string& term_type,
 void handle_term_type_into(const std::string& term_type,
                            std::string_view rdf_term,
                            const std::string& lang_tag,
-                           const std::string& data_type,
+                           std::string_view data_type,
                            std::string& out) {
-  static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
-                                                      ')', ',', '[', ']'};
-
   out.clear();
   if (term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") {
-    if ((term_type == "uri" || term_type == "iri") && contains_invalid_chars(rdf_term, errorChars)) {
+    if ((term_type == "uri" || term_type == "iri") && has_invalid_iri_char(rdf_term)) {
       std::string error_msg;
       error_msg.reserve(rdf_term.size() + 58);
       error_msg.append("Error: invalid IRI detected for node: '");
@@ -890,9 +941,9 @@ bool is_rml_decimal(std::string_view value) {
   return true;
 }
 
-std::string infer_literal_datatype(std::string_view rdf_term,
-                                   const std::string& lang_tag,
-                                   const std::string& data_type) {
+std::string_view infer_literal_datatype(std::string_view rdf_term,
+                                        std::string_view lang_tag,
+                                        std::string_view data_type) {
   if (lang_tag != "None" || data_type != "None") {
     return data_type;
   }

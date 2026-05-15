@@ -1,27 +1,35 @@
+#include "complex_executor.h"
+
 #include <algorithm>
-#include <atomic>
-#include <cctype>
-#include <chrono>
-#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
-#include <format>
 #include <fstream>
-#include <functional>
 #include <iostream>
-#include <mutex>
-#include <queue>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
-#include <thread>
+#include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include <ankerl/unordered_dense.h>
+
+#include "csv_row.h"
 #include "definitions.h"
+#include "join_program.h"
+#include "source_reader_factory.h"
+#include "term_cache.h"
+#include "term_program.h"
 #include "utils.h"
+#include "xxhash.h"
 
 namespace fs = std::filesystem;
+
+constexpr std::size_t kOutputBufferReserve = 64 * 1024;
+static const std::string kConstantTermMapType = "constant";
 
 static void create_parent_directories_if_needed(const fs::path& path) {
   const auto parent = path.parent_path();
@@ -30,24 +38,108 @@ static void create_parent_directories_if_needed(const fs::path& path) {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////77
-//// HELPER FUNCTIONS ////
-
-// Function to join strings with a delimiter
-std::string join(const std::vector<std::string>& vec, const std::string& delimiter) {
-  std::string joined;
-  for (size_t i = 0; i < vec.size(); ++i) {
-    joined += vec[i];
-    if (i < vec.size() - 1)
-      joined += delimiter;
+static void initialize_row_map(std::unordered_map<std::string, std::string>& row,
+                               const std::vector<std::string>& joined_headers) {
+  row.clear();
+  row.reserve(joined_headers.size());
+  for (const auto& name : joined_headers) {
+    row.try_emplace(name);
   }
-  return joined;
+}
+
+static void update_row_map(std::unordered_map<std::string, std::string>& row,
+                           const std::vector<std::string>& joined_headers,
+                           const std::vector<std::string_view>& joined_row) {
+  for (std::size_t i = 0; i < joined_row.size(); ++i) {
+    auto it = row.find(joined_headers[i]);
+    if (it != row.end()) {
+      it->second = joined_row[i];
+    }
+  }
+}
+
+static bool render_runtime_term(const CompiledRuntimeTerm& term,
+                                int line_count,
+                                const std::string& input_file_name,
+                                const std::vector<std::string_view>& joined_row,
+                                const std::string& base_uri,
+                                std::unordered_map<std::string, std::string>& row,
+                                std::string& out,
+                                std::string& scratch,
+                                std::string& function_value) {
+  const std::vector<std::string>& content = term.content;
+  switch (term.render_op) {
+    case CompiledRuntimeTerm::RenderOp::Null:
+      return false;
+    case CompiledRuntimeTerm::RenderOp::Function:
+      function_value = handle_function_call(content[0], line_count, input_file_name, row);
+      if (function_value == "NULL") {
+        return false;
+      }
+      create_operator_into(function_value, kConstantTermMapType, content[2],
+                           content.size() > 3 ? content[3] : "",
+                           content.size() > 4 ? content[4] : "",
+                           base_uri, row, out, scratch);
+      return true;
+    case CompiledRuntimeTerm::RenderOp::Preformatted:
+      out = content[0];
+      return true;
+    case CompiledRuntimeTerm::RenderOp::Compiled:
+      render_compiled_term(term.compiled, joined_row, base_uri, out, scratch);
+      return true;
+    case CompiledRuntimeTerm::RenderOp::Fallback:
+      create_operator_into(content[0], content[1], content[2],
+                           content.size() > 3 ? content[3] : "",
+                           content.size() > 4 ? content[4] : "",
+                           base_uri, row, out, scratch);
+      return true;
+  }
+  return false;
+}
+
+static void reset_complex_term_cache(CompiledComplexRenderPlan& plan) {
+  reset_term_cache(plan.term_cache_entries);
+}
+
+static bool render_cached_runtime_term(const CompiledRuntimeTerm& term,
+                                       int line_count,
+                                       const std::string& input_file_name,
+                                       const std::vector<std::string_view>& joined_row,
+                                       const std::string& base_uri,
+                                       std::unordered_map<std::string, std::string>& row,
+                                       int cache_id,
+                                       std::vector<TermCacheEntry>& cache_entries,
+                                       std::string& out,
+                                       std::string& scratch,
+                                       std::string& function_value) {
+  if (cache_id < 0) {
+    return render_runtime_term(term, line_count, input_file_name, joined_row, base_uri, row, out, scratch, function_value);
+  }
+
+  TermCacheEntry& entry = cache_entries[static_cast<std::size_t>(cache_id)];
+  if (!entry.computed) {
+    entry.value.clear();
+    if (!render_runtime_term(term, line_count, input_file_name, joined_row, base_uri, row, entry.value, entry.scratch, function_value)) {
+      return false;
+    }
+    entry.computed = true;
+  }
+  out = entry.value;
+  return true;
+}
+
+static uint64_t combined_hash_views(const std::vector<std::string_view>& fields) {
+  uint64_t hash = 0;
+  for (const auto& field : fields) {
+    uint64_t field_hash = XXH3_64bits(field.data(), field.size());
+    hash ^= field_hash + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+  }
+  return hash;
 }
 
 // Build header mapping and return header vector and index map.
-std::pair<std::vector<std::string>, std::unordered_map<std::string, int>> build_header(const std::string& header_line, const std::string& prefix) {
-  auto original = split_csv_line(header_line, ',');
-
+std::pair<std::vector<std::string>, std::unordered_map<std::string, int>> build_header(const std::vector<std::string>& original,
+                                                                                      const std::string& prefix) {
   std::vector<std::string> headers;
   std::unordered_map<std::string, int> header_idx;
 
@@ -69,8 +161,7 @@ std::vector<int> get_projected_indices(const std::vector<std::string>& proj_attr
     auto it = header_idx.find(full);  // Efficient lookup
 
     if (it == header_idx.end()) {
-      std::cerr << "Error: " << full << " not found in header." << std::endl;
-      std::exit(1);
+      throw std::runtime_error("Attribute not found: '" + full + "'");
     }
 
     indices.push_back(it->second);
@@ -79,22 +170,182 @@ std::vector<int> get_projected_indices(const std::vector<std::string>& proj_attr
   return indices;
 }
 
-// Determine the join index within the projected attributes.
-int get_join_index(const std::vector<std::string>& proj_attrs, const std::string& prefix, const std::string& join_attr) {
-  for (size_t i = 0; i < proj_attrs.size(); ++i) {
-    if (prefix + "_" + proj_attrs[i] == join_attr) {
-      return static_cast<int>(i);  // Found index
-    }
-  }
-
-  std::cerr << "Error: Join attribute " << join_attr << " not found in projected attributes." << std::endl;
-  std::exit(1);
-}
-
 struct JoinBinding {
   int index = -1;
   std::string constant;
 };
+
+struct JoinKey128 {
+  XXH64_hash_t low = 0;
+  XXH64_hash_t high = 0;
+
+  bool operator==(const JoinKey128& other) const {
+    return low == other.low && high == other.high;
+  }
+};
+
+struct JoinKey128Hasher {
+  auto operator()(const JoinKey128& key) const noexcept -> std::uint64_t {
+    return key.low ^ (key.high + 0x9e3779b97f4a7c15ULL + (key.low << 6) + (key.low >> 2));
+  }
+};
+
+struct JoinRowBucket {
+  std::size_t first = 0;
+  std::vector<std::size_t> overflow;
+  bool has_first = false;
+
+  void push_back(std::size_t row_index) {
+    if (!has_first) {
+      first = row_index;
+      has_first = true;
+      return;
+    }
+    overflow.push_back(row_index);
+  }
+
+  struct Iterator {
+    const JoinRowBucket* bucket = nullptr;
+    std::size_t position = 0;
+
+    std::size_t operator*() const {
+      return position == 0 ? bucket->first : bucket->overflow[position - 1];
+    }
+
+    Iterator& operator++() {
+      ++position;
+      return *this;
+    }
+
+    bool operator!=(const Iterator& other) const {
+      return bucket != other.bucket || position != other.position;
+    }
+  };
+
+  Iterator begin() const {
+    return {this, 0};
+  }
+
+  Iterator end() const {
+    return {this, has_first ? overflow.size() + 1 : 0};
+  }
+};
+
+using JoinHashTable = ankerl::unordered_dense::map<JoinKey128,
+                                                   JoinRowBucket,
+                                                   JoinKey128Hasher>;
+using RowHashSet = ankerl::unordered_dense::set<uint64_t>;
+
+struct JoinRowStore {
+  std::vector<std::string> values;
+  std::size_t column_count = 0;
+
+  std::size_t append_row(const std::vector<std::string_view>& row) {
+    const std::size_t row_index = column_count == 0 ? 0 : values.size() / column_count;
+    for (std::string_view value : row) {
+      values.emplace_back(value);
+    }
+    return row_index;
+  }
+};
+
+struct BuiltJoinHashTable {
+  JoinHashTable hash_table;
+  JoinRowStore rows;
+};
+
+static std::optional<std::uintmax_t> file_size_hint(const std::string& path) {
+  std::error_code error;
+  if (!fs::is_regular_file(path, error) || error) {
+    return std::nullopt;
+  }
+  const auto size = fs::file_size(path, error);
+  if (error) {
+    return std::nullopt;
+  }
+  return size;
+}
+
+static bool should_build_right_side(const SourceReader& left_reader,
+                                    const SourceReader& right_reader,
+                                    const std::string& left_path,
+                                    const std::string& right_path,
+                                    std::size_t left_projected_columns,
+                                    std::size_t right_projected_columns) {
+  constexpr long double kBuildSideSwitchMargin = 0.90L;
+  const auto projected_width = [](std::size_t columns) -> long double {
+    return static_cast<long double>(std::max<std::size_t>(columns, 1));
+  };
+  const auto should_switch = [kBuildSideSwitchMargin](long double left_cost, long double right_cost) {
+    return right_cost < left_cost * kBuildSideSwitchMargin;
+  };
+
+  const auto left_count_hint = left_reader.row_count_hint();
+  const auto right_count_hint = right_reader.row_count_hint();
+  if (left_count_hint && right_count_hint) {
+    const long double left_cost = static_cast<long double>(*left_count_hint) * projected_width(left_projected_columns);
+    const long double right_cost = static_cast<long double>(*right_count_hint) * projected_width(right_projected_columns);
+    return should_switch(left_cost, right_cost);
+  }
+
+  const auto left_size_hint = file_size_hint(left_path);
+  const auto right_size_hint = file_size_hint(right_path);
+  if (left_size_hint && right_size_hint) {
+    const long double left_cost = static_cast<long double>(*left_size_hint) * projected_width(left_projected_columns);
+    const long double right_cost = static_cast<long double>(*right_size_hint) * projected_width(right_projected_columns);
+    return should_switch(left_cost, right_cost);
+  }
+
+  return false;
+}
+
+static std::optional<std::size_t> estimate_build_rows(const SourceReader& reader,
+                                                      const std::string& path) {
+  if (const auto row_count = reader.row_count_hint()) {
+    return row_count;
+  }
+
+  constexpr std::uintmax_t kEstimatedCsvRowBytes = 192;
+  const auto size_hint = file_size_hint(path);
+  if (!size_hint) {
+    return std::nullopt;
+  }
+
+  return static_cast<std::size_t>(std::max<std::uintmax_t>(1, *size_hint / kEstimatedCsvRowBytes));
+}
+
+static std::size_t estimated_cell_count(std::size_t rows, std::size_t columns) {
+  if (rows == 0 || columns == 0) {
+    return 0;
+  }
+  const std::size_t max_size = std::numeric_limits<std::size_t>::max();
+  if (rows > max_size / columns) {
+    return max_size;
+  }
+  return rows * columns;
+}
+
+JoinKey128 build_join_key(const std::vector<std::string>& row,
+                          const std::vector<JoinBinding>& join_bindings) {
+  JoinKey128 key;
+  for (const auto& binding : join_bindings) {
+    const std::string& value = binding.index >= 0 ? row[binding.index] : binding.constant;
+    key.low = XXH64(value.data(), value.size(), key.low ^ value.size());
+    key.high = XXH64(value.data(), value.size(), key.high ^ 0x9e3779b97f4a7c15ULL ^ value.size());
+  }
+  return key;
+}
+
+JoinKey128 build_join_key(const std::vector<std::string_view>& row,
+                          const std::vector<JoinBinding>& join_bindings) {
+  JoinKey128 key;
+  for (const auto& binding : join_bindings) {
+    const std::string_view value = binding.index >= 0 ? row[binding.index] : std::string_view(binding.constant);
+    key.low = XXH64(value.data(), value.size(), key.low ^ value.size());
+    key.high = XXH64(value.data(), value.size(), key.high ^ 0x9e3779b97f4a7c15ULL ^ value.size());
+  }
+  return key;
+}
 
 JoinBinding resolve_join_binding(const std::vector<std::string>& proj_attrs,
                                  const std::string& prefix,
@@ -114,103 +365,75 @@ JoinBinding resolve_join_binding(const std::vector<std::string>& proj_attrs,
   std::exit(1);
 }
 
-std::unordered_multimap<std::string, std::vector<std::string>> build_hash_table(std::istream& input_file,
-                                                                                const std::vector<int>& projected_indeces,
-                                                                                const JoinBinding& join_binding) {
-  std::unordered_multimap<std::string, std::vector<std::string>> hash_table;
-  std::unordered_set<uint64_t> unique_hashes;
+std::vector<JoinBinding> resolve_join_bindings(const std::vector<std::string>& proj_attrs,
+                                               const std::string& prefix,
+                                               const std::vector<std::string>& join_attrs) {
+  std::vector<JoinBinding> bindings;
+  bindings.reserve(join_attrs.size());
+  for (const auto& join_attr : join_attrs) {
+    bindings.push_back(resolve_join_binding(proj_attrs, prefix, join_attr));
+  }
+  return bindings;
+}
 
-  const size_t batch_size = 1000;
-  std::vector<std::string> batch_lines;
-  batch_lines.reserve(batch_size);
-  std::string line;
+static void append_joined_views(const JoinRowStore& left_rows,
+                                std::size_t left_row_index,
+                                const std::vector<std::string_view>& right_row,
+                                bool build_side_is_left,
+                                std::vector<std::string_view>& joined_row) {
+  joined_row.clear();
+  joined_row.reserve(left_rows.column_count + right_row.size());
+  const std::size_t offset = left_row_index * left_rows.column_count;
+  if (!build_side_is_left) {
+    joined_row.insert(joined_row.end(), right_row.begin(), right_row.end());
+  }
+  for (std::size_t i = 0; i < left_rows.column_count; ++i) {
+    joined_row.emplace_back(left_rows.values[offset + i]);
+  }
+  if (build_side_is_left) {
+    joined_row.insert(joined_row.end(), right_row.begin(), right_row.end());
+  }
+}
 
-  // Read the file in batches.
-  while (std::getline(input_file, line)) {
-    batch_lines.push_back(std::move(line));
-    if (batch_lines.size() == batch_size) {
-      // Process the current batch.
-      for (const auto& batch_line : batch_lines) {
-        auto split_line = split_csv_line(batch_line, ',');
+BuiltJoinHashTable build_hash_table(SourceReader& reader,
+                                    const std::vector<int>& projected_indeces,
+                                    const std::vector<JoinBinding>& join_bindings,
+                                    const std::string& input_path) {
+  BuiltJoinHashTable table;
+  table.rows.column_count = projected_indeces.size();
+  RowHashSet unique_hashes;
 
-        // Build the projected row.
-        std::vector<std::string> projected_row;
-        projected_row.reserve(projected_indeces.size());
-        for (int idx : projected_indeces) {
-          projected_row.push_back(split_line[idx]);
-        }
-
-        // Check for unwanted values.
-        bool skip = false;
-        for (const auto& target : values_to_skip) {
-          if (std::any_of(projected_row.begin(), projected_row.end(),
-                          [&target](const std::string& s) { return s == target; })) {
-            skip = true;
-            break;
-          }
-        }
-        if (skip) continue;
-
-        // Eliminate duplicates.
-        uint64_t hash = combinedHash(projected_row);
-        if (!unique_hashes.insert(hash).second) {
-          continue;
-        }
-
-        // Insert into hash table.
-        std::string key = join_binding.index >= 0 ? projected_row[join_binding.index] : join_binding.constant;
-        hash_table.emplace(std::move(key), std::move(projected_row));
-      }
-      batch_lines.clear();
-    }
+  if (const auto estimated_rows = estimate_build_rows(reader, input_path)) {
+    table.rows.values.reserve(estimated_cell_count(*estimated_rows, projected_indeces.size()));
+    table.hash_table.reserve(*estimated_rows);
+    unique_hashes.reserve(*estimated_rows);
   }
 
-  // Process any remaining lines that didn't fill a full batch.
-  for (const auto& batch_line : batch_lines) {
-    auto split_line = split_csv_line(batch_line, ',');
-    std::vector<std::string> projected_row;
-    projected_row.reserve(projected_indeces.size());
-    for (int idx : projected_indeces) {
-      projected_row.push_back(split_line[idx]);
+  std::vector<std::string_view> projected_row_views;
+  projected_row_views.reserve(projected_indeces.size());
+
+  RowView source_row;
+  while (reader.next(source_row)) {
+    project_row_into(source_row.fields, projected_indeces, projected_row_views);
+
+    if (row_has_skip_value(projected_row_views)) {
+      continue;
     }
 
-    bool skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(projected_row.begin(), projected_row.end(),
-                      [&target](const std::string& s) { return s == target; })) {
-        skip = true;
-        break;
-      }
-    }
-    if (skip) continue;
-
-    uint64_t hash = combinedHash(projected_row);
+    uint64_t hash = combined_hash_views(projected_row_views);
     if (!unique_hashes.insert(hash).second) {
       continue;
     }
 
-    std::string key = join_binding.index >= 0 ? projected_row[join_binding.index] : join_binding.constant;
-    hash_table.emplace(std::move(key), std::move(projected_row));
+    JoinKey128 key = build_join_key(projected_row_views, join_bindings);
+    const std::size_t row_index = table.rows.append_row(projected_row_views);
+    auto [it, inserted] = table.hash_table.try_emplace(key);
+    it->second.push_back(row_index);
   }
 
-  return hash_table;
+  return table;
 }
 
-
-// Open File or from map
-static std::unique_ptr<std::istream> open_from_map_or_file(
-    const std::unordered_map<std::string, std::string>& mem,
-    const std::string& path){
-    if (auto it = mem.find(path); it != mem.end()) {
-        return std::make_unique<std::istringstream>(it->second);
-    }
-
-    auto f = std::make_unique<std::ifstream>(path);
-    if (!f->is_open()) {
-        throw std::runtime_error("Could not open logical source: " + path);
-    }
-    return f;
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -219,8 +442,8 @@ int execute_complex(const fs::path& output_file_name,
                      const std::string& right_path,
                      const std::string& left_name,
                      const std::string& right_name,
-                     const std::string& left_join_attr,
-                     const std::string& right_join_attr,
+                     const std::vector<std::string>& left_join_attrs,
+                     const std::vector<std::string>& right_join_attrs,
                      const std::string& base_uri,
                      const std::vector<std::string>& projected_attributes_left,
                      const std::vector<std::string>& projected_attributes_right,
@@ -229,13 +452,26 @@ int execute_complex(const fs::path& output_file_name,
                      const std::vector<std::string>& o_content,
                      const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
   size_t triple_counter = 0;
-
   size_t write_cnt = 0;
   size_t buffer_limit = 20000;
   std::string buffered_res;
+  std::string subject;
+  std::string predicate;
+  std::string object;
+  std::string res;
+  std::string subject_scratch;
+  std::string predicate_scratch;
+  std::string object_scratch;
+  buffered_res.reserve(kOutputBufferReserve);
+  subject.reserve(512);
+  predicate.reserve(512);
+  object.reserve(512);
+  res.reserve(2048);
+  subject_scratch.reserve(512);
+  predicate_scratch.reserve(512);
+  object_scratch.reserve(512);
 
   // Open output file
   create_parent_directories_if_needed(output_file_name);
@@ -248,33 +484,37 @@ int execute_complex(const fs::path& output_file_name,
   //////////////////////////////////////////////////////////////////////
 
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
-  }
-
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  if (!std::getline(*left_file, left_header_line) || !std::getline(*right_file, right_header_line)) {
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
     return 0;
   }
 
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
-  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
+  std::vector<JoinBinding> left_join_bindings = resolve_join_bindings(projected_attributes_left, left_name, left_join_attrs);
+  std::vector<JoinBinding> right_join_bindings = resolve_join_bindings(projected_attributes_right, right_name, right_join_attrs);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -285,73 +525,71 @@ int execute_complex(const fs::path& output_file_name,
   for (const auto& attr : projected_attributes_right) {
     joined_headers.push_back(right_name + "_" + attr);
   }
+  CompiledComplexRenderPlan render_plan =
+      compile_complex_render_plan(joined_headers, base_uri, s_content, p_content, o_content);
+  std::unordered_map<std::string, std::string> row_map;
+  if (render_plan.needs_row_map) {
+    initialize_row_map(row_map, joined_headers);
+  }
 
-  // Process right file
-  while (getline(*right_file, line)) {
-    auto split_line = split_csv_line(line, ',');
-
-    std::vector<std::string> projected_row;
-    ////// PROJECTION //////
-    for (int i : right_proj_indices) {
-      projected_row.push_back(split_line[i]);
-    }
+  // Process probe file
+  std::vector<std::string_view> projected_row;
+  projected_row.reserve(probe_proj_indices.size());
+  std::vector<std::string_view> joined_row;
+  joined_row.reserve(joined_headers.size());
+  int line_count = 0;
+  RowView source_row;
+  while (probe_reader.next(source_row)) {
+    line_count++;
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
-    bool skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(projected_row.begin(), projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        skip = true;
-        break;
-      }
-    }
-    if (skip) {
+    if (row_has_skip_value(projected_row)) {
       continue;
     }
 
     // Eliminate duplicates using hash
-    uint64_t hash = combinedHash(projected_row);
+    uint64_t hash = combined_hash_views(projected_row);
     if (!unique_hashes.insert(hash).second) {
       continue;
     }
 
-    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
-    auto range = hash_table.equal_range(key);
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      std::vector<std::string> joined_row;
-      joined_row.insert(joined_row.end(), it->second.begin(), it->second.end());
-      joined_row.insert(joined_row.end(), projected_row.begin(), projected_row.end());
-
-      // Map headers to values
-      std::unordered_map<std::string, std::string> row_map;
-      for (size_t i = 0; i < joined_headers.size(); ++i)
-        row_map[joined_headers[i]] = joined_row[i];
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
       // Generate triple
-      std::string subject;
-      std::string predicate;
-      std::string object;
+      if (render_plan.needs_row_map) {
+        update_row_map(row_map, joined_headers, joined_row);
+      }
+
+      std::string s_function_value;
+      std::string p_function_value;
+      std::string o_function_value;
+      if (render_plan.has_object_condition &&
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
+        continue;
+      }
+      reset_complex_term_cache(render_plan);
 
       ////// CREATE //////
       try {
-        // SUBJECT
-        if (s_content[1] == "preformatted") {
-          subject = s_content[0];
-        } else {
-          subject = create_operator(s_content[0], s_content[1], s_content[2], "", "", base_uri, row_map);
-        }
-        // PREDICATE
-        if (p_content[1] == "preformatted") {
-          predicate = p_content[0];
-        } else {
-          predicate = create_operator(p_content[0], p_content[1], p_content[2], "", "", base_uri, row_map);
-        }
-        // OBJECT
-        if (o_content[1] == "preformatted") {
-          object = o_content[0];
-        } else {
-          object = create_operator(o_content[0], o_content[1], o_content[2], o_content[3], o_content[4], base_uri, row_map);
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value)) {
+          continue;
         }
       } catch (const std::runtime_error& e) {
         if (continue_on_error == false) {
@@ -362,7 +600,7 @@ int execute_complex(const fs::path& output_file_name,
         }
       }
 
-      std::string res = subject + " " + predicate + " " + object + " .\n";
+      format_statement_into(subject, predicate, object, res);
       triple_counter++;
 
       buffered_res += res;
@@ -389,8 +627,8 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
                                                           const std::string& right_path,
                                                           const std::string& left_name,
                                                           const std::string& right_name,
-                                                          const std::string& left_join_attr,
-                                                          const std::string& right_join_attr,
+                                                          const std::vector<std::string>& left_join_attrs,
+                                                          const std::vector<std::string>& right_join_attrs,
                                                           const std::string& base_uri,
                                                           const std::vector<std::string>& projected_attributes_left,
                                                           const std::vector<std::string>& projected_attributes_right,
@@ -400,38 +638,55 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
                                                           std::unordered_set<std::string>& unique_triple,
                                                           const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
+  std::string subject;
+  std::string predicate;
+  std::string object;
+  std::string res;
+  std::string subject_scratch;
+  std::string predicate_scratch;
+  std::string object_scratch;
+  subject.reserve(512);
+  predicate.reserve(512);
+  object.reserve(512);
+  res.reserve(2048);
+  subject_scratch.reserve(512);
+  predicate_scratch.reserve(512);
+  object_scratch.reserve(512);
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
+    return unique_triple;
   }
 
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  std::getline(*left_file, left_header_line);
-  std::getline(*right_file, right_header_line);
-
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
-  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
+  std::vector<JoinBinding> left_join_bindings = resolve_join_bindings(projected_attributes_left, left_name, left_join_attrs);
+  std::vector<JoinBinding> right_join_bindings = resolve_join_bindings(projected_attributes_right, right_name, right_join_attrs);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -443,70 +698,69 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
   for (const auto& attr : projected_attributes_right) {
     joined_headers.push_back(right_name + "_" + attr);
   }
+  CompiledComplexRenderPlan render_plan =
+      compile_complex_render_plan(joined_headers, base_uri, s_content, p_content, o_content);
+  std::unordered_map<std::string, std::string> row_map;
+  if (render_plan.needs_row_map) {
+    initialize_row_map(row_map, joined_headers);
+  }
 
-  // Process right file
-  while (getline(*right_file, line)) {
-    auto split_line = split_csv_line(line, ',');
-
-    std::vector<std::string> projected_row;
-    ////// PROJECTION //////
-    for (int i : right_proj_indices) {
-      projected_row.push_back(split_line[i]);
-    }
+  // Process probe file
+  std::vector<std::string_view> projected_row;
+  projected_row.reserve(probe_proj_indices.size());
+  std::vector<std::string_view> joined_row;
+  joined_row.reserve(joined_headers.size());
+  int line_count = 0;
+  RowView source_row;
+  while (probe_reader.next(source_row)) {
+    line_count++;
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
-    bool skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(projected_row.begin(), projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        skip = true;
-        break;
-      }
-    }
-    if (skip) {
+    if (row_has_skip_value(projected_row)) {
       continue;
     }
 
     // Eliminate duplicates using hash
-    uint64_t hash = combinedHash(projected_row);
+    uint64_t hash = combined_hash_views(projected_row);
     if (!unique_hashes.insert(hash).second) {
       continue;
     }
 
-    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
-    auto range = hash_table.equal_range(key);
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      std::vector<std::string> joined_row;
-      joined_row.insert(joined_row.end(), it->second.begin(), it->second.end());
-      joined_row.insert(joined_row.end(), projected_row.begin(), projected_row.end());
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
-      // Map headers to values
-      std::unordered_map<std::string, std::string> row_map;
-      for (size_t i = 0; i < joined_headers.size(); ++i)
-        row_map[joined_headers[i]] = joined_row[i];
+      if (render_plan.needs_row_map) {
+        update_row_map(row_map, joined_headers, joined_row);
+      }
 
-      std::string subject;
-      std::string predicate;
-      std::string object;
+      std::string s_function_value;
+      std::string p_function_value;
+      std::string o_function_value;
+      if (render_plan.has_object_condition &&
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
+        continue;
+      }
+      reset_complex_term_cache(render_plan);
+
       try {
-        // SUBJECT
-        if (s_content[1] == "preformatted") {
-          subject = s_content[0];
-        } else {
-          subject = create_operator(s_content[0], s_content[1], s_content[2], "", "", base_uri, row_map);
-        }
-        // PREDICATE
-        if (p_content[1] == "preformatted") {
-          predicate = p_content[0];
-        } else {
-          predicate = create_operator(p_content[0], p_content[1], p_content[2], "", "", base_uri, row_map);
-        }
-        // OBJECT
-        if (o_content[1] == "preformatted") {
-          object = o_content[0];
-        } else {
-          object = create_operator(o_content[0], o_content[1], o_content[2], o_content[3], o_content[4], base_uri, row_map);
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value)) {
+          continue;
         }
       } catch (const std::runtime_error& e) {
         if (continue_on_error == false) {
@@ -517,7 +771,7 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
         }
       }
 
-      std::string res = subject + " " + predicate + " " + object + " .\n";
+      format_statement_into(subject, predicate, object, res);
 
       unique_triple.insert(res);
     }
@@ -531,8 +785,8 @@ int execute_complex_with_graph(const fs::path& output_file_name,
                                const std::string& left_path, const std::string& right_path,
                                const std::string& left_name,
                                const std::string& right_name,
-                               const std::string& left_join_attr,
-                               const std::string& right_join_attr,
+                               const std::vector<std::string>& left_join_attrs,
+                               const std::vector<std::string>& right_join_attrs,
                                const std::string& base_uri,
                                const std::vector<std::string>& projected_attributes_left,
                                const std::vector<std::string>& projected_attributes_right,
@@ -542,13 +796,31 @@ int execute_complex_with_graph(const fs::path& output_file_name,
                                const std::vector<std::string>& g_content,
                                const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
   size_t triple_counter = 0;
 
   size_t write_cnt = 0;
   size_t buffer_limit = 20000;
   std::string buffered_res;
+  std::string subject;
+  std::string predicate;
+  std::string object;
+  std::string graph;
+  std::string res;
+  std::string subject_scratch;
+  std::string predicate_scratch;
+  std::string object_scratch;
+  std::string graph_scratch;
+  buffered_res.reserve(kOutputBufferReserve);
+  subject.reserve(512);
+  predicate.reserve(512);
+  object.reserve(512);
+  graph.reserve(512);
+  res.reserve(2048);
+  subject_scratch.reserve(512);
+  predicate_scratch.reserve(512);
+  object_scratch.reserve(512);
+  graph_scratch.reserve(512);
 
   // Open output file
   create_parent_directories_if_needed(output_file_name);
@@ -560,32 +832,37 @@ int execute_complex_with_graph(const fs::path& output_file_name,
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
+    return 0;
   }
 
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  std::getline(*left_file, left_header_line);
-  std::getline(*right_file, right_header_line);
-
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
-  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
+  std::vector<JoinBinding> left_join_bindings = resolve_join_bindings(projected_attributes_left, left_name, left_join_attrs);
+  std::vector<JoinBinding> right_join_bindings = resolve_join_bindings(projected_attributes_right, right_name, right_join_attrs);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -596,79 +873,74 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   for (const auto& attr : projected_attributes_right) {
     joined_headers.push_back(right_name + "_" + attr);
   }
+  CompiledComplexRenderPlan render_plan =
+      compile_complex_render_plan(joined_headers, base_uri, s_content, p_content, o_content, &g_content);
+  std::unordered_map<std::string, std::string> row_map;
+  if (render_plan.needs_row_map) {
+    initialize_row_map(row_map, joined_headers);
+  }
 
-  // Process right file
-  while (getline(*right_file, line)) {
-    auto split_line = split_csv_line(line, ',');
-
-    std::vector<std::string> projected_row;
-    ////// PROJECTION //////
-    for (int i : right_proj_indices) {
-      projected_row.push_back(split_line[i]);
-    }
+  // Process probe file
+  std::vector<std::string_view> projected_row;
+  projected_row.reserve(probe_proj_indices.size());
+  std::vector<std::string_view> joined_row;
+  joined_row.reserve(joined_headers.size());
+  int line_count = 0;
+  RowView source_row;
+  while (probe_reader.next(source_row)) {
+    line_count++;
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
-    bool skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(projected_row.begin(), projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        skip = true;
-        break;
-      }
-    }
-    if (skip) {
+    if (row_has_skip_value(projected_row)) {
       continue;
     }
 
     // Eliminate duplicates using hash
-    uint64_t hash = combinedHash(projected_row);
+    uint64_t hash = combined_hash_views(projected_row);
     if (!unique_hashes.insert(hash).second) {
       continue;
     }
 
-    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
-    auto range = hash_table.equal_range(key);
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      std::vector<std::string> joined_row;
-      joined_row.insert(joined_row.end(), it->second.begin(), it->second.end());
-      joined_row.insert(joined_row.end(), projected_row.begin(), projected_row.end());
-
-      // Map headers to values
-      std::unordered_map<std::string, std::string> row_map;
-      for (size_t i = 0; i < joined_headers.size(); ++i)
-        row_map[joined_headers[i]] = joined_row[i];
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
       ////// CREATE //////
-      std::string subject;
-      std::string predicate;
-      std::string object;
-      std::string graph;
+      if (render_plan.needs_row_map) {
+        update_row_map(row_map, joined_headers, joined_row);
+      }
+
+      std::string s_function_value;
+      std::string p_function_value;
+      std::string o_function_value;
+      std::string g_function_value;
+      if (render_plan.has_object_condition &&
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
+        continue;
+      }
+      reset_complex_term_cache(render_plan);
 
       try {
-        // SUBJECT
-        if (s_content[1] == "preformatted") {
-          subject = s_content[0];
-        } else {
-          subject = create_operator(s_content[0], s_content[1], s_content[2], "", "", base_uri, row_map);
-        }
-        // PREDICATE
-        if (p_content[1] == "preformatted") {
-          predicate = p_content[0];
-        } else {
-          predicate = create_operator(p_content[0], p_content[1], p_content[2], "", "", base_uri, row_map);
-        }
-        // OBJECT
-        if (o_content[1] == "preformatted") {
-          object = o_content[0];
-        } else {
-          object = create_operator(o_content[0], o_content[1], o_content[2], o_content[3], o_content[4], base_uri, row_map);
-        }
-        // GRAPH
-        if (g_content[1] == "preformatted") {
-          graph = g_content[0];
-        } else {
-          graph = create_operator(g_content[0], g_content[1], g_content[2], "", "", base_uri, row_map);
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value) ||
+            !render_cached_runtime_term(render_plan.graph, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.graph_cache_id, render_plan.term_cache_entries,
+                                        graph, graph_scratch, g_function_value)) {
+          continue;
         }
       } catch (const std::runtime_error& e) {
         if (continue_on_error == false) {
@@ -679,7 +951,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
         }
       }
 
-      std::string res = format_statement(subject, predicate, object, graph);
+      format_statement_into(subject, predicate, object, graph, res);
       triple_counter++;
 
       buffered_res += res;
@@ -706,8 +978,8 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
                                                                      const std::string& right_path,
                                                                      const std::string& left_name,
                                                                      const std::string& right_name,
-                                                                     const std::string& left_join_attr,
-                                                                     const std::string& right_join_attr,
+                                                                     const std::vector<std::string>& left_join_attrs,
+                                                                     const std::vector<std::string>& right_join_attrs,
                                                                      const std::string& base_uri,
                                                                      const std::vector<std::string>& projected_attributes_left,
                                                                      const std::vector<std::string>& projected_attributes_right,
@@ -718,37 +990,59 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
                                                                      std::unordered_set<std::string>& unique_triple,
                                                                      const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
-  std::unordered_set<uint64_t> unique_hashes;
+  RowHashSet unique_hashes;
+  std::string subject;
+  std::string predicate;
+  std::string object;
+  std::string graph;
+  std::string res;
+  std::string subject_scratch;
+  std::string predicate_scratch;
+  std::string object_scratch;
+  std::string graph_scratch;
+  subject.reserve(512);
+  predicate.reserve(512);
+  object.reserve(512);
+  graph.reserve(512);
+  res.reserve(2048);
+  subject_scratch.reserve(512);
+  predicate_scratch.reserve(512);
+  object_scratch.reserve(512);
+  graph_scratch.reserve(512);
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
+    return unique_triple;
   }
 
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  std::getline(*left_file, left_header_line);
-  std::getline(*right_file, right_header_line);
-
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
 
-  JoinBinding left_join_binding = resolve_join_binding(projected_attributes_left, left_name, left_join_attr);
-  JoinBinding right_join_binding = resolve_join_binding(projected_attributes_right, right_name, right_join_attr);
+  std::vector<JoinBinding> left_join_bindings = resolve_join_bindings(projected_attributes_left, left_name, left_join_attrs);
+  std::vector<JoinBinding> right_join_bindings = resolve_join_bindings(projected_attributes_right, right_name, right_join_attrs);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_binding);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path,
+                                                   left_proj_indices.size(), right_proj_indices.size());
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& build_path = build_right ? right_path : left_path;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings, build_path);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -760,78 +1054,74 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
   for (const auto& attr : projected_attributes_right) {
     joined_headers.push_back(right_name + "_" + attr);
   }
+  CompiledComplexRenderPlan render_plan =
+      compile_complex_render_plan(joined_headers, base_uri, s_content, p_content, o_content, &g_content);
+  std::unordered_map<std::string, std::string> row_map;
+  if (render_plan.needs_row_map) {
+    initialize_row_map(row_map, joined_headers);
+  }
 
-  // Process right file
-  while (getline(*right_file, line)) {
-    auto split_line = split_csv_line(line, ',');
-
-    std::vector<std::string> projected_row;
-    ////// PROJECTION //////
-    for (int i : right_proj_indices) {
-      projected_row.push_back(split_line[i]);
-    }
+  // Process probe file
+  std::vector<std::string_view> projected_row;
+  projected_row.reserve(probe_proj_indices.size());
+  std::vector<std::string_view> joined_row;
+  joined_row.reserve(joined_headers.size());
+  int line_count = 0;
+  RowView source_row;
+  while (probe_reader.next(source_row)) {
+    line_count++;
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
-    bool skip = false;
-    for (const auto& target : values_to_skip) {
-      if (std::any_of(projected_row.begin(), projected_row.end(), [&target](const std::string& s) { return s == target; })) {
-        skip = true;
-        break;
-      }
-    }
-    if (skip) {
+    if (row_has_skip_value(projected_row)) {
       continue;
     }
 
     // Eliminate duplicates using hash
-    uint64_t hash = combinedHash(projected_row);
+    uint64_t hash = combined_hash_views(projected_row);
     if (!unique_hashes.insert(hash).second) {
       continue;
     }
 
-    std::string key = right_join_binding.index >= 0 ? projected_row[right_join_binding.index] : right_join_binding.constant;
-    auto range = hash_table.equal_range(key);
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
+      continue;
+    }
 
-    for (auto it = range.first; it != range.second; ++it) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      std::vector<std::string> joined_row;
-      joined_row.insert(joined_row.end(), it->second.begin(), it->second.end());
-      joined_row.insert(joined_row.end(), projected_row.begin(), projected_row.end());
-
-      // Map headers to values
-      std::unordered_map<std::string, std::string> row_map;
-      for (size_t i = 0; i < joined_headers.size(); ++i)
-        row_map[joined_headers[i]] = joined_row[i];
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
       ////// CREATE //////
-      std::string subject;
-      std::string predicate;
-      std::string object;
-      std::string graph;
+      if (render_plan.needs_row_map) {
+        update_row_map(row_map, joined_headers, joined_row);
+      }
+
+      std::string s_function_value;
+      std::string p_function_value;
+      std::string o_function_value;
+      std::string g_function_value;
+      if (render_plan.has_object_condition &&
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
+        continue;
+      }
+      reset_complex_term_cache(render_plan);
+
       try {
-        // SUBJECT
-        if (s_content[1] == "preformatted") {
-          subject = s_content[0];
-        } else {
-          subject = create_operator(s_content[0], s_content[1], s_content[2], "", "", base_uri, row_map);
-        }
-        // PREDICATE
-        if (p_content[1] == "preformatted") {
-          predicate = p_content[0];
-        } else {
-          predicate = create_operator(p_content[0], p_content[1], p_content[2], "", "", base_uri, row_map);
-        }
-        // OBJECT
-        if (o_content[1] == "preformatted") {
-          object = o_content[0];
-        } else {
-          object = create_operator(o_content[0], o_content[1], o_content[2], o_content[3], o_content[4], base_uri, row_map);
-        }
-        // GRAPH
-        if (g_content[1] == "preformatted") {
-          graph = g_content[0];
-        } else {
-          graph = create_operator(g_content[0], g_content[1], g_content[2], "", "", base_uri, row_map);
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value) ||
+            !render_cached_runtime_term(render_plan.graph, line_count, probe_path, joined_row, base_uri, row_map,
+                                        render_plan.graph_cache_id, render_plan.term_cache_entries,
+                                        graph, graph_scratch, g_function_value)) {
+          continue;
         }
       } catch (const std::runtime_error& e) {
         if (continue_on_error == false) {
@@ -842,7 +1132,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
         }
       }
 
-      std::string res = format_statement(subject, predicate, object, graph);
+      format_statement_into(subject, predicate, object, graph, res);
 
       unique_triple.insert(res);
     }
@@ -851,69 +1141,36 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
 }
 
 //////////////////////////////////////////////////////////////
-size_t standalone_complex_mapping(const std::string& information, const std::unordered_map<std::string, std::string>& data_map) {
-  // Extract relevant parts
-  std::vector<std::string> split_info = split_by_substring(information, "\n");
-  if (split_info.size() != 7) {
-    std::cout << "Plan is too long. Got size: " << split_info.size() << std::endl;
-    std::exit(1);
-  }
-  fs::path output_file_name = split_info[4];
-  std::string base_uri = split_info[5];
-
-  std::vector<std::string> split_info_first = split_by_substring(split_info[0], "|||");
-  std::vector<std::string> split_info_second = split_by_substring(split_info[1], "|||");
-  std::vector<std::string> split_info_third = split_by_substring(split_info[2], "|||");
-  std::vector<std::string> split_info_fourth = split_by_substring(split_info[3], "|||");
-
-  std::string left_path = split_info_first[1];
-  std::vector<std::string> projected_attributes_left = split_by_substring(split_info_first[2], "===");
-  std::string left_name = split_info_first[3];
-
-  std::string right_path = split_info_second[1];
-  std::vector<std::string> projected_attributes_right = split_by_substring(split_info_second[2], "===");
-  std::string right_name = split_info_second[3];
-
-  std::vector<std::string> join_mapping = split_by_substring(split_info_third[1], "===");
-  std::string left_join_attr = join_mapping[0];
-  std::string right_join_attr = join_mapping[1];
-
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+size_t execute_standalone_complex_plan(const ComplexPlan& info, const std::unordered_map<std::string, std::string>& data_map) {
   size_t generated_triple = 0;
 
-  std::vector<std::string> s_content = split_by_substring(split_info_fourth[1], "===");
-  std::vector<std::string> p_content = split_by_substring(split_info_fourth[2], "===");
-  std::vector<std::string> o_content = split_by_substring(split_info_fourth[3], "===");
-  std::vector<std::string> g_content;
   try {
-    if (split_info_fourth.size() == 4) {
+    if (!info.generate_graph) {
       // handle without graph //
       // Check if all entrries are constant
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
 
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
-        handle_constant_preformatted(s_content, p_content, o_content, g_content, output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted") {
+        handle_constant_preformatted(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
       } else {
-        generated_triple = execute_complex(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                           projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, data_map);
+        generated_triple = execute_complex(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                           info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, data_map);
       }
     } else {
       // Handle with graph
-      g_content = split_by_substring(split_info_fourth[4], "===");
-
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant" && g_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant" && info.g_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted" && g_content[1] == "preformatted") {
-        handle_constant_preformatted(s_content, p_content, o_content, g_content, output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted" && info.g_content[1] == "preformatted") {
+        handle_constant_preformatted(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
         generated_triple = 1;
       } else {
         // If not constant handle normal
-        generated_triple = execute_complex_with_graph(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                                      projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, data_map);
+        generated_triple = execute_complex_with_graph(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                                      info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, info.g_content, data_map);
       }
     }
   } catch (const std::runtime_error& e) {
@@ -927,67 +1184,28 @@ size_t standalone_complex_mapping(const std::string& information, const std::uno
   return generated_triple;
 }
 
-std::unordered_set<std::string> dependent_complex_mapping(const std::string& information, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
-  // Extract relevant parts
-  std::vector<std::string> split_info = split_by_substring(information, "\n");
-  if (split_info.size() != 7) {
-    std::cout << "Plan is too long. Got size: " << split_info.size() << std::endl;
-    std::exit(1);
-  }
-
-  fs::path output_file_name = split_info[4];
-  std::string base_uri = split_info[5];
-
-  std::vector<std::string> split_info_first = split_by_substring(split_info[0], "|||");
-  std::vector<std::string> split_info_second = split_by_substring(split_info[1], "|||");
-  std::vector<std::string> split_info_third = split_by_substring(split_info[2], "|||");
-  std::vector<std::string> split_info_fourth = split_by_substring(split_info[3], "|||");
-
-  std::string left_path = split_info_first[1];
-  std::vector<std::string> projected_attributes_left = split_by_substring(split_info_first[2], "===");
-  std::string left_name = split_info_first[3];
-
-  std::string right_path = split_info_second[1];
-  std::vector<std::string> projected_attributes_right = split_by_substring(split_info_second[2], "===");
-  std::string right_name = split_info_second[3];
-
-  std::vector<std::string> join_mapping = split_by_substring(split_info_third[1], "===");
-  std::string left_join_attr = join_mapping[0];
-  std::string right_join_attr = join_mapping[1];
-
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  size_t generated_triple = 0;
-
-  std::vector<std::string> s_content = split_by_substring(split_info_fourth[1], "===");
-  std::vector<std::string> p_content = split_by_substring(split_info_fourth[2], "===");
-  std::vector<std::string> o_content = split_by_substring(split_info_fourth[3], "===");
-  std::vector<std::string> g_content;
+std::unordered_set<std::string> execute_dependent_complex_plan(const ComplexPlan& info, std::unordered_set<std::string>& unique_triple, const std::unordered_map<std::string, std::string>& data_map) {
   try {
-    if (split_info_fourth.size() == 4) {
+    if (!info.generate_graph) {
       // handle without graph //
       // Check if all entrries are constant
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
-        generated_triple = 1;
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
-        handle_constant_preformatted_dependent(s_content, p_content, o_content, g_content, output_file_name, unique_triple);
-        generated_triple = 1;
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted") {
+        handle_constant_preformatted_dependent(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name, unique_triple);
       } else {
-        unique_triple = execute_complex_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                                  projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, unique_triple, data_map);
+        unique_triple = execute_complex_dependent(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                                  info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, unique_triple, data_map);
       }
     } else {
       // Handle with graph //
-      g_content = split_by_substring(split_info_fourth[4], "===");
-      if (s_content[1] == "constant" && p_content[1] == "constant" && o_content[1] == "constant" && g_content[1] == "constant") {
-        handle_constant(s_content, p_content, o_content, g_content, output_file_name);
-        generated_triple = 1;
-      } else if (s_content[1] == "preformatted" && p_content[1] == "preformatted" && o_content[1] == "preformatted") {
-        handle_constant_preformatted_dependent(s_content, p_content, o_content, g_content, output_file_name, unique_triple);
-        generated_triple = 1;
+      if (info.s_content[1] == "constant" && info.p_content[1] == "constant" && info.o_content[1] == "constant" && info.g_content[1] == "constant") {
+        handle_constant(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name);
+      } else if (info.s_content[1] == "preformatted" && info.p_content[1] == "preformatted" && info.o_content[1] == "preformatted") {
+        handle_constant_preformatted_dependent(info.s_content, info.p_content, info.o_content, info.g_content, info.output_file_name, unique_triple);
       } else {
-        unique_triple = execute_complex_with_graph_dependent(output_file_name, left_path, right_path, left_name, right_name, left_join_attr, right_join_attr, base_uri,
-                                                             projected_attributes_left, projected_attributes_right, s_content, p_content, o_content, g_content, unique_triple, data_map);
+        unique_triple = execute_complex_with_graph_dependent(info.output_file_name, info.left_path, info.right_path, info.left_name, info.right_name, info.left_join_attrs, info.right_join_attrs, info.base_uri,
+                                                             info.projected_attributes_left, info.projected_attributes_right, info.s_content, info.p_content, info.o_content, info.g_content, unique_triple, data_map);
       }
     }
   } catch (const std::runtime_error& e) {
