@@ -67,11 +67,23 @@ struct CompiledRuntimeTerm {
   RenderOp render_op = RenderOp::Fallback;
 };
 
+struct ComplexTermCacheEntry {
+  std::string key;
+  std::string value;
+  std::string scratch;
+  bool computed = false;
+};
+
 struct CompiledComplexRenderPlan {
   CompiledRuntimeTerm subject;
   CompiledRuntimeTerm predicate;
   CompiledRuntimeTerm object;
   CompiledRuntimeTerm graph;
+  int subject_cache_id = -1;
+  int predicate_cache_id = -1;
+  int object_cache_id = -1;
+  int graph_cache_id = -1;
+  std::vector<ComplexTermCacheEntry> term_cache_entries;
   bool has_graph = false;
   bool needs_row_map = false;
   bool has_object_condition = false;
@@ -237,6 +249,93 @@ static CompiledRuntimeTerm compile_runtime_term(const std::vector<std::string>& 
   return term;
 }
 
+static bool can_cache_complex_term(const CompiledRuntimeTerm& term) {
+  if (term.render_op == CompiledRuntimeTerm::RenderOp::Preformatted) {
+    return true;
+  }
+  return term.render_op == CompiledRuntimeTerm::RenderOp::Compiled &&
+         term.compiled.usable &&
+         term.compiled.term_type != "blanknode";
+}
+
+static void append_complex_cache_key_part(std::string& key, std::string_view value) {
+  key += std::to_string(value.size());
+  key.push_back(':');
+  key.append(value);
+  key.push_back('|');
+}
+
+static std::string complex_term_cache_key(const std::string& base_uri,
+                                          const CompiledRuntimeTerm& term) {
+  std::string key;
+  key.reserve(base_uri.size() + term.content.size() * 24 + 32);
+  append_complex_cache_key_part(key, base_uri);
+  for (const std::string& part : term.content) {
+    append_complex_cache_key_part(key, part);
+  }
+  return key;
+}
+
+static void count_cacheable_complex_term(const std::string& base_uri,
+                                         const CompiledRuntimeTerm& term,
+                                         std::unordered_map<std::string, std::size_t>& counts) {
+  if (can_cache_complex_term(term)) {
+    counts[complex_term_cache_key(base_uri, term)]++;
+  }
+}
+
+static int assign_cacheable_complex_term(const std::string& base_uri,
+                                         const CompiledRuntimeTerm& term,
+                                         const std::unordered_map<std::string, std::size_t>& counts,
+                                         std::unordered_map<std::string, int>& ids,
+                                         std::vector<ComplexTermCacheEntry>& entries) {
+  if (!can_cache_complex_term(term)) {
+    return -1;
+  }
+
+  std::string key = complex_term_cache_key(base_uri, term);
+  auto count_it = counts.find(key);
+  if (count_it == counts.end() || count_it->second < 2) {
+    return -1;
+  }
+
+  auto id_it = ids.find(key);
+  if (id_it != ids.end()) {
+    return id_it->second;
+  }
+
+  const int id = static_cast<int>(entries.size());
+  ComplexTermCacheEntry entry;
+  entry.key = key;
+  entry.value.reserve(512);
+  entry.scratch.reserve(512);
+  entries.push_back(std::move(entry));
+  ids.emplace(std::move(key), id);
+  return id;
+}
+
+static void compile_complex_term_cache(CompiledComplexRenderPlan& plan,
+                                       const std::string& base_uri) {
+  std::unordered_map<std::string, std::size_t> counts;
+  counts.reserve(plan.has_graph ? 4 : 3);
+  count_cacheable_complex_term(base_uri, plan.subject, counts);
+  count_cacheable_complex_term(base_uri, plan.predicate, counts);
+  count_cacheable_complex_term(base_uri, plan.object, counts);
+  if (plan.has_graph) {
+    count_cacheable_complex_term(base_uri, plan.graph, counts);
+  }
+
+  std::unordered_map<std::string, int> ids;
+  ids.reserve(counts.size());
+  plan.term_cache_entries.reserve(counts.size());
+  plan.subject_cache_id = assign_cacheable_complex_term(base_uri, plan.subject, counts, ids, plan.term_cache_entries);
+  plan.predicate_cache_id = assign_cacheable_complex_term(base_uri, plan.predicate, counts, ids, plan.term_cache_entries);
+  plan.object_cache_id = assign_cacheable_complex_term(base_uri, plan.object, counts, ids, plan.term_cache_entries);
+  if (plan.has_graph) {
+    plan.graph_cache_id = assign_cacheable_complex_term(base_uri, plan.graph, counts, ids, plan.term_cache_entries);
+  }
+}
+
 static CompiledComplexRenderPlan compile_complex_render_plan(const std::vector<std::string>& joined_headers,
                                                              const std::string& base_uri,
                                                              const std::vector<std::string>& s_content,
@@ -260,6 +359,7 @@ static CompiledComplexRenderPlan compile_complex_render_plan(const std::vector<s
   if (plan.has_graph) {
     plan.needs_row_map = plan.needs_row_map || term_needs_row_map(plan.graph.content, plan.graph.compiled);
   }
+  compile_complex_term_cache(plan, base_uri);
   return plan;
 }
 
@@ -369,6 +469,39 @@ static bool render_runtime_term(const CompiledRuntimeTerm& term,
       return true;
   }
   return false;
+}
+
+static void reset_complex_term_cache(CompiledComplexRenderPlan& plan) {
+  for (ComplexTermCacheEntry& entry : plan.term_cache_entries) {
+    entry.computed = false;
+  }
+}
+
+static bool render_cached_runtime_term(const CompiledRuntimeTerm& term,
+                                       int line_count,
+                                       const std::string& input_file_name,
+                                       const std::vector<std::string_view>& joined_row,
+                                       const std::string& base_uri,
+                                       std::unordered_map<std::string, std::string>& row,
+                                       int cache_id,
+                                       std::vector<ComplexTermCacheEntry>& cache_entries,
+                                       std::string& out,
+                                       std::string& scratch,
+                                       std::string& function_value) {
+  if (cache_id < 0) {
+    return render_runtime_term(term, line_count, input_file_name, joined_row, base_uri, row, out, scratch, function_value);
+  }
+
+  ComplexTermCacheEntry& entry = cache_entries[static_cast<std::size_t>(cache_id)];
+  if (!entry.computed) {
+    entry.value.clear();
+    if (!render_runtime_term(term, line_count, input_file_name, joined_row, base_uri, row, entry.value, entry.scratch, function_value)) {
+      return false;
+    }
+    entry.computed = true;
+  }
+  out = entry.value;
+  return true;
 }
 
 static uint64_t combined_hash_views(const std::vector<std::string_view>& fields) {
@@ -712,12 +845,19 @@ int execute_complex(const fs::path& output_file_name,
           handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
         continue;
       }
+      reset_complex_term_cache(render_plan);
 
       ////// CREATE //////
       try {
-        if (!render_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map, subject, subject_scratch, s_function_value) ||
-            !render_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map, predicate, predicate_scratch, p_function_value) ||
-            !render_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map, object, object_scratch, o_function_value)) {
+        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value)) {
           continue;
         }
       } catch (const std::runtime_error& e) {
@@ -885,10 +1025,18 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
           handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
         continue;
       }
+      reset_complex_term_cache(render_plan);
+
       try {
-        if (!render_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map, subject, subject_scratch, s_function_value) ||
-            !render_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map, predicate, predicate_scratch, p_function_value) ||
-            !render_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map, object, object_scratch, o_function_value)) {
+        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value)) {
           continue;
         }
       } catch (const std::runtime_error& e) {
@@ -1061,12 +1209,21 @@ int execute_complex_with_graph(const fs::path& output_file_name,
           handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
         continue;
       }
+      reset_complex_term_cache(render_plan);
 
       try {
-        if (!render_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map, subject, subject_scratch, s_function_value) ||
-            !render_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map, predicate, predicate_scratch, p_function_value) ||
-            !render_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map, object, object_scratch, o_function_value) ||
-            !render_runtime_term(render_plan.graph, line_count, right_path, joined_row, base_uri, row_map, graph, graph_scratch, g_function_value)) {
+        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value) ||
+            !render_cached_runtime_term(render_plan.graph, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.graph_cache_id, render_plan.term_cache_entries,
+                                        graph, graph_scratch, g_function_value)) {
           continue;
         }
       } catch (const std::runtime_error& e) {
@@ -1240,11 +1397,21 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
           handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
         continue;
       }
+      reset_complex_term_cache(render_plan);
+
       try {
-        if (!render_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map, subject, subject_scratch, s_function_value) ||
-            !render_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map, predicate, predicate_scratch, p_function_value) ||
-            !render_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map, object, object_scratch, o_function_value) ||
-            !render_runtime_term(render_plan.graph, line_count, right_path, joined_row, base_uri, row_map, graph, graph_scratch, g_function_value)) {
+        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.subject_cache_id, render_plan.term_cache_entries,
+                                        subject, subject_scratch, s_function_value) ||
+            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.predicate_cache_id, render_plan.term_cache_entries,
+                                        predicate, predicate_scratch, p_function_value) ||
+            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.object_cache_id, render_plan.term_cache_entries,
+                                        object, object_scratch, o_function_value) ||
+            !render_cached_runtime_term(render_plan.graph, line_count, right_path, joined_row, base_uri, row_map,
+                                        render_plan.graph_cache_id, render_plan.term_cache_entries,
+                                        graph, graph_scratch, g_function_value)) {
           continue;
         }
       } catch (const std::runtime_error& e) {

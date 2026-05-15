@@ -780,6 +780,10 @@ struct FusedSimpleRuntime {
   std::vector<std::string> projected_row_storage;
   std::vector<std::string_view> projected_row;
   std::unordered_map<std::string, std::string> row;
+  int subject_cache_id = -1;
+  int predicate_cache_id = -1;
+  int object_cache_id = -1;
+  int graph_cache_id = -1;
   std::string subject;
   std::string predicate;
   std::string object;
@@ -794,6 +798,214 @@ struct FusedSimpleGroup {
   std::vector<std::size_t> runtime_indices;
   bool reuse_subject_predicate_object = false;
 };
+
+struct FusedTermCacheEntry {
+  std::string key;
+  std::string value;
+  std::string scratch;
+  bool computed = false;
+};
+
+struct FusedSimpleProgram {
+  std::vector<FusedSimpleRuntime> runtimes;
+  std::vector<FusedSimpleGroup> groups;
+  std::vector<FusedTermCacheEntry> term_cache_entries;
+};
+
+static bool can_cache_fused_term(const CompiledRuntimeTerm& term) {
+  if (term.render_op == CompiledRuntimeTerm::RenderOp::Preformatted) {
+    return true;
+  }
+  return term.render_op == CompiledRuntimeTerm::RenderOp::Compiled &&
+         term.compiled.usable &&
+         term.compiled.term_type != "blanknode";
+}
+
+static void append_key_part(std::string& key, std::string_view value) {
+  key += std::to_string(value.size());
+  key.push_back(':');
+  key.append(value);
+  key.push_back('|');
+}
+
+static std::string fused_term_cache_key(const std::string& base_uri,
+                                        const CompiledRuntimeTerm& term) {
+  std::string key;
+  key.reserve(base_uri.size() + term.content.size() * 24 + 32);
+  append_key_part(key, base_uri);
+  for (const std::string& part : term.content) {
+    append_key_part(key, part);
+  }
+  return key;
+}
+
+static void count_cacheable_fused_term(const std::string& base_uri,
+                                       const CompiledRuntimeTerm& term,
+                                       std::map<std::string, std::size_t>& counts) {
+  if (can_cache_fused_term(term)) {
+    counts[fused_term_cache_key(base_uri, term)]++;
+  }
+}
+
+static int assign_cacheable_fused_term(const std::string& base_uri,
+                                       const CompiledRuntimeTerm& term,
+                                       const std::map<std::string, std::size_t>& counts,
+                                       std::unordered_map<std::string, int>& ids,
+                                       std::vector<FusedTermCacheEntry>& entries) {
+  if (!can_cache_fused_term(term)) {
+    return -1;
+  }
+
+  std::string key = fused_term_cache_key(base_uri, term);
+  auto count_it = counts.find(key);
+  if (count_it == counts.end() || count_it->second < 2) {
+    return -1;
+  }
+
+  auto id_it = ids.find(key);
+  if (id_it != ids.end()) {
+    return id_it->second;
+  }
+
+  const int id = static_cast<int>(entries.size());
+  FusedTermCacheEntry entry;
+  entry.key = key;
+  entry.value.reserve(512);
+  entry.scratch.reserve(512);
+  entries.push_back(std::move(entry));
+  ids.emplace(std::move(key), id);
+  return id;
+}
+
+static bool append_cached_fast_term(const CompiledRuntimeTerm& term,
+                                    const std::vector<std::string_view>& projected_row,
+                                    const std::string& base_uri,
+                                    int cache_id,
+                                    std::vector<FusedTermCacheEntry>& cache_entries,
+                                    std::string& out,
+                                    std::string& scratch) {
+  if (cache_id < 0) {
+    return append_fast_compiled_term(term, projected_row, base_uri, out, scratch);
+  }
+
+  FusedTermCacheEntry& entry = cache_entries[static_cast<std::size_t>(cache_id)];
+  if (!entry.computed) {
+    entry.value.clear();
+    if (!append_fast_compiled_term(term, projected_row, base_uri, entry.value, entry.scratch)) {
+      return false;
+    }
+    entry.computed = true;
+  }
+  out.append(entry.value);
+  return true;
+}
+
+static bool emit_cached_fast_statement(const CompiledSimplePlan& plan,
+                                       const std::vector<std::string_view>& projected_row,
+                                       const std::string& base_uri,
+                                       int subject_cache_id,
+                                       int predicate_cache_id,
+                                       int object_cache_id,
+                                       int graph_cache_id,
+                                       std::vector<FusedTermCacheEntry>& cache_entries,
+                                       std::string& out,
+                                       std::string& subject_scratch,
+                                       std::string& predicate_scratch,
+                                       std::string& object_scratch,
+                                       std::string& graph,
+                                       std::string& graph_scratch) {
+  out.clear();
+  if (!append_cached_fast_term(plan.subject, projected_row, base_uri, subject_cache_id, cache_entries, out, subject_scratch)) {
+    return false;
+  }
+  out.push_back(' ');
+  if (!append_cached_fast_term(plan.predicate, projected_row, base_uri, predicate_cache_id, cache_entries, out, predicate_scratch)) {
+    return false;
+  }
+  out.push_back(' ');
+  if (!append_cached_fast_term(plan.object, projected_row, base_uri, object_cache_id, cache_entries, out, object_scratch)) {
+    return false;
+  }
+  if (plan.has_graph) {
+    graph.clear();
+    if (!append_cached_fast_term(plan.graph, projected_row, base_uri, graph_cache_id, cache_entries, graph, graph_scratch)) {
+      return false;
+    }
+    if (!graph.empty() && !is_default_graph_marker(graph)) {
+      out.push_back(' ');
+      out.append(graph);
+    }
+  }
+  out.append(" .\n");
+  return true;
+}
+
+static std::vector<FusedTermCacheEntry> compile_fused_term_cache(std::vector<FusedSimpleRuntime>& runtimes,
+                                                                 const std::vector<FusedSimpleGroup>& groups) {
+  std::vector<bool> skip_runtime(runtimes.size(), false);
+  for (std::size_t runtime_index = 0; runtime_index < runtimes.size(); ++runtime_index) {
+    if (runtimes[runtime_index].prepared.compiled.has_graph) {
+      skip_runtime[runtime_index] = true;
+    }
+  }
+  for (const FusedSimpleGroup& group : groups) {
+    if (!group.reuse_subject_predicate_object || group.runtime_indices.size() < 2) {
+      continue;
+    }
+    for (std::size_t runtime_index : group.runtime_indices) {
+      skip_runtime[runtime_index] = true;
+    }
+  }
+
+  std::map<std::string, std::size_t> counts;
+  for (std::size_t runtime_index = 0; runtime_index < runtimes.size(); ++runtime_index) {
+    if (skip_runtime[runtime_index]) {
+      continue;
+    }
+    const FusedSimpleRuntime& runtime = runtimes[runtime_index];
+    const CompiledSimplePlan& plan = runtime.prepared.compiled;
+    const std::string& base_uri = runtime.prepared.source.base_uri;
+    count_cacheable_fused_term(base_uri, plan.subject, counts);
+    count_cacheable_fused_term(base_uri, plan.predicate, counts);
+    count_cacheable_fused_term(base_uri, plan.object, counts);
+    if (plan.has_graph) {
+      count_cacheable_fused_term(base_uri, plan.graph, counts);
+    }
+  }
+
+  std::unordered_map<std::string, int> ids;
+  std::vector<FusedTermCacheEntry> entries;
+  ids.reserve(counts.size());
+  entries.reserve(counts.size());
+  for (std::size_t runtime_index = 0; runtime_index < runtimes.size(); ++runtime_index) {
+    if (skip_runtime[runtime_index]) {
+      continue;
+    }
+    FusedSimpleRuntime& runtime = runtimes[runtime_index];
+    const CompiledSimplePlan& plan = runtime.prepared.compiled;
+    const std::string& base_uri = runtime.prepared.source.base_uri;
+    runtime.subject_cache_id = assign_cacheable_fused_term(base_uri, plan.subject, counts, ids, entries);
+    runtime.predicate_cache_id = assign_cacheable_fused_term(base_uri, plan.predicate, counts, ids, entries);
+    runtime.object_cache_id = assign_cacheable_fused_term(base_uri, plan.object, counts, ids, entries);
+    if (plan.has_graph) {
+      runtime.graph_cache_id = assign_cacheable_fused_term(base_uri, plan.graph, counts, ids, entries);
+    }
+  }
+  return entries;
+}
+
+static void reset_fused_term_cache(FusedSimpleProgram& program) {
+  for (FusedTermCacheEntry& entry : program.term_cache_entries) {
+    entry.computed = false;
+  }
+}
+
+static bool has_cached_fused_term(const FusedSimpleRuntime& runtime) {
+  return runtime.subject_cache_id >= 0 ||
+         runtime.predicate_cache_id >= 0 ||
+         runtime.object_cache_id >= 0 ||
+         runtime.graph_cache_id >= 0;
+}
 
 static void initialize_fused_runtime(FusedSimpleRuntime& runtime) {
   runtime.projected_row_storage.reserve(runtime.prepared.projected_indices.size());
@@ -854,6 +1066,22 @@ static std::vector<FusedSimpleGroup> build_fused_simple_groups(const std::vector
     }
   }
   return groups;
+}
+
+static FusedSimpleProgram compile_fused_simple_program(const std::vector<SimplePlan>& plans,
+                                                       const std::vector<std::string>& header) {
+  FusedSimpleProgram program;
+  program.runtimes.reserve(plans.size());
+  for (const auto& plan : plans) {
+    FusedSimpleRuntime runtime;
+    prepare_simple_plan_from_header(plan, header, runtime.prepared);
+    initialize_fused_runtime(runtime);
+    program.runtimes.push_back(std::move(runtime));
+  }
+
+  program.groups = build_fused_simple_groups(program.runtimes);
+  program.term_cache_entries = compile_fused_term_cache(program.runtimes, program.groups);
+  return program;
 }
 
 static bool is_single_constant_statement(const SimplePlan& plan) {
@@ -1547,19 +1775,15 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
   }
   std::vector<std::string> header = split_csv_line(header_line, ',');
 
-  std::vector<FusedSimpleRuntime> runtimes;
-  runtimes.reserve(plans.size());
-  for (const auto& plan : plans) {
-    FusedSimpleRuntime runtime;
-    prepare_simple_plan_from_header(plan, header, runtime.prepared);
-    initialize_fused_runtime(runtime);
-    runtimes.push_back(std::move(runtime));
-  }
-  const std::vector<FusedSimpleGroup> groups = build_fused_simple_groups(runtimes);
+  FusedSimpleProgram program = compile_fused_simple_program(plans, header);
+  std::vector<FusedSimpleRuntime>& runtimes = program.runtimes;
+  const std::vector<FusedSimpleGroup>& groups = program.groups;
+  std::vector<FusedTermCacheEntry>& term_cache_entries = program.term_cache_entries;
 
   int line_count = 0;
   while (std::getline(*file, setup_data.line)) {
     line_count++;
+    reset_fused_term_cache(program);
 
     const bool use_views = split_csv_line_views_into(setup_data.line, ',', setup_data.split_line_views);
     if (!use_views) {
@@ -1668,9 +1892,18 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
 
       if (can_fast_emit_simple_plan(plan)) {
         try {
-          if (!emit_fast_statement(plan, runtime.projected_row, runtime.prepared.source.base_uri, setup_data.res,
-                                   runtime.subject_scratch, runtime.predicate_scratch,
-                                   runtime.object_scratch, runtime.graph, runtime.graph_scratch)) {
+          if (has_cached_fused_term(runtime)) {
+            if (!emit_cached_fast_statement(plan, runtime.projected_row, runtime.prepared.source.base_uri,
+                                            runtime.subject_cache_id, runtime.predicate_cache_id,
+                                            runtime.object_cache_id, runtime.graph_cache_id,
+                                            term_cache_entries, setup_data.res,
+                                            runtime.subject_scratch, runtime.predicate_scratch,
+                                            runtime.object_scratch, runtime.graph, runtime.graph_scratch)) {
+              continue;
+            }
+          } else if (!emit_fast_statement(plan, runtime.projected_row, runtime.prepared.source.base_uri, setup_data.res,
+                                          runtime.subject_scratch, runtime.predicate_scratch,
+                                          runtime.object_scratch, runtime.graph, runtime.graph_scratch)) {
             continue;
           }
         } catch (const std::runtime_error& e) {
