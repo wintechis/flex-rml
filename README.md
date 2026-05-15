@@ -269,6 +269,16 @@ If you use this work in your research, please cite it as:
   year = {2024}
 }
 ```
+
+```bibtex
+@article{Freund_efficient_construction_2025,
+  author = {Freund, Michael and Schmid, Sebastian and Harth, Andreas},
+  journal = {Linking Meaning: Semantic Technologies Shaping the Future of AI},
+  title = {{Efficient Knowledge Graph Construction Based on Optimized Plans}},
+  year = {2025}
+}
+```
+
 ## Licenses
 
 ### Project License
