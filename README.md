@@ -167,6 +167,12 @@ You can also run the validator directly:
 python scripts/validate_test_cases.py
 ```
 
+To run the validator against the test binary explicitly:
+
+```bash
+FLEXRML_BINARY=./flexrml_test python scripts/validate_test_cases.py
+```
+
 You can also run a category or a single case by name:
 
 ```bash
@@ -213,6 +219,38 @@ To fail a check when any common case regresses by at least 10 percent:
 ```bash
 python scripts/compare_benchmarks.py benchmark/results/baseline.csv benchmark/results/candidate.csv --fail-wall-regression 10
 ```
+
+## Performance
+
+The benchmark numbers below are from a local run using the
+default CMake build and the built-in benchmark runner:
+
+```bash
+python3 scripts/run_benchmarks.py --build --output-dir bench_res --repeats 3 --warmups 1
+```
+
+The run completed all benchmark cases with no failures. Times are average wall
+clock time per measured run. Memory is average peak RSS per run. Results are
+hardware and dataset dependent.
+
+| Category | Cases | Avg wall time | Avg CPU | Avg peak RSS | Avg generated triples |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GTFS | 4 | 2.124 s | 417% | 1.62 GiB | 12,868,472 |
+| duplicates | 5 | 0.083 s | 828% | 53.1 MiB | 1,000,016 |
+| empty | 5 | 0.069 s | 794% | 54.8 MiB | 1,000,000 |
+| join | 25 | 0.096 s | 101% | 32.3 MiB | 117,060 |
+| mappings | 4 | 0.375 s | 595% | 206.7 MiB | 7,625,000 |
+| namedgraph | 15 | 1.083 s | 712% | 529.2 MiB | 16,200,000 |
+| raw | 9 | 2.358 s | 813% | 659.1 MiB | 39,144,444 |
+
+GTFS benchmark details:
+
+| Case | Avg wall time | Avg CPU | Avg peak RSS | Generated triples | Output size |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `100_csv` | 5.709 s | 343% | 875.1 MiB | 39,595,300 | 7.00 GiB |
+| `10_csv` | 0.529 s | 346% | 216.5 MiB | 3,959,530 | 0.70 GiB |
+| `10_json` | 0.886 s | 504% | 1.23 GiB | 3,959,530 | 0.70 GiB |
+| `10_xml` | 1.373 s | 477% | 4.17 GiB | 3,959,530 | 0.70 GiB |
 
 ## Microcontroller Compatible Version
 
