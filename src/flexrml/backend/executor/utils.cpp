@@ -550,6 +550,38 @@ std::vector<std::string> extract_substrings(const std::string& str) {
 }
 
 void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& out) {
+  static constexpr std::array<bool, 128> needs_encoding_map = [] {
+    std::array<bool, 128> map{};
+    map[' '] = true;
+    map['!'] = true;
+    map['"'] = true;
+    map['#'] = true;
+    map['$'] = true;
+    map['%'] = true;
+    map['&'] = true;
+    map['\''] = true;
+    map['('] = true;
+    map[')'] = true;
+    map['*'] = true;
+    map['+'] = true;
+    map[','] = true;
+    map['/'] = true;
+    map[':'] = true;
+    map[';'] = true;
+    map['<'] = true;
+    map['='] = true;
+    map['>'] = true;
+    map['?'] = true;
+    map['@'] = true;
+    map['['] = true;
+    map['\\'] = true;
+    map[']'] = true;
+    map['{'] = true;
+    map['|'] = true;
+    map['}'] = true;
+    return map;
+  }();
+
   static constexpr std::array<std::string_view, 128> encode_map = [] {
     std::array<std::string_view, 128> map{};
     map[' '] = "%20";
@@ -587,7 +619,7 @@ void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& 
   std::size_t encoded_size = node.size();
 
   for (unsigned char c : node) {
-    if (c < encode_map.size() && !encode_map[c].empty()) {
+    if (c < needs_encoding_map.size() && needs_encoding_map[c]) {
       needs_encoding = true;
       encoded_size += encode_map[c].size() - 1;
     } else if (encode_non_ascii && c > 127) {
