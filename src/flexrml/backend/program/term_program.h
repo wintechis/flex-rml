@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <stdexcept>
 #include <vector>
 
 #include "utils.h"
@@ -49,6 +50,7 @@ struct CompiledTerm {
   int reference_index = -1;
   bool infer_datatype = false;
   bool add_base_iri = false;
+  bool needs_iri_validation = true;
 };
 
 struct CompiledRuntimeTerm {
@@ -121,6 +123,17 @@ inline void render_compiled_term(const CompiledTerm& term,
     }
     scratch.insert(0, base_uri);
     rdf_term = scratch;
+  }
+
+  if (is_iri_term_type(term.term_kind)) {
+    out.clear();
+    if (term.needs_iri_validation && validates_iri_chars(term.term_kind) && has_invalid_iri_char(rdf_term)) {
+      throw std::runtime_error("Error: invalid IRI detected for node: '" + std::string(rdf_term) + "'. Stop!");
+    }
+    out.push_back('<');
+    out.append(rdf_term);
+    out.push_back('>');
+    return;
   }
 
   const std::string_view datatype =

@@ -99,6 +99,15 @@ static CompiledTermType compile_term_type(const std::string& term_type) {
   return CompiledTermType::Unsupported;
 }
 
+static bool template_literals_are_safe_iri(const CompiledTerm& term) {
+  for (const CompiledTemplatePart& part : term.parts) {
+    if (part.reference_index < 0 && has_invalid_iri_char(part.literal)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static CompiledTerm compile_term(const std::vector<std::string>& content,
                                  const std::vector<std::string>& projected_header,
                                  const std::string& base_uri) {
@@ -146,6 +155,11 @@ static CompiledTerm compile_term(const std::vector<std::string>& content,
     term.map_type = CompiledTermMapType::Template;
     if (!compile_template_parts(term.term_map, projected_header, term.parts)) {
       return CompiledTerm{};
+    }
+    if (validates_iri_chars(term.term_kind) &&
+        (term.term_map.starts_with("http://") || term.term_map.starts_with("https://")) &&
+        template_literals_are_safe_iri(term)) {
+      term.needs_iri_validation = false;
     }
   } else {
     return term;

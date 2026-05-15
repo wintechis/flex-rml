@@ -29,7 +29,8 @@ namespace {
 
 constexpr std::size_t kOutputBufferReserve = 64 * 1024;
 constexpr std::size_t kMaxQueuedOutputBytes = 64 * 1024 * 1024;
-constexpr std::size_t kMinFusedPlansForParallelSplit = 8;
+constexpr std::size_t kMinGraphFusedPlansForParallelSplit = 8;
+constexpr std::size_t kMinPlainFusedPlansForParallelSplit = 30;
 
 void write_triples_chunked(std::ostream& output, const std::unordered_set<std::string>& triples) {
   std::string buffer;
@@ -113,10 +114,19 @@ std::vector<SimplePlan> collect_simple_plans(const PlanPartition& partition) {
 }
 
 bool should_parallelize_fused_partition(const PlanPartition& partition, bool keep_in_memory, bool can_use_shared_writer) {
-  return !keep_in_memory &&
-         can_use_shared_writer &&
-         can_fuse_simple_partition(partition) &&
-         partition.plans.size() >= kMinFusedPlansForParallelSplit;
+  if (keep_in_memory ||
+      !can_use_shared_writer ||
+      !can_fuse_simple_partition(partition)) {
+    return false;
+  }
+
+  const bool all_graph_plans = std::all_of(partition.plans.begin(), partition.plans.end(), [](const PhysicalPlan& plan) {
+    return plan.kind == PhysicalPlanKind::Simple && plan.simple.generate_graph;
+  });
+  const std::size_t threshold = all_graph_plans
+                                    ? kMinGraphFusedPlansForParallelSplit
+                                    : kMinPlainFusedPlansForParallelSplit;
+  return partition.plans.size() >= threshold;
 }
 
 }  // namespace

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <queue>
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -38,6 +40,8 @@ namespace fs = std::filesystem;
 
 constexpr std::size_t kOutputBufferReserve = 64 * 1024;
 constexpr std::size_t kSharedDedupBatchSize = 16 * 1024;
+constexpr std::size_t kEstimatedCsvRowBytesForReserve = 320;
+constexpr std::size_t kMaxFusedLocalDedupReserve = 4 * 1024 * 1024;
 
 struct TripleHash128 {
   XXH64_hash_t low = 0;
@@ -115,6 +119,42 @@ class ConcurrentTripleDeduper final : public TripleDeduper {
 
 std::shared_ptr<TripleDeduper> create_concurrent_triple_deduper() {
   return std::make_shared<ConcurrentTripleDeduper>();
+}
+
+static std::optional<std::size_t> estimate_csv_rows_for_reserve(const SourceReader& reader,
+                                                                const std::string& path) {
+  if (const auto rows = reader.row_count_hint()) {
+    return rows;
+  }
+
+  std::error_code error;
+  if (!fs::is_regular_file(path, error) || error) {
+    return std::nullopt;
+  }
+  const auto size = fs::file_size(path, error);
+  if (error) {
+    return std::nullopt;
+  }
+  return static_cast<std::size_t>(
+      std::max<std::uintmax_t>(1, size / kEstimatedCsvRowBytesForReserve));
+}
+
+static void reserve_fused_local_dedup(TripleHashSet& hashes,
+                                      const SourceReader& reader,
+                                      const std::string& path,
+                                      std::size_t plans_per_scan) {
+  if (plans_per_scan == 0) {
+    return;
+  }
+  const auto estimated_rows = estimate_csv_rows_for_reserve(reader, path);
+  if (!estimated_rows) {
+    return;
+  }
+  const std::size_t max_size = std::numeric_limits<std::size_t>::max();
+  const std::size_t reserve_size = *estimated_rows > max_size / plans_per_scan
+                                       ? max_size
+                                       : *estimated_rows * plans_per_scan;
+  hashes.reserve(std::min(reserve_size, kMaxFusedLocalDedupReserve));
 }
 
 static void create_parent_directories_if_needed(const fs::path& path) {
@@ -273,7 +313,7 @@ static bool append_fast_compiled_term(const CompiledRuntimeTerm& runtime_term,
     case CompiledTermType::Uri:
     case CompiledTermType::Iri:
     case CompiledTermType::UnsafeIri:
-      if (validates_iri_chars(term.term_kind) && has_invalid_iri_char(rdf_term)) {
+      if (term.needs_iri_validation && validates_iri_chars(term.term_kind) && has_invalid_iri_char(rdf_term)) {
         std::string error_msg;
         error_msg.reserve(rdf_term.size() + 58);
         error_msg.append("Error: invalid IRI detected for node: '");
@@ -1172,6 +1212,9 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
   auto reader = create_source_reader(data_map, input_file_name);
   if (reader->header().empty()) {
     return 0;
+  }
+  if (shared_deduper == nullptr) {
+    reserve_fused_local_dedup(setup_data.unique_triple_hashes, *reader, input_file_name, plans.size());
   }
 
   FusedSimpleProgram program = compile_fused_simple_program(plans, reader->header());
