@@ -123,7 +123,7 @@ inline void render_compiled_term(const CompiledTerm& term,
     rdf_term = scratch;
   }
 
-  const std::string datatype =
+  const std::string_view datatype =
       term.infer_datatype ? infer_literal_datatype(rdf_term, term.lang_tag, term.data_type) : term.data_type;
   handle_term_type_into(term.term_type, rdf_term, term.lang_tag, datatype, out);
 }

@@ -625,23 +625,33 @@ std::string make_safe_iri(std::string_view node, bool encode_non_ascii) {
   return result;
 }
 
-// Check if a string contains any invalid characters
-bool contains_invalid_chars(std::string_view str,
-                            const std::unordered_set<char>& invalidChars) {
-  return std::ranges::any_of(
-      str, [&invalidChars](char c) { return invalidChars.contains(c); });
+bool has_invalid_iri_char(std::string_view value) {
+  for (const char c : value) {
+    switch (c) {
+      case ' ':
+      case '!':
+      case '"':
+      case '\'':
+      case '(':
+      case ')':
+      case ',':
+      case '[':
+      case ']':
+        return true;
+      default:
+        break;
+    }
+  }
+  return false;
 }
 
 std::string handle_term_type(const std::string& term_type,
                              std::string_view rdf_term,
                              const std::string& lang_tag,
                              const std::string& data_type) {
-  static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
-                                                      ')', ',', '[', ']'};
-
   if (term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") {
     // Check for invalid characters
-    if ((term_type == "uri" || term_type == "iri") && contains_invalid_chars(rdf_term, errorChars)) {
+    if ((term_type == "uri" || term_type == "iri") && has_invalid_iri_char(rdf_term)) {
       std::string error_msg;
       error_msg.reserve(rdf_term.size() + 58);
       error_msg.append("Error: invalid IRI detected for node: '");
@@ -697,14 +707,11 @@ std::string handle_term_type(const std::string& term_type,
 void handle_term_type_into(const std::string& term_type,
                            std::string_view rdf_term,
                            const std::string& lang_tag,
-                           const std::string& data_type,
+                           std::string_view data_type,
                            std::string& out) {
-  static const std::unordered_set<char> errorChars = {' ', '!', '"', '\'', '(',
-                                                      ')', ',', '[', ']'};
-
   out.clear();
   if (term_type == "uri" || term_type == "iri" || term_type == "unsafeiri") {
-    if ((term_type == "uri" || term_type == "iri") && contains_invalid_chars(rdf_term, errorChars)) {
+    if ((term_type == "uri" || term_type == "iri") && has_invalid_iri_char(rdf_term)) {
       std::string error_msg;
       error_msg.reserve(rdf_term.size() + 58);
       error_msg.append("Error: invalid IRI detected for node: '");
@@ -902,9 +909,9 @@ bool is_rml_decimal(std::string_view value) {
   return true;
 }
 
-std::string infer_literal_datatype(std::string_view rdf_term,
-                                   const std::string& lang_tag,
-                                   const std::string& data_type) {
+std::string_view infer_literal_datatype(std::string_view rdf_term,
+                                        std::string_view lang_tag,
+                                        std::string_view data_type) {
   if (lang_tag != "None" || data_type != "None") {
     return data_type;
   }

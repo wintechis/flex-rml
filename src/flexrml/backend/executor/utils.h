@@ -30,13 +30,14 @@ void format_statement_into(const std::string& subject, const std::string& predic
 void format_statement_into(const std::string& subject, const std::string& predicate, const std::string& object, const std::string& graph, std::string& out);
 std::string make_safe_iri(std::string_view node, bool encode_non_ascii = true);
 void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& out);
-std::string infer_literal_datatype(std::string_view rdf_term,
-                                   const std::string& lang_tag,
-                                   const std::string& data_type);
+bool has_invalid_iri_char(std::string_view value);
+std::string_view infer_literal_datatype(std::string_view rdf_term,
+                                        std::string_view lang_tag,
+                                        std::string_view data_type);
 void handle_term_type_into(const std::string& term_type,
                            std::string_view rdf_term,
                            const std::string& lang_tag,
-                           const std::string& data_type,
+                           std::string_view data_type,
                            std::string& out);
 
 void handle_constant(const std::vector<std::string>& s_content, const std::vector<std::string>& p_content,

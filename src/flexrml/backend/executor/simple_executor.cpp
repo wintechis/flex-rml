@@ -129,32 +129,12 @@ static bool render_runtime_term(const CompiledRuntimeTerm& term,
   return false;
 }
 
-static bool has_invalid_iri_char(std::string_view value) {
-  for (const char c : value) {
-    switch (c) {
-      case ' ':
-      case '!':
-      case '"':
-      case '\'':
-      case '(':
-      case ')':
-      case ',':
-      case '[':
-      case ']':
-        return true;
-      default:
-        break;
-    }
-  }
-  return false;
-}
-
 static void append_literal_term(std::string_view rdf_term,
                                 const std::string& lang_tag,
                                 const std::string& data_type,
                                 bool infer_datatype,
                                 std::string& out) {
-  const std::string effective_data_type =
+  const std::string_view effective_data_type =
       infer_datatype ? infer_literal_datatype(rdf_term, lang_tag, data_type) : data_type;
   const std::size_t required_size = out.size() + rdf_term.size() + effective_data_type.size() + lang_tag.size() + 6;
   if (out.capacity() < required_size) {
