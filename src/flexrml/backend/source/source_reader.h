@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -15,4 +16,7 @@ class SourceReader {
 
   virtual const std::vector<std::string>& header() const = 0;
   virtual bool next(RowView& row) = 0;
+  virtual std::optional<std::size_t> row_count_hint() const {
+    return std::nullopt;
+  }
 };

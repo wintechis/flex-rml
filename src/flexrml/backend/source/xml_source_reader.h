@@ -17,6 +17,7 @@ class XmlSourceReader final : public SourceReader {
 
   const std::vector<std::string>& header() const override;
   bool next(RowView& row) override;
+  std::optional<std::size_t> row_count_hint() const override;
 
  private:
   using Row = std::vector<std::string>;

@@ -32,6 +32,13 @@ bool XmlSourceReader::next(RowView& row) {
   return true;
 }
 
+std::optional<std::size_t> XmlSourceReader::row_count_hint() const {
+  if (data_ == nullptr) {
+    return std::nullopt;
+  }
+  return data_->rows.size();
+}
+
 std::shared_ptr<const XmlSourceReader::Data> XmlSourceReader::load_data(
     const std::filesystem::path& source_path,
     const std::string& iterator) {

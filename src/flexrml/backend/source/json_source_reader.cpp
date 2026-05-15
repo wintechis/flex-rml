@@ -35,6 +35,13 @@ bool JsonSourceReader::next(RowView& row) {
   return true;
 }
 
+std::optional<std::size_t> JsonSourceReader::row_count_hint() const {
+  if (data_ == nullptr) {
+    return std::nullopt;
+  }
+  return data_->rows.size();
+}
+
 bool JsonSourceReader::supports_iterator(const std::string& iterator) {
   return !parse_simple_array_iterator(iterator).empty() || iterator == "$[*]" || iterator == "$.[*]";
 }

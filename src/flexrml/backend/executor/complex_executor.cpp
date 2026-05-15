@@ -5,9 +5,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -188,9 +190,58 @@ struct JoinKey128Hasher {
 };
 
 using JoinHashTable = ankerl::unordered_dense::map<JoinKey128,
-                                                   std::vector<std::vector<std::string>>,
+                                                   std::vector<std::size_t>,
                                                    JoinKey128Hasher>;
 using RowHashSet = ankerl::unordered_dense::set<uint64_t>;
+
+struct JoinRowStore {
+  std::vector<std::string> values;
+  std::size_t column_count = 0;
+
+  std::size_t append_row(const std::vector<std::string_view>& row) {
+    const std::size_t row_index = column_count == 0 ? 0 : values.size() / column_count;
+    for (std::string_view value : row) {
+      values.emplace_back(value);
+    }
+    return row_index;
+  }
+};
+
+struct BuiltJoinHashTable {
+  JoinHashTable hash_table;
+  JoinRowStore rows;
+};
+
+static std::optional<std::uintmax_t> file_size_hint(const std::string& path) {
+  std::error_code error;
+  if (!fs::is_regular_file(path, error) || error) {
+    return std::nullopt;
+  }
+  const auto size = fs::file_size(path, error);
+  if (error) {
+    return std::nullopt;
+  }
+  return size;
+}
+
+static bool should_build_right_side(const SourceReader& left_reader,
+                                    const SourceReader& right_reader,
+                                    const std::string& left_path,
+                                    const std::string& right_path) {
+  const auto left_count_hint = left_reader.row_count_hint();
+  const auto right_count_hint = right_reader.row_count_hint();
+  if (left_count_hint && right_count_hint) {
+    return *right_count_hint < *left_count_hint;
+  }
+
+  const auto left_size_hint = file_size_hint(left_path);
+  const auto right_size_hint = file_size_hint(right_path);
+  if (left_size_hint && right_size_hint) {
+    return *right_size_hint < *left_size_hint;
+  }
+
+  return false;
+}
 
 JoinKey128 build_join_key(const std::vector<std::string>& row,
                           const std::vector<JoinBinding>& join_bindings) {
@@ -243,27 +294,34 @@ std::vector<JoinBinding> resolve_join_bindings(const std::vector<std::string>& p
   return bindings;
 }
 
-static void append_joined_views(const std::vector<std::string>& left_row,
+static void append_joined_views(const JoinRowStore& left_rows,
+                                std::size_t left_row_index,
                                 const std::vector<std::string_view>& right_row,
+                                bool build_side_is_left,
                                 std::vector<std::string_view>& joined_row) {
   joined_row.clear();
-  joined_row.reserve(left_row.size() + right_row.size());
-  for (const auto& value : left_row) {
-    joined_row.emplace_back(value);
+  joined_row.reserve(left_rows.column_count + right_row.size());
+  const std::size_t offset = left_row_index * left_rows.column_count;
+  if (!build_side_is_left) {
+    joined_row.insert(joined_row.end(), right_row.begin(), right_row.end());
   }
-  joined_row.insert(joined_row.end(), right_row.begin(), right_row.end());
+  for (std::size_t i = 0; i < left_rows.column_count; ++i) {
+    joined_row.emplace_back(left_rows.values[offset + i]);
+  }
+  if (build_side_is_left) {
+    joined_row.insert(joined_row.end(), right_row.begin(), right_row.end());
+  }
 }
 
-JoinHashTable build_hash_table(SourceReader& reader,
-                               const std::vector<int>& projected_indeces,
-                               const std::vector<JoinBinding>& join_bindings) {
-  JoinHashTable hash_table;
+BuiltJoinHashTable build_hash_table(SourceReader& reader,
+                                    const std::vector<int>& projected_indeces,
+                                    const std::vector<JoinBinding>& join_bindings) {
+  BuiltJoinHashTable table;
+  table.rows.column_count = projected_indeces.size();
   RowHashSet unique_hashes;
 
   std::vector<std::string_view> projected_row_views;
-  std::vector<std::string> projected_row;
   projected_row_views.reserve(projected_indeces.size());
-  projected_row.reserve(projected_indeces.size());
 
   RowView source_row;
   while (reader.next(source_row)) {
@@ -279,15 +337,15 @@ JoinHashTable build_hash_table(SourceReader& reader,
     }
 
     JoinKey128 key = build_join_key(projected_row_views, join_bindings);
-    materialize_row_views(projected_row_views, projected_row);
-    auto [it, inserted] = hash_table.try_emplace(key);
+    const std::size_t row_index = table.rows.append_row(projected_row_views);
+    auto [it, inserted] = table.hash_table.try_emplace(key);
     if (inserted) {
       it->second.reserve(1);
     }
-    it->second.push_back(projected_row);
+    it->second.push_back(row_index);
   }
 
-  return hash_table;
+  return table;
 }
 
 
@@ -358,8 +416,17 @@ int execute_complex(const fs::path& output_file_name,
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -377,16 +444,16 @@ int execute_complex(const fs::path& output_file_name,
     initialize_row_map(row_map, joined_headers);
   }
 
-  // Process right file
+  // Process probe file
   std::vector<std::string_view> projected_row;
-  projected_row.reserve(right_proj_indices.size());
+  projected_row.reserve(probe_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
   RowView source_row;
-  while (right_reader->next(source_row)) {
+  while (probe_reader.next(source_row)) {
     line_count++;
-    project_row_into(source_row.fields, right_proj_indices, projected_row);
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
@@ -399,15 +466,15 @@ int execute_complex(const fs::path& output_file_name,
       continue;
     }
 
-    JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto matching_rows = hash_table.find(key);
-    if (matching_rows == hash_table.end()) {
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
       continue;
     }
 
-    for (const auto& left_row : matching_rows->second) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(left_row, projected_row, joined_row);
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
       // Generate triple
       if (render_plan.needs_row_map) {
@@ -418,20 +485,20 @@ int execute_complex(const fs::path& output_file_name,
       std::string p_function_value;
       std::string o_function_value;
       if (render_plan.has_object_condition &&
-          handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
         continue;
       }
       reset_complex_term_cache(render_plan);
 
       ////// CREATE //////
       try {
-        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.subject_cache_id, render_plan.term_cache_entries,
                                         subject, subject_scratch, s_function_value) ||
-            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.predicate_cache_id, render_plan.term_cache_entries,
                                         predicate, predicate_scratch, p_function_value) ||
-            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.object_cache_id, render_plan.term_cache_entries,
                                         object, object_scratch, o_function_value)) {
           continue;
@@ -519,8 +586,17 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -539,16 +615,16 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
     initialize_row_map(row_map, joined_headers);
   }
 
-  // Process right file
+  // Process probe file
   std::vector<std::string_view> projected_row;
-  projected_row.reserve(right_proj_indices.size());
+  projected_row.reserve(probe_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
   RowView source_row;
-  while (right_reader->next(source_row)) {
+  while (probe_reader.next(source_row)) {
     line_count++;
-    project_row_into(source_row.fields, right_proj_indices, projected_row);
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
@@ -561,15 +637,15 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
       continue;
     }
 
-    JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto matching_rows = hash_table.find(key);
-    if (matching_rows == hash_table.end()) {
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
       continue;
     }
 
-    for (const auto& left_row : matching_rows->second) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(left_row, projected_row, joined_row);
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
       if (render_plan.needs_row_map) {
         update_row_map(row_map, joined_headers, joined_row);
@@ -579,19 +655,19 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
       std::string p_function_value;
       std::string o_function_value;
       if (render_plan.has_object_condition &&
-          handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
         continue;
       }
       reset_complex_term_cache(render_plan);
 
       try {
-        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.subject_cache_id, render_plan.term_cache_entries,
                                         subject, subject_scratch, s_function_value) ||
-            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.predicate_cache_id, render_plan.term_cache_entries,
                                         predicate, predicate_scratch, p_function_value) ||
-            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.object_cache_id, render_plan.term_cache_entries,
                                         object, object_scratch, o_function_value)) {
           continue;
@@ -684,8 +760,17 @@ int execute_complex_with_graph(const fs::path& output_file_name,
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -703,16 +788,16 @@ int execute_complex_with_graph(const fs::path& output_file_name,
     initialize_row_map(row_map, joined_headers);
   }
 
-  // Process right file
+  // Process probe file
   std::vector<std::string_view> projected_row;
-  projected_row.reserve(right_proj_indices.size());
+  projected_row.reserve(probe_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
   RowView source_row;
-  while (right_reader->next(source_row)) {
+  while (probe_reader.next(source_row)) {
     line_count++;
-    project_row_into(source_row.fields, right_proj_indices, projected_row);
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
@@ -725,15 +810,15 @@ int execute_complex_with_graph(const fs::path& output_file_name,
       continue;
     }
 
-    JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto matching_rows = hash_table.find(key);
-    if (matching_rows == hash_table.end()) {
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
       continue;
     }
 
-    for (const auto& left_row : matching_rows->second) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(left_row, projected_row, joined_row);
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
       ////// CREATE //////
       if (render_plan.needs_row_map) {
@@ -745,22 +830,22 @@ int execute_complex_with_graph(const fs::path& output_file_name,
       std::string o_function_value;
       std::string g_function_value;
       if (render_plan.has_object_condition &&
-          handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
         continue;
       }
       reset_complex_term_cache(render_plan);
 
       try {
-        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.subject_cache_id, render_plan.term_cache_entries,
                                         subject, subject_scratch, s_function_value) ||
-            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.predicate_cache_id, render_plan.term_cache_entries,
                                         predicate, predicate_scratch, p_function_value) ||
-            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.object_cache_id, render_plan.term_cache_entries,
                                         object, object_scratch, o_function_value) ||
-            !render_cached_runtime_term(render_plan.graph, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.graph, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.graph_cache_id, render_plan.term_cache_entries,
                                         graph, graph_scratch, g_function_value)) {
           continue;
@@ -853,8 +938,17 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
+  const bool build_right = should_build_right_side(*left_reader, *right_reader, left_path, right_path);
+  SourceReader& build_reader = build_right ? *right_reader : *left_reader;
+  SourceReader& probe_reader = build_right ? *left_reader : *right_reader;
+  const std::vector<int>& build_proj_indices = build_right ? right_proj_indices : left_proj_indices;
+  const std::vector<int>& probe_proj_indices = build_right ? left_proj_indices : right_proj_indices;
+  const std::vector<JoinBinding>& build_join_bindings = build_right ? right_join_bindings : left_join_bindings;
+  const std::vector<JoinBinding>& probe_join_bindings = build_right ? left_join_bindings : right_join_bindings;
+  const std::string& probe_path = build_right ? left_path : right_path;
+
+  // Build hash table from the smaller hinted side when available.
+  auto hash_table = build_hash_table(build_reader, build_proj_indices, build_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -873,16 +967,16 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
     initialize_row_map(row_map, joined_headers);
   }
 
-  // Process right file
+  // Process probe file
   std::vector<std::string_view> projected_row;
-  projected_row.reserve(right_proj_indices.size());
+  projected_row.reserve(probe_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
   RowView source_row;
-  while (right_reader->next(source_row)) {
+  while (probe_reader.next(source_row)) {
     line_count++;
-    project_row_into(source_row.fields, right_proj_indices, projected_row);
+    project_row_into(source_row.fields, probe_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
@@ -895,15 +989,15 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
       continue;
     }
 
-    JoinKey128 key = build_join_key(projected_row, right_join_bindings);
-    auto matching_rows = hash_table.find(key);
-    if (matching_rows == hash_table.end()) {
+    JoinKey128 key = build_join_key(projected_row, probe_join_bindings);
+    auto matching_rows = hash_table.hash_table.find(key);
+    if (matching_rows == hash_table.hash_table.end()) {
       continue;
     }
 
-    for (const auto& left_row : matching_rows->second) {
+    for (std::size_t left_row_index : matching_rows->second) {
       // Combine left and right filtered rows
-      append_joined_views(left_row, projected_row, joined_row);
+      append_joined_views(hash_table.rows, left_row_index, projected_row, !build_right, joined_row);
 
       ////// CREATE //////
       if (render_plan.needs_row_map) {
@@ -915,22 +1009,22 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
       std::string o_function_value;
       std::string g_function_value;
       if (render_plan.has_object_condition &&
-          handle_function_call(render_plan.object.content[5], line_count, right_path, row_map) != "true") {
+          handle_function_call(render_plan.object.content[5], line_count, probe_path, row_map) != "true") {
         continue;
       }
       reset_complex_term_cache(render_plan);
 
       try {
-        if (!render_cached_runtime_term(render_plan.subject, line_count, right_path, joined_row, base_uri, row_map,
+        if (!render_cached_runtime_term(render_plan.subject, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.subject_cache_id, render_plan.term_cache_entries,
                                         subject, subject_scratch, s_function_value) ||
-            !render_cached_runtime_term(render_plan.predicate, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.predicate, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.predicate_cache_id, render_plan.term_cache_entries,
                                         predicate, predicate_scratch, p_function_value) ||
-            !render_cached_runtime_term(render_plan.object, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.object, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.object_cache_id, render_plan.term_cache_entries,
                                         object, object_scratch, o_function_value) ||
-            !render_cached_runtime_term(render_plan.graph, line_count, right_path, joined_row, base_uri, row_map,
+            !render_cached_runtime_term(render_plan.graph, line_count, probe_path, joined_row, base_uri, row_map,
                                         render_plan.graph_cache_id, render_plan.term_cache_entries,
                                         graph, graph_scratch, g_function_value)) {
           continue;
