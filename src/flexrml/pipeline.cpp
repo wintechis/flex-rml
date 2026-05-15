@@ -13,7 +13,9 @@
 #include <vector>
 
 #include "json_preprocessor.h"
+#include "json_source_reader.h"
 #include "physical_plan.h"
+#include "source_reader_factory.h"
 
 std::string parse_rdf_string(const std::string& rdf_mapping);
 std::string normalize_rml_mapping_string(const std::string& input_rdf_mapping, int bn_number);
@@ -64,6 +66,15 @@ std::string read_mapping_source(const std::string& source) {
     return read_text_file(source);
   }
   return source;
+}
+
+std::filesystem::path mapping_base_dir(const std::string& source) {
+  std::error_code ec;
+  if (std::filesystem::is_regular_file(source, ec)) {
+    auto parent = std::filesystem::path(source).parent_path();
+    return parent.empty() ? std::filesystem::current_path() : std::filesystem::absolute(parent);
+  }
+  return std::filesystem::current_path();
 }
 
 std::vector<std::string> split(const std::string& value, const std::string& delimiter) {
@@ -180,6 +191,71 @@ void set_object(std::vector<std::string>& lines,
       return;
     }
   }
+}
+
+std::string canonicalize_mapping_term(const std::string& value) {
+  constexpr std::string_view old_rml = "http://semweb.mmlab.be/ns/rml#";
+  constexpr std::string_view rr = "http://www.w3.org/ns/r2rml#";
+  constexpr std::string_view old_ql = "http://semweb.mmlab.be/ns/ql#";
+  constexpr std::string_view new_rml = "http://w3id.org/rml/";
+
+  if (value.rfind(old_rml, 0) == 0) {
+    return std::string(new_rml) + value.substr(old_rml.size());
+  }
+  if (value.rfind(rr, 0) == 0) {
+    return std::string(new_rml) + value.substr(rr.size());
+  }
+  if (value.rfind(old_ql, 0) == 0) {
+    return std::string(new_rml) + value.substr(old_ql.size());
+  }
+  return value;
+}
+
+bool is_source_path_predicate(const std::string& predicate) {
+  return predicate == "http://w3id.org/rml/source" ||
+         predicate == "http://w3id.org/rml/path";
+}
+
+bool is_relative_source_path(const std::string& value) {
+  if (value.empty()) {
+    return false;
+  }
+  if (value.find("://") != std::string::npos) {
+    return false;
+  }
+  return std::filesystem::path(value).is_relative();
+}
+
+std::string canonicalize_mapping_graph(const std::string& rml_string,
+                                       const std::filesystem::path& base_dir) {
+  const auto raw_lines = raw_non_empty_lines(rml_string);
+  std::vector<std::string> subjects;
+  subjects.reserve(raw_lines.size());
+  for (const auto& line : raw_lines) {
+    auto triple = split(line, "|||");
+    if (triple.size() == 3) {
+      subjects.push_back(triple[0]);
+    }
+  }
+
+  std::vector<std::string> lines;
+  lines.reserve(raw_lines.size());
+  for (const auto& line : raw_lines) {
+    auto triple = split(line, "|||");
+    if (triple.size() != 3) {
+      lines.push_back(line);
+      continue;
+    }
+
+    triple[1] = canonicalize_mapping_term(triple[1]);
+    triple[2] = canonicalize_mapping_term(triple[2]);
+    const bool object_is_node = std::find(subjects.begin(), subjects.end(), triple[2]) != subjects.end();
+    if (!object_is_node && is_source_path_predicate(triple[1]) && is_relative_source_path(triple[2])) {
+      triple[2] = (base_dir / triple[2]).lexically_normal().string();
+    }
+    lines.push_back(join(triple, "|||"));
+  }
+  return join(lines, "\n");
 }
 
 std::string new_bnode(const std::vector<std::string>& lines, const std::string& prefix = "b") {
@@ -329,12 +405,17 @@ IteratorMap get_iterators_for_graph(const std::string& graph) {
         reference_formulation = source_triple[2];
       } else if (source_triple[1] == "http://w3id.org/rml/source") {
         const auto source_node = source_triple[2];
+        bool found_nested_path = false;
         for (const auto& path_line : lines) {
           auto path_triple = split(path_line, "|||");
           if (path_triple.size() == 3 && path_triple[0] == source_node &&
               path_triple[1] == "http://w3id.org/rml/path") {
             path = path_triple[2];
+            found_nested_path = true;
           }
+        }
+        if (!found_nested_path) {
+          path = source_node;
         }
       }
     }
@@ -434,12 +515,14 @@ std::string list_repr(const std::vector<std::string>& values) {
 
 RuntimePlan build_runtime_plan(const Options& options) {
   const auto raw_mapping = read_mapping_source(options.mapping_source);
+  const auto base_dir = mapping_base_dir(options.mapping_source);
   std::string parsed_mapping = parse_rdf_string(raw_mapping);
   if (parsed_mapping.rfind("Error:", 0) == 0) {
     throw std::runtime_error("RML parsing failed: " + parsed_mapping);
   }
 
-  auto patched_mapping = patch_mapping_graph(parsed_mapping);
+  auto compatible_mapping = canonicalize_mapping_graph(parsed_mapping, base_dir);
+  auto patched_mapping = patch_mapping_graph(compatible_mapping);
   auto normalized_graphs = normalize_mapping(patched_mapping);
   normalized_graphs = handle_functions(normalized_graphs);
 
@@ -478,6 +561,13 @@ std::string encode_in_memory_entry(const std::string& source, const std::string&
   return "|||===|||" + source + "===|||===" + csv_data;
 }
 
+bool has_json_extension(const std::string& source) {
+  auto extension = std::filesystem::path(source).extension().string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return extension == ".json";
+}
+
 std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
   auto sources = get_ra_sources(plan.ra);
   std::string in_memory_data;
@@ -494,6 +584,10 @@ std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
 
       const auto iterator = iterators.find(source);
       if (iterator == iterators.end()) {
+        if (has_json_extension(source)) {
+          in_memory_data += encode_in_memory_entry(source, encode_json_source_config("$[*]"));
+          loaded_sources.push_back(source);
+        }
         continue;
       }
 
@@ -504,7 +598,9 @@ std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
       }
       if (reference_formulation != iterator->second.end() &&
           reference_formulation->second == "http://w3id.org/rml/XPath") {
-        throw std::runtime_error("XML/XPath sources are not supported: " + source);
+        in_memory_data += encode_in_memory_entry(source, encode_xml_source_config(iterator_value->second));
+        loaded_sources.push_back(source);
+        continue;
       }
       if (reference_formulation != iterator->second.end() &&
           reference_formulation->second != "http://w3id.org/rml/JSONPath") {
@@ -512,7 +608,11 @@ std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
                                  "': " + reference_formulation->second);
       }
 
-      in_memory_data += encode_in_memory_entry(source, preprocess_json_to_csv(source, iterator_value->second));
+      if (JsonSourceReader::supports_iterator(iterator_value->second)) {
+        in_memory_data += encode_in_memory_entry(source, encode_json_source_config(iterator_value->second));
+      } else {
+        in_memory_data += encode_in_memory_entry(source, preprocess_json_to_csv(source, iterator_value->second));
+      }
       loaded_sources.push_back(source);
     }
   }

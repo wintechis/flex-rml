@@ -8,7 +8,7 @@ static bool can_cache_complex_term(const CompiledRuntimeTerm& term) {
   }
   return term.render_op == CompiledRuntimeTerm::RenderOp::Compiled &&
          term.compiled.usable &&
-         term.compiled.term_type != "blanknode";
+         term.compiled.term_kind != CompiledTermType::BlankNode;
 }
 
 static void count_cacheable_complex_term(const std::string& base_uri,

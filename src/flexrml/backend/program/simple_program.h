@@ -69,11 +69,6 @@ CompiledSimplePlan compile_simple_plan(const std::vector<std::string>& projected
                                        const std::vector<std::string>& o_content,
                                        const std::vector<std::string>* g_content = nullptr);
 
-bool prepare_simple_plan(const SimplePlan& source,
-                         std::istream& file,
-                         std::string& header_line,
-                         PreparedSimplePlan& prepared);
-
 void prepare_simple_plan_from_header(const SimplePlan& source,
                                      const std::vector<std::string>& header,
                                      PreparedSimplePlan& prepared);

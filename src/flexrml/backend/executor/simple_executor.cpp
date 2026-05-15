@@ -26,6 +26,7 @@
 
 #include "csv_row.h"
 #include "definitions.h"
+#include "source_reader_factory.h"
 #include "simple_program.h"
 #include "term_cache.h"
 #include "term_program.h"
@@ -186,7 +187,7 @@ static bool append_fast_compiled_term(const CompiledRuntimeTerm& runtime_term,
   }
 
   const CompiledTerm& term = runtime_term.compiled;
-  if (!term.usable || term.term_type == "blanknode") {
+  if (!term.usable || term.term_kind == CompiledTermType::BlankNode) {
     return false;
   }
 
@@ -201,12 +202,16 @@ static bool append_fast_compiled_term(const CompiledRuntimeTerm& runtime_term,
     for (const CompiledTemplatePart& part : term.parts) {
       if (part.reference_index >= 0) {
         const std::string_view value = projected_row[part.reference_index];
-        if (term.term_type == "uri") {
-          append_safe_iri(value, true, scratch);
-        } else if (term.term_type == "iri") {
-          append_safe_iri(value, false, scratch);
-        } else {
-          scratch += value;
+        switch (term.term_kind) {
+          case CompiledTermType::Uri:
+            append_safe_iri(value, true, scratch);
+            break;
+          case CompiledTermType::Iri:
+            append_safe_iri(value, false, scratch);
+            break;
+          default:
+            scratch += value;
+            break;
         }
       } else {
         scratch += part.literal;
@@ -225,28 +230,32 @@ static bool append_fast_compiled_term(const CompiledRuntimeTerm& runtime_term,
     rdf_term = scratch;
   }
 
-  if (term.term_type == "literal") {
-    append_literal_term(rdf_term, term.lang_tag, term.data_type, term.infer_datatype, out);
-    return true;
-  }
-
-  if (term.term_type == "uri" || term.term_type == "iri" || term.term_type == "unsafeiri") {
-    if ((term.term_type == "uri" || term.term_type == "iri") && has_invalid_iri_char(rdf_term)) {
-      std::string error_msg;
-      error_msg.reserve(rdf_term.size() + 58);
-      error_msg.append("Error: invalid IRI detected for node: '");
-      error_msg.append(rdf_term);
-      error_msg.append("'. ");
-      if (continue_on_error == true) {
-        std::cout << error_msg << "Skipping!\n";
+  switch (term.term_kind) {
+    case CompiledTermType::Literal:
+      append_literal_term(rdf_term, term.lang_tag, term.data_type, term.infer_datatype, out);
+      return true;
+    case CompiledTermType::Uri:
+    case CompiledTermType::Iri:
+    case CompiledTermType::UnsafeIri:
+      if (validates_iri_chars(term.term_kind) && has_invalid_iri_char(rdf_term)) {
+        std::string error_msg;
+        error_msg.reserve(rdf_term.size() + 58);
+        error_msg.append("Error: invalid IRI detected for node: '");
+        error_msg.append(rdf_term);
+        error_msg.append("'. ");
+        if (continue_on_error == true) {
+          std::cout << error_msg << "Skipping!\n";
+        }
+        error_msg += "Stop!";
+        throw std::runtime_error(error_msg);
       }
-      error_msg += "Stop!";
-      throw std::runtime_error(error_msg);
-    }
-    out.push_back('<');
-    out.append(rdf_term);
-    out.push_back('>');
-    return true;
+      out.push_back('<');
+      out.append(rdf_term);
+      out.push_back('>');
+      return true;
+    case CompiledTermType::BlankNode:
+    case CompiledTermType::Unsupported:
+      return false;
   }
 
   return false;
@@ -259,7 +268,7 @@ static bool can_fast_emit_simple_plan(const CompiledSimplePlan& plan) {
     }
     return term.render_op == CompiledRuntimeTerm::RenderOp::Compiled &&
            term.compiled.usable &&
-           term.compiled.term_type != "blanknode";
+           term.compiled.term_kind != CompiledTermType::BlankNode;
   };
   return !plan.needs_row_map &&
          !plan.function_called &&
@@ -311,10 +320,6 @@ static bool emit_fast_statement(const CompiledSimplePlan& plan,
 struct SetupData {
   TripleHashSet unique_triple_hashes;
 
-  std::string line;
-  std::vector<std::string> split_line;
-  std::vector<std::string_view> split_line_views;
-  std::vector<std::string> projected_row;
   std::vector<std::string_view> projected_row_views;
   std::unordered_map<std::string, std::string> row;
 
@@ -343,10 +348,6 @@ SetupData initialize_setup(const fs::path& output_file_name, OutputChunkWriter* 
   data.writer = writer;
 
   // Reserve memory for strings and vectors
-  data.line.reserve(512);
-  data.split_line.reserve(32);
-  data.split_line_views.reserve(32);
-  data.projected_row.reserve(32);
   data.projected_row_views.reserve(32);
   data.row.reserve(32);
 
@@ -395,10 +396,6 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   SetupData data;
 
   // Reserve memory for strings and vectors
-  data.line.reserve(512);
-  data.split_line.reserve(32);
-  data.split_line_views.reserve(32);
-  data.projected_row.reserve(32);
   data.projected_row_views.reserve(32);
   data.row.reserve(32);
 
@@ -414,18 +411,6 @@ SetupData initialize_setup_dependent(const fs::path& output_file_name) {
   data.graph_scratch.reserve(512);
 
   return data;
-}
-
-static void split_project_current_line(SetupData& setup_data,
-                                       const std::vector<int>& projected_indices) {
-  if (split_csv_line_views_into(setup_data.line, ',', setup_data.split_line_views)) {
-    project_row_into(setup_data.split_line_views, projected_indices, setup_data.projected_row_views);
-    return;
-  }
-
-  split_csv_line_into(setup_data.line, ',', setup_data.split_line);
-  project_row_into(setup_data.split_line, projected_indices, setup_data.projected_row);
-  project_row_views_from_strings(setup_data.projected_row, setup_data.projected_row_views);
 }
 
 static bool append_cached_fast_term(const CompiledRuntimeTerm& term,
@@ -500,21 +485,6 @@ static bool is_single_constant_statement(const SimplePlan& plan) {
          (plan.s_content[1] == "preformatted" && plan.p_content[1] == "preformatted" && plan.o_content[1] == "preformatted" && plan.g_content[1] == "preformatted");
 }
 
-// Open File or from map
-static std::unique_ptr<std::istream> open_from_map_or_file(
-    const std::unordered_map<std::string, std::string>& mem,
-    const std::string& path) {
-  if (auto it = mem.find(path); it != mem.end()) {
-    return std::make_unique<std::istringstream>(it->second);
-  }
-
-  auto f = std::make_unique<std::ifstream>(path);
-  if (!f->is_open()) {
-    throw std::runtime_error("Could not open logical source: " + path);
-  }
-  return f;
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 int execute_simple_with_graph(const std::string& input_file_name,
                               const fs::path& output_file_name,
@@ -531,7 +501,7 @@ int execute_simple_with_graph(const std::string& input_file_name,
 
   //////////////////////////////////////////////////////////////////////
   // Open input file
-  auto file = open_from_map_or_file(data_map, input_file_name);
+  auto reader = create_source_reader(data_map, input_file_name);
 
   SimplePlan source;
   source.output_file_name = output_file_name;
@@ -545,18 +515,20 @@ int execute_simple_with_graph(const std::string& input_file_name,
   source.generate_graph = true;
 
   PreparedSimplePlan prepared;
-  if (!prepare_simple_plan(source, *file, setup_data.line, prepared)) {
+  if (reader->header().empty()) {
     return 0;
   }
+  prepare_simple_plan_from_header(source, reader->header(), prepared);
   initialize_row_map(setup_data.row, prepared.projected_header);
   const CompiledSimplePlan& plan = prepared.compiled;
 
   int line_count = 0;
   // Iterate over file line by line
-  while (std::getline(*file, setup_data.line)) {
+  RowView source_row;
+  while (reader->next(source_row)) {
     line_count++;
 
-    split_project_current_line(setup_data, prepared.projected_indices);
+    project_row_into(source_row.fields, prepared.projected_indices, setup_data.projected_row_views);
 
     // Check for NULL values
     setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
@@ -660,7 +632,7 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
   //////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////
   // Open input
-  auto file = open_from_map_or_file(data_map, input_file_name);
+  auto reader = create_source_reader(data_map, input_file_name);
 
   //////////////////////////////////////////////////////////////////////
 
@@ -676,18 +648,20 @@ std::unordered_set<std::string> execute_simple_with_graph_dependent(const std::s
   source.generate_graph = true;
 
   PreparedSimplePlan prepared;
-  if (!prepare_simple_plan(source, *file, setup_data.line, prepared)) {
+  if (reader->header().empty()) {
     return unique_triple;
   }
+  prepare_simple_plan_from_header(source, reader->header(), prepared);
   initialize_row_map(setup_data.row, prepared.projected_header);
   const CompiledSimplePlan& plan = prepared.compiled;
 
   // Iterate over file line by line
   int line_count = 0;
-  while (std::getline(*file, setup_data.line)) {
+  RowView source_row;
+  while (reader->next(source_row)) {
     line_count++;
 
-    split_project_current_line(setup_data, prepared.projected_indices);
+    project_row_into(source_row.fields, prepared.projected_indices, setup_data.projected_row_views);
 
     // Check for NULL values
     setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
@@ -774,7 +748,7 @@ int execute_simple(const std::string& input_file_name,
 
   //////////////////////////////////////////////////////////////////////
   // Open input file
-  auto file = open_from_map_or_file(data_map, input_file_name);
+  auto reader = create_source_reader(data_map, input_file_name);
 
   SimplePlan source;
   source.output_file_name = output_file_name;
@@ -787,18 +761,20 @@ int execute_simple(const std::string& input_file_name,
   source.generate_graph = false;
 
   PreparedSimplePlan prepared;
-  if (!prepare_simple_plan(source, *file, setup_data.line, prepared)) {
+  if (reader->header().empty()) {
     return 0;
   }
+  prepare_simple_plan_from_header(source, reader->header(), prepared);
   initialize_row_map(setup_data.row, prepared.projected_header);
   const CompiledSimplePlan& plan = prepared.compiled;
 
   int line_count = 0;
   // Iterate over file line by line
-  while (std::getline(*file, setup_data.line)) {
+  RowView source_row;
+  while (reader->next(source_row)) {
     line_count++;
 
-    split_project_current_line(setup_data, prepared.projected_indices);
+    project_row_into(source_row.fields, prepared.projected_indices, setup_data.projected_row_views);
 
     // Check for NULL values
     setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
@@ -898,7 +874,7 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
 
   //////////////////////////////////////////////////////////////////////
   // Open input
-  auto file = open_from_map_or_file(data_map, input_file_name);
+  auto reader = create_source_reader(data_map, input_file_name);
 
   //////////////////////////////////////////////////////////////////////
   SimplePlan source;
@@ -912,9 +888,10 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
   source.generate_graph = false;
 
   PreparedSimplePlan prepared;
-  if (!prepare_simple_plan(source, *file, setup_data.line, prepared)) {
+  if (reader->header().empty()) {
     return unique_triple;
   }
+  prepare_simple_plan_from_header(source, reader->header(), prepared);
   initialize_row_map(setup_data.row, prepared.projected_header);
   const CompiledSimplePlan& plan = prepared.compiled;
 
@@ -924,10 +901,11 @@ std::unordered_set<std::string> execute_simple_dependent(const std::string& inpu
   // Check if funciton is needed
   bool function_called = plan.function_called;
 
-  while (std::getline(*file, setup_data.line)) {
+  RowView source_row;
+  while (reader->next(source_row)) {
     line_count++;
 
-    split_project_current_line(setup_data, prepared.projected_indices);
+    project_row_into(source_row.fields, prepared.projected_indices, setup_data.projected_row_views);
 
     // Check for NULL values
     setup_data.skip = row_has_skip_value(setup_data.projected_row_views);
@@ -1110,39 +1088,27 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
   }
 
   SetupData setup_data = initialize_setup(output_file_name, writer);
-  auto file = open_from_map_or_file(data_map, input_file_name);
-
-  std::string header_line;
-  if (!std::getline(*file, header_line)) {
+  auto reader = create_source_reader(data_map, input_file_name);
+  if (reader->header().empty()) {
     return 0;
   }
-  std::vector<std::string> header = split_csv_line(header_line, ',');
 
-  FusedSimpleProgram program = compile_fused_simple_program(plans, header);
+  FusedSimpleProgram program = compile_fused_simple_program(plans, reader->header());
   std::vector<FusedSimpleRuntime>& runtimes = program.runtimes;
   const std::vector<FusedSimpleGroup>& groups = program.groups;
   std::vector<TermCacheEntry>& term_cache_entries = program.term_cache_entries;
 
   int line_count = 0;
-  while (std::getline(*file, setup_data.line)) {
+  RowView source_row;
+  while (reader->next(source_row)) {
     line_count++;
     reset_fused_term_cache(program);
-
-    const bool use_views = split_csv_line_views_into(setup_data.line, ',', setup_data.split_line_views);
-    if (!use_views) {
-      split_csv_line_into(setup_data.line, ',', setup_data.split_line);
-    }
 
     for (const auto& group : groups) {
       if (group.reuse_subject_predicate_object && group.runtime_indices.size() > 1) {
         FusedSimpleRuntime& representative = runtimes[group.runtime_indices.front()];
         const CompiledSimplePlan& representative_plan = representative.prepared.compiled;
-        if (use_views) {
-          project_row_into(setup_data.split_line_views, representative.prepared.projected_indices, representative.projected_row);
-        } else {
-          project_row_into(setup_data.split_line, representative.prepared.projected_indices, representative.projected_row_storage);
-          project_row_views_from_strings(representative.projected_row_storage, representative.projected_row);
-        }
+        project_row_into(source_row.fields, representative.prepared.projected_indices, representative.projected_row);
 
         if (row_has_skip_value(representative.projected_row)) {
           continue;
@@ -1217,12 +1183,7 @@ size_t execute_fused_simple_plans(const std::vector<SimplePlan>& plans,
 
       FusedSimpleRuntime& runtime = runtimes[group.runtime_indices.front()];
       const CompiledSimplePlan& plan = runtime.prepared.compiled;
-      if (use_views) {
-        project_row_into(setup_data.split_line_views, runtime.prepared.projected_indices, runtime.projected_row);
-      } else {
-        project_row_into(setup_data.split_line, runtime.prepared.projected_indices, runtime.projected_row_storage);
-        project_row_views_from_strings(runtime.projected_row_storage, runtime.projected_row);
-      }
+      project_row_into(source_row.fields, runtime.prepared.projected_indices, runtime.projected_row);
 
       const bool skip = row_has_skip_value(runtime.projected_row);
       if (skip && !plan.function_called) {

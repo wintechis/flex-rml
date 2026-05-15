@@ -411,6 +411,16 @@ std::string get_source_path_from_logical_source(const std::vector<NTriple>& trip
 
   throw std::runtime_error("No logical source path found.");
 }
+
+std::string get_source_path_from_triples_map(const std::vector<NTriple>& triples,
+                                             const std::string& triples_map_node) {
+  std::vector<std::string> logical_source_nodes =
+      find_matching_objects(triples, triples_map_node, "http://w3id.org/rml/logicalSource");
+  if (logical_source_nodes.empty()) {
+    throw std::runtime_error("No logical source found for TriplesMap.");
+  }
+  return get_source_path_from_logical_source(triples, logical_source_nodes[0]);
+}
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1090,14 +1100,11 @@ static std::string join_strings(const std::vector<std::string>& values,
 }
 
 std::string create_complex_tree(const std::vector<NTriple>& triples) {
-  // Get source
-  std::vector<std::string> sources = find_matching_objects(triples, "", "http://w3id.org/rml/path");
-  if (sources.empty()) {
-    sources.push_back(get_source_path(triples));
-  }
-
   // Get root tm
   std::string root_tm = get_root_tm(triples);
+
+  // Get child source from the root TriplesMap, not from arbitrary sources in the subgraph.
+  std::vector<std::string> sources = {get_source_path_from_triples_map(triples, root_tm)};
 
   // Get pom
   std::string pom = get_predicate_object_map(triples, root_tm);
@@ -1287,11 +1294,11 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
   /////////////////////
   std::vector<std::string> final_result;
   /////////////////////
-  // Get source
-  std::string source = get_source_path(triples);
-
   // Get root tm
   std::string root_tm = get_root_tm(triples);
+
+  // Get source
+  std::string source = get_source_path_from_triples_map(triples, root_tm);
 
   // Get pom
   std::string pom = get_predicate_object_map(triples, root_tm);

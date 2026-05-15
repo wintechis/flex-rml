@@ -52,6 +52,9 @@ def build_flexrml_command(output_path: Path, default_base_iri: str | None) -> tu
 
 
 def parse_error_expected(readme_path: Path) -> bool:
+    if not readme_path.is_file():
+        return not (readme_path.parent / "output.nq").is_file()
+
     content = readme_path.read_text(encoding="utf-8")
     match = re.search(r"\*\*Error expected\?\*\*\s*(Yes|No)", content, re.IGNORECASE)
     if not match:
@@ -60,6 +63,9 @@ def parse_error_expected(readme_path: Path) -> bool:
 
 
 def parse_default_base_iri(readme_path: Path) -> str | None:
+    if not readme_path.is_file():
+        return None
+
     content = readme_path.read_text(encoding="utf-8")
     match = re.search(r"\*\*Default Base IRI\*\*\s*:\s*(\S+)", content, re.IGNORECASE)
     if not match:
@@ -221,7 +227,13 @@ def run_case(case_dir: Path) -> CaseResult:
 
 
 def is_case_dir(path: Path) -> bool:
-    return (path / "README.md").is_file() and (path / "mapping.ttl").is_file()
+    return (path / "mapping.ttl").is_file() and (
+        (path / "README.md").is_file()
+        or (path / "output.nq").is_file()
+        or any(path.glob("*.xml"))
+        or any(path.glob("*.json"))
+        or any(path.glob("*.csv"))
+    )
 
 
 def selected_case_matches(case_dir: Path, selected: set[str]) -> bool:

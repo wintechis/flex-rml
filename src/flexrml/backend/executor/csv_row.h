@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -9,6 +10,10 @@ void project_row_into(const std::vector<std::string>& split_line,
                       std::vector<std::string>& projected_row);
 
 void project_row_into(const std::vector<std::string_view>& split_line,
+                      const std::vector<int>& projected_indices,
+                      std::vector<std::string_view>& projected_row);
+
+void project_row_into(std::span<const std::string_view> split_line,
                       const std::vector<int>& projected_indices,
                       std::vector<std::string_view>& projected_row);
 

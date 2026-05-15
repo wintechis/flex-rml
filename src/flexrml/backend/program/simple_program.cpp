@@ -70,36 +70,6 @@ std::vector<int> get_attribute_index(std::istream&,
   return projected_indices;
 }
 
-bool prepare_simple_plan(const SimplePlan& source,
-                         std::istream& file,
-                         std::string& header_line,
-                         PreparedSimplePlan& prepared) {
-  if (!std::getline(file, header_line)) {
-    return false;
-  }
-
-  std::vector<std::string> header = split_csv_line(header_line, ',');
-  prepared.source = source;
-  if (!(source.projected_attributes.size() == 1 && source.projected_attributes[0] == "")) {
-    prepared.projected_indices = get_attribute_index(file, header, source.projected_attributes);
-  }
-
-  prepared.projected_header.clear();
-  prepared.projected_header.reserve(prepared.projected_indices.size());
-  for (int index : prepared.projected_indices) {
-    prepared.projected_header.push_back(header[index]);
-  }
-
-  prepared.compiled = compile_simple_plan(
-      prepared.projected_header,
-      source.base_uri,
-      source.s_content,
-      source.p_content,
-      source.o_content,
-      source.generate_graph ? &source.g_content : nullptr);
-  return true;
-}
-
 void prepare_simple_plan_from_header(const SimplePlan& source,
                                      const std::vector<std::string>& header,
                                      PreparedSimplePlan& prepared) {
@@ -130,7 +100,7 @@ static bool can_cache_fused_term(const CompiledRuntimeTerm& term) {
   }
   return term.render_op == CompiledRuntimeTerm::RenderOp::Compiled &&
          term.compiled.usable &&
-         term.compiled.term_type != "blanknode";
+         term.compiled.term_kind != CompiledTermType::BlankNode;
 }
 
 static void count_cacheable_fused_term(const std::string& base_uri,

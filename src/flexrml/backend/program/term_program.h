@@ -13,6 +13,25 @@ enum class CompiledTermMapType {
   Template
 };
 
+enum class CompiledTermType {
+  Uri,
+  Iri,
+  UnsafeIri,
+  BlankNode,
+  Literal,
+  Unsupported
+};
+
+inline bool is_iri_term_type(CompiledTermType type) {
+  return type == CompiledTermType::Uri ||
+         type == CompiledTermType::Iri ||
+         type == CompiledTermType::UnsafeIri;
+}
+
+inline bool validates_iri_chars(CompiledTermType type) {
+  return type == CompiledTermType::Uri || type == CompiledTermType::Iri;
+}
+
 struct CompiledTemplatePart {
   std::string literal;
   int reference_index = -1;
@@ -23,6 +42,7 @@ struct CompiledTerm {
   CompiledTermMapType map_type = CompiledTermMapType::Constant;
   std::string term_map;
   std::string term_type;
+  CompiledTermType term_kind = CompiledTermType::Unsupported;
   std::string lang_tag = "None";
   std::string data_type = "None";
   std::vector<CompiledTemplatePart> parts;
@@ -75,12 +95,16 @@ inline void render_compiled_term(const CompiledTerm& term,
     for (const CompiledTemplatePart& part : term.parts) {
       if (part.reference_index >= 0) {
         const std::string_view value = row[part.reference_index];
-        if (term.term_type == "uri") {
-          append_safe_iri(value, true, scratch);
-        } else if (term.term_type == "iri") {
-          append_safe_iri(value, false, scratch);
-        } else {
-          scratch += value;
+        switch (term.term_kind) {
+          case CompiledTermType::Uri:
+            append_safe_iri(value, true, scratch);
+            break;
+          case CompiledTermType::Iri:
+            append_safe_iri(value, false, scratch);
+            break;
+          default:
+            scratch += value;
+            break;
         }
       } else {
         scratch += part.literal;

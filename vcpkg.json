@@ -3,6 +3,7 @@
   "description": "FlexRML native C++ dependencies",
   "dependencies": [
     "jsoncons",
+    "pugixml",
     "serd",
     "unordered-dense",
     "xxhash"

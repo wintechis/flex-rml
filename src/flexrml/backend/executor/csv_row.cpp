@@ -19,6 +19,14 @@ void project_row_into(const std::vector<std::string>& split_line,
 void project_row_into(const std::vector<std::string_view>& split_line,
                       const std::vector<int>& projected_indices,
                       std::vector<std::string_view>& projected_row) {
+  project_row_into(std::span<const std::string_view>(split_line.data(), split_line.size()),
+                   projected_indices,
+                   projected_row);
+}
+
+void project_row_into(std::span<const std::string_view> split_line,
+                      const std::vector<int>& projected_indices,
+                      std::vector<std::string_view>& projected_row) {
   if (projected_row.size() < projected_indices.size()) {
     projected_row.resize(projected_indices.size());
   }

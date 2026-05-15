@@ -80,6 +80,25 @@ static bool compile_template_parts(const std::string& term_map,
   return true;
 }
 
+static CompiledTermType compile_term_type(const std::string& term_type) {
+  if (term_type == "uri") {
+    return CompiledTermType::Uri;
+  }
+  if (term_type == "iri") {
+    return CompiledTermType::Iri;
+  }
+  if (term_type == "unsafeiri") {
+    return CompiledTermType::UnsafeIri;
+  }
+  if (term_type == "blanknode") {
+    return CompiledTermType::BlankNode;
+  }
+  if (term_type == "literal") {
+    return CompiledTermType::Literal;
+  }
+  return CompiledTermType::Unsupported;
+}
+
 static CompiledTerm compile_term(const std::vector<std::string>& content,
                                  const std::vector<std::string>& projected_header,
                                  const std::string& base_uri) {
@@ -90,7 +109,8 @@ static CompiledTerm compile_term(const std::vector<std::string>& content,
 
   term.term_map = content[0];
   term.term_type = content[2];
-  const bool is_literal = term.term_type == "literal";
+  term.term_kind = compile_term_type(term.term_type);
+  const bool is_literal = term.term_kind == CompiledTermType::Literal;
   if (is_literal) {
     if (content.size() > 3) {
       term.lang_tag = content[3];
@@ -108,7 +128,7 @@ static CompiledTerm compile_term(const std::vector<std::string>& content,
     }
   }
 
-  term.add_base_iri = term.term_type == "uri" || term.term_type == "iri" || term.term_type == "unsafeiri";
+  term.add_base_iri = is_iri_term_type(term.term_kind);
 
   if (content[1] == "preformatted") {
     term.map_type = CompiledTermMapType::Preformatted;

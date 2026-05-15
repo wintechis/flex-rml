@@ -23,6 +23,7 @@ endif()
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
 find_package(jsoncons CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
 find_package(unordered_dense CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
 pkg_check_modules(SERD REQUIRED IMPORTED_TARGET serd-0)
@@ -37,9 +38,13 @@ set(FLEXRML_SOURCES
   src/flexrml/main.cpp
   src/flexrml/cli.cpp
   src/flexrml/pipeline.cpp
-  src/flexrml/frontend/json/json_preprocessor.cpp
   src/flexrml/backend/planner/backend_planner.cpp
   src/flexrml/backend/optimizer/ra_expression_partitioner.cpp
+  src/flexrml/backend/source/csv_source_reader.cpp
+  src/flexrml/backend/source/json/json_preprocessor.cpp
+  src/flexrml/backend/source/json_source_reader.cpp
+  src/flexrml/backend/source/source_reader_factory.cpp
+  src/flexrml/backend/source/xml_source_reader.cpp
   src/flexrml/backend/executor/csv_row.cpp
   src/flexrml/backend/executor/executor.cpp
   src/flexrml/backend/executor/simple_executor.cpp
@@ -60,14 +65,16 @@ add_executable(flexrml ${FLEXRML_SOURCES})
 target_include_directories(flexrml PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}/generated"
   src/flexrml
-  src/flexrml/frontend/json
   src/flexrml/backend/planner
   src/flexrml/backend/program
+  src/flexrml/backend/source
+  src/flexrml/backend/source/json
   src/flexrml/backend/executor
 )
 
 target_link_libraries(flexrml PRIVATE
   jsoncons::jsoncons
+  pugixml::pugixml
   unordered_dense::unordered_dense
   xxHash::xxhash
   PkgConfig::SERD

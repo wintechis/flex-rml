@@ -17,6 +17,7 @@
 #include "csv_row.h"
 #include "definitions.h"
 #include "join_program.h"
+#include "source_reader_factory.h"
 #include "term_cache.h"
 #include "term_program.h"
 #include "utils.h"
@@ -134,9 +135,8 @@ static uint64_t combined_hash_views(const std::vector<std::string_view>& fields)
 }
 
 // Build header mapping and return header vector and index map.
-std::pair<std::vector<std::string>, std::unordered_map<std::string, int>> build_header(const std::string& header_line, const std::string& prefix) {
-  auto original = split_csv_line(header_line, ',');
-
+std::pair<std::vector<std::string>, std::unordered_map<std::string, int>> build_header(const std::vector<std::string>& original,
+                                                                                      const std::string& prefix) {
   std::vector<std::string> headers;
   std::unordered_map<std::string, int> header_idx;
 
@@ -254,30 +254,20 @@ static void append_joined_views(const std::vector<std::string>& left_row,
   joined_row.insert(joined_row.end(), right_row.begin(), right_row.end());
 }
 
-JoinHashTable build_hash_table(std::istream& input_file,
+JoinHashTable build_hash_table(SourceReader& reader,
                                const std::vector<int>& projected_indeces,
                                const std::vector<JoinBinding>& join_bindings) {
   JoinHashTable hash_table;
   RowHashSet unique_hashes;
 
-  std::string line;
-  std::vector<std::string_view> split_line_views;
-  std::vector<std::string> split_line;
   std::vector<std::string_view> projected_row_views;
   std::vector<std::string> projected_row;
-  split_line_views.reserve(64);
-  split_line.reserve(64);
   projected_row_views.reserve(projected_indeces.size());
   projected_row.reserve(projected_indeces.size());
 
-  while (std::getline(input_file, line)) {
-    if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_into(split_line_views, projected_indeces, projected_row_views);
-    } else {
-      split_csv_line_into(line, ',', split_line);
-      project_row_into(split_line, projected_indeces, projected_row);
-      project_row_views_from_strings(projected_row, projected_row_views);
-    }
+  RowView source_row;
+  while (reader.next(source_row)) {
+    project_row_into(source_row.fields, projected_indeces, projected_row_views);
 
     if (row_has_skip_value(projected_row_views)) {
       continue;
@@ -301,21 +291,6 @@ JoinHashTable build_hash_table(std::istream& input_file,
 }
 
 
-// Open File or from map
-static std::unique_ptr<std::istream> open_from_map_or_file(
-    const std::unordered_map<std::string, std::string>& mem,
-    const std::string& path){
-    if (auto it = mem.find(path); it != mem.end()) {
-        return std::make_unique<std::istringstream>(it->second);
-    }
-
-    auto f = std::make_unique<std::ifstream>(path);
-    if (!f->is_open()) {
-        throw std::runtime_error("Could not open logical source: " + path);
-    }
-    return f;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int execute_complex(const fs::path& output_file_name,
@@ -333,7 +308,6 @@ int execute_complex(const fs::path& output_file_name,
                      const std::vector<std::string>& o_content,
                      const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
   RowHashSet unique_hashes;
   size_t triple_counter = 0;
   size_t write_cnt = 0;
@@ -366,22 +340,15 @@ int execute_complex(const fs::path& output_file_name,
   //////////////////////////////////////////////////////////////////////
 
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
-  }
-
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  if (!std::getline(*left_file, left_header_line) || !std::getline(*right_file, right_header_line)) {
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
     return 0;
   }
 
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
@@ -392,7 +359,7 @@ int execute_complex(const fs::path& output_file_name,
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_bindings);
+  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -411,26 +378,15 @@ int execute_complex(const fs::path& output_file_name,
   }
 
   // Process right file
-  std::vector<std::string_view> split_line_views;
-  std::vector<std::string> split_line;
   std::vector<std::string_view> projected_row;
-  std::vector<std::string> projected_row_storage;
-  split_line_views.reserve(64);
-  split_line.reserve(64);
   projected_row.reserve(right_proj_indices.size());
-  projected_row_storage.reserve(right_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
-  while (getline(*right_file, line)) {
+  RowView source_row;
+  while (right_reader->next(source_row)) {
     line_count++;
-    if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_into(split_line_views, right_proj_indices, projected_row);
-    } else {
-      split_csv_line_into(line, ',', split_line);
-      project_row_into(split_line, right_proj_indices, projected_row_storage);
-      project_row_views_from_strings(projected_row_storage, projected_row);
-    }
+    project_row_into(source_row.fields, right_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
@@ -527,7 +483,6 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
                                                           std::unordered_set<std::string>& unique_triple,
                                                           const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
   RowHashSet unique_hashes;
   std::string subject;
   std::string predicate;
@@ -546,22 +501,15 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
+    return unique_triple;
   }
 
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  std::getline(*left_file, left_header_line);
-  std::getline(*right_file, right_header_line);
-
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
@@ -572,7 +520,7 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_bindings);
+  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -592,26 +540,15 @@ std::unordered_set<std::string> execute_complex_dependent(const fs::path& output
   }
 
   // Process right file
-  std::vector<std::string_view> split_line_views;
-  std::vector<std::string> split_line;
   std::vector<std::string_view> projected_row;
-  std::vector<std::string> projected_row_storage;
-  split_line_views.reserve(64);
-  split_line.reserve(64);
   projected_row.reserve(right_proj_indices.size());
-  projected_row_storage.reserve(right_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
-  while (getline(*right_file, line)) {
+  RowView source_row;
+  while (right_reader->next(source_row)) {
     line_count++;
-    if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_into(split_line_views, right_proj_indices, projected_row);
-    } else {
-      split_csv_line_into(line, ',', split_line);
-      project_row_into(split_line, right_proj_indices, projected_row_storage);
-      project_row_views_from_strings(projected_row_storage, projected_row);
-    }
+    project_row_into(source_row.fields, right_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
@@ -693,7 +630,6 @@ int execute_complex_with_graph(const fs::path& output_file_name,
                                const std::vector<std::string>& g_content,
                                const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
   RowHashSet unique_hashes;
   size_t triple_counter = 0;
 
@@ -730,21 +666,15 @@ int execute_complex_with_graph(const fs::path& output_file_name,
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
+    return 0;
   }
 
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  std::getline(*left_file, left_header_line);
-  std::getline(*right_file, right_header_line);
-
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
@@ -755,7 +685,7 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file (store only projected columns).
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_bindings);
+  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Prepare joined headers for output.
@@ -774,26 +704,15 @@ int execute_complex_with_graph(const fs::path& output_file_name,
   }
 
   // Process right file
-  std::vector<std::string_view> split_line_views;
-  std::vector<std::string> split_line;
   std::vector<std::string_view> projected_row;
-  std::vector<std::string> projected_row_storage;
-  split_line_views.reserve(64);
-  split_line.reserve(64);
   projected_row.reserve(right_proj_indices.size());
-  projected_row_storage.reserve(right_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
-  while (getline(*right_file, line)) {
+  RowView source_row;
+  while (right_reader->next(source_row)) {
     line_count++;
-    if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_into(split_line_views, right_proj_indices, projected_row);
-    } else {
-      split_csv_line_into(line, ',', split_line);
-      project_row_into(split_line, right_proj_indices, projected_row_storage);
-      project_row_views_from_strings(projected_row_storage, projected_row);
-    }
+    project_row_into(source_row.fields, right_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
@@ -894,7 +813,6 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
                                                                      std::unordered_set<std::string>& unique_triple,
                                                                      const std::unordered_map<std::string, std::string>& data_map) {
   // Setup
-  std::string line;
   RowHashSet unique_hashes;
   std::string subject;
   std::string predicate;
@@ -917,21 +835,15 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
 
   //////////////////////////////////////////////////////////////////////
   // Open CSV files
-  auto left_file = open_from_map_or_file(data_map, left_path);
-  auto right_file = open_from_map_or_file(data_map, right_path);
-  if (!left_file || !right_file) {
-    std::cerr << "Error opening input files." << std::endl;
-    std::exit(1);
+  auto left_reader = create_source_reader(data_map, left_path);
+  auto right_reader = create_source_reader(data_map, right_path);
+  if (left_reader->header().empty() || right_reader->header().empty()) {
+    return unique_triple;
   }
 
-  // Read header lines
-  std::string left_header_line, right_header_line;
-  std::getline(*left_file, left_header_line);
-  std::getline(*right_file, right_header_line);
-
   // Build header mappings for left and right files.
-  auto [left_headers, left_header_idx] = build_header(left_header_line, left_name);
-  auto [right_headers, right_header_idx] = build_header(right_header_line, right_name);
+  auto [left_headers, left_header_idx] = build_header(left_reader->header(), left_name);
+  auto [right_headers, right_header_idx] = build_header(right_reader->header(), right_name);
 
   auto left_proj_indices = get_projected_indices(projected_attributes_left, left_name, left_header_idx);
   auto right_proj_indices = get_projected_indices(projected_attributes_right, right_name, right_header_idx);
@@ -942,7 +854,7 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   // Build hash table from left file using the left join index
-  auto hash_table = build_hash_table(*left_file, left_proj_indices, left_join_bindings);
+  auto hash_table = build_hash_table(*left_reader, left_proj_indices, left_join_bindings);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -962,26 +874,15 @@ std::unordered_set<std::string> execute_complex_with_graph_dependent(const fs::p
   }
 
   // Process right file
-  std::vector<std::string_view> split_line_views;
-  std::vector<std::string> split_line;
   std::vector<std::string_view> projected_row;
-  std::vector<std::string> projected_row_storage;
-  split_line_views.reserve(64);
-  split_line.reserve(64);
   projected_row.reserve(right_proj_indices.size());
-  projected_row_storage.reserve(right_proj_indices.size());
   std::vector<std::string_view> joined_row;
   joined_row.reserve(joined_headers.size());
   int line_count = 0;
-  while (getline(*right_file, line)) {
+  RowView source_row;
+  while (right_reader->next(source_row)) {
     line_count++;
-    if (split_csv_line_views_into(line, ',', split_line_views)) {
-      project_row_into(split_line_views, right_proj_indices, projected_row);
-    } else {
-      split_csv_line_into(line, ',', split_line);
-      project_row_into(split_line, right_proj_indices, projected_row_storage);
-      project_row_views_from_strings(projected_row_storage, projected_row);
-    }
+    project_row_into(source_row.fields, right_proj_indices, projected_row);
 
     // Check for unwanted values
     if (row_has_skip_value(projected_row)) {
