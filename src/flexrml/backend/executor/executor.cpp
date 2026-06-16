@@ -359,41 +359,11 @@ void clear_output_file(const std::string& output_file_path) {
   }
 }
 
-//////////////////////////////////////////////////////////////
-// Function to split json into key values pairs of filename and data
-void split_to_kv_into(std::unordered_map<std::string, std::string>& out,
-                      const std::string& s,
-                      const std::string& delim = "===|||==="){
-    const std::size_t pos = s.find(delim);
-    if (pos == std::string::npos) {
-        throw std::runtime_error("delimiter not found: " + s);
-    }
-
-    std::string key   = s.substr(0, pos);
-    std::string value = s.substr(pos + delim.size());
-
-    out[key] = value; // overwrites if key already exists
-}
-
-std::unordered_map<std::string, std::string> parse_json_data_map(const std::string& json_data) {
-  std::unordered_map<std::string, std::string> data_map;
-  if (json_data != "") {
-    std::vector<std::string> json_data_entries = split_by_substring(json_data, "|||===|||");
-    json_data_entries.erase(std::remove_if(json_data_entries.begin(), json_data_entries.end(), [](const std::string& s) { return s.empty(); }), json_data_entries.end());
-    for (const auto& data : json_data_entries) {
-      split_to_kv_into(data_map, data);
-    }
-  }
-  return data_map;
-}
-
-//////////////////////////////////////////////////////////////
-
 std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& partitions,
                                              const std::string& mode,
                                              const std::string& output_file_path,
                                              bool keep_in_memory,
-                                             const std::string& json_data) {
+                                             const std::unordered_map<std::string, std::string>& data_map) {
   std::string threading_enabled(mode);
   std::string ouput_file(output_file_path);
 
@@ -404,7 +374,6 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
   }
 
   std::atomic<int> nr_generate_triple(0);
-  std::unordered_map<std::string, std::string> data_map = parse_json_data_map(json_data);
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////77
   /// EXECUTE PLANS ///

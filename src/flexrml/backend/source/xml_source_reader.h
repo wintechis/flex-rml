@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -14,6 +15,9 @@ class XmlSourceReader final : public SourceReader {
  public:
   XmlSourceReader(const std::filesystem::path& source_path,
                   const std::string& iterator);
+  XmlSourceReader(const std::string& source_name,
+                  const std::string& iterator,
+                  const std::string& in_memory_xml);
 
   const std::vector<std::string>& header() const override;
   bool next(RowView& row) override;
@@ -29,7 +33,8 @@ class XmlSourceReader final : public SourceReader {
   };
 
   static std::shared_ptr<const Data> load_data(const std::filesystem::path& source_path,
-                                               const std::string& iterator);
+                                               const std::string& iterator,
+                                               const std::optional<std::string>& in_memory_xml = std::nullopt);
   static void add_header(std::vector<std::string>& header,
                          const std::string& name);
   static void collect_row_headers(const pugi::xml_node& node,

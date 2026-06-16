@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -15,6 +16,9 @@ class JsonSourceReader final : public SourceReader {
  public:
   JsonSourceReader(const std::filesystem::path& source_path,
                    const std::string& iterator);
+  JsonSourceReader(const std::string& source_name,
+                   const std::string& iterator,
+                   const std::string& in_memory_json);
 
   const std::vector<std::string>& header() const override;
   bool next(RowView& row) override;
@@ -38,7 +42,8 @@ class JsonSourceReader final : public SourceReader {
 
   static std::string read_text_file(const std::filesystem::path& path);
   static std::shared_ptr<const Data> load_data(const std::filesystem::path& source_path,
-                                               const std::string& iterator);
+                                               const std::string& iterator,
+                                               const std::optional<std::string>& in_memory_json = std::nullopt);
   static std::vector<std::string> parse_simple_array_iterator(const std::string& iterator);
   static bool is_root_array_iterator(const std::string& iterator);
   static std::string scalar_to_string(const Json& value);

@@ -10,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "json_preprocessor.h"
@@ -34,7 +35,7 @@ std::string execute_physical_plan_partitions(const std::vector<PlanPartition>& p
                                              const std::string& mode,
                                              const std::string& output_file_path,
                                              bool keep_in_memory,
-                                             const std::string& json_data);
+                                             const std::unordered_map<std::string, std::string>& data_map);
 
 namespace {
 
@@ -43,6 +44,7 @@ constexpr const char* kContinueOnError = "false";
 
 using IteratorConfig = std::map<std::string, std::string>;
 using IteratorMap = std::map<std::string, IteratorConfig>;
+using RuntimeSourceMap = std::unordered_map<std::string, std::string>;
 
 struct RuntimePlan {
   std::string ra;
@@ -60,7 +62,11 @@ std::string read_text_file(const std::filesystem::path& path) {
   return buffer.str();
 }
 
-std::string read_mapping_source(const std::string& source) {
+std::string read_mapping_source(const Options& options) {
+  const auto& source = options.mapping_source;
+  if (options.mapping_source_is_string) {
+    return source;
+  }
   std::error_code ec;
   if (std::filesystem::is_regular_file(source, ec)) {
     return read_text_file(source);
@@ -68,7 +74,11 @@ std::string read_mapping_source(const std::string& source) {
   return source;
 }
 
-std::filesystem::path mapping_base_dir(const std::string& source) {
+std::filesystem::path mapping_base_dir(const Options& options) {
+  const auto& source = options.mapping_source;
+  if (options.mapping_source_is_string) {
+    return std::filesystem::current_path();
+  }
   std::error_code ec;
   if (std::filesystem::is_regular_file(source, ec)) {
     auto parent = std::filesystem::path(source).parent_path();
@@ -216,6 +226,13 @@ bool is_source_path_predicate(const std::string& predicate) {
          predicate == "http://w3id.org/rml/path";
 }
 
+bool is_sd_name_predicate(const std::string& predicate) {
+  return predicate == "https://w3id.org/okn/o/sd#name" ||
+         predicate == "http://w3id.org/okn/o/sd#name" ||
+         predicate == "http://schema.org/name" ||
+         predicate == "https://schema.org/name";
+}
+
 bool is_relative_source_path(const std::string& value) {
   if (value.empty()) {
     return false;
@@ -273,6 +290,39 @@ std::string canonicalize_mapping_graph(const std::string& rml_string,
     }
     lines.push_back(join(triple, "|||"));
   }
+  std::map<std::string, std::string> source_names;
+  for (const auto& line : lines) {
+    auto triple = split(line, "|||");
+    if (triple.size() == 3 && is_sd_name_predicate(triple[1])) {
+      source_names[triple[0]] = triple[2];
+    }
+  }
+
+  for (const auto& line : lines) {
+    auto triple = split(line, "|||");
+    if (triple.size() != 3 || triple[1] != "http://w3id.org/rml/source") {
+      continue;
+    }
+
+    const auto source_name = source_names.find(triple[2]);
+    if (source_name == source_names.end()) {
+      continue;
+    }
+
+    bool has_path = false;
+    for (const auto& path_line : lines) {
+      auto path_triple = split(path_line, "|||");
+      if (path_triple.size() == 3 && path_triple[0] == triple[2] &&
+          path_triple[1] == "http://w3id.org/rml/path") {
+        has_path = true;
+        break;
+      }
+    }
+    if (!has_path) {
+      lines.push_back(triple[2] + "|||http://w3id.org/rml/path|||" + source_name->second);
+    }
+  }
+
   return join(lines, "\n");
 }
 
@@ -402,15 +452,13 @@ IteratorMap get_iterators_for_graph(const std::string& graph) {
   IteratorMap iterators;
   auto lines = non_empty_lines(graph);
   for (const auto& line : lines) {
-    if (line.find("|||http://w3id.org/rml/iterator|||") == std::string::npos) {
+    auto source_ref = split(line, "|||");
+    if (source_ref.size() != 3 || source_ref[1] != "http://w3id.org/rml/source") {
       continue;
     }
-    auto triple = split(line, "|||");
-    if (triple.size() != 3) {
-      continue;
-    }
-    const auto logical_source_node = triple[0];
-    const auto iterator = triple[2];
+    const auto logical_source_node = source_ref[0];
+    const auto source_node = source_ref[2];
+    std::string iterator;
     std::string path;
     std::string reference_formulation;
 
@@ -421,21 +469,21 @@ IteratorMap get_iterators_for_graph(const std::string& graph) {
       }
       if (source_triple[1] == "http://w3id.org/rml/referenceFormulation") {
         reference_formulation = source_triple[2];
-      } else if (source_triple[1] == "http://w3id.org/rml/source") {
-        const auto source_node = source_triple[2];
-        bool found_nested_path = false;
-        for (const auto& path_line : lines) {
-          auto path_triple = split(path_line, "|||");
-          if (path_triple.size() == 3 && path_triple[0] == source_node &&
-              path_triple[1] == "http://w3id.org/rml/path") {
-            path = path_triple[2];
-            found_nested_path = true;
-          }
-        }
-        if (!found_nested_path) {
-          path = source_node;
-        }
+      } else if (source_triple[1] == "http://w3id.org/rml/iterator") {
+        iterator = source_triple[2];
       }
+    }
+
+    for (const auto& path_line : lines) {
+      auto path_triple = split(path_line, "|||");
+      if (path_triple.size() == 3 && path_triple[0] == source_node &&
+          path_triple[1] == "http://w3id.org/rml/path") {
+        path = path_triple[2];
+        break;
+      }
+    }
+    if (path.empty()) {
+      path = source_node;
     }
 
     if (!path.empty()) {
@@ -532,8 +580,8 @@ std::string list_repr(const std::vector<std::string>& values) {
 }
 
 RuntimePlan build_runtime_plan(const Options& options) {
-  const auto raw_mapping = read_mapping_source(options.mapping_source);
-  const auto base_dir = mapping_base_dir(options.mapping_source);
+  const auto raw_mapping = read_mapping_source(options);
+  const auto base_dir = mapping_base_dir(options);
   std::string parsed_mapping = parse_rdf_string(raw_mapping);
   if (parsed_mapping.rfind("Error:", 0) == 0) {
     throw std::runtime_error("RML parsing failed: " + parsed_mapping);
@@ -575,10 +623,6 @@ std::vector<std::vector<std::string>> get_ra_sources(const std::string& ra) {
   return sources;
 }
 
-std::string encode_in_memory_entry(const std::string& source, const std::string& csv_data) {
-  return "|||===|||" + source + "===|||===" + csv_data;
-}
-
 bool has_json_extension(const std::string& source) {
   auto extension = std::filesystem::path(source).extension().string();
   std::transform(extension.begin(), extension.end(), extension.begin(),
@@ -586,9 +630,16 @@ bool has_json_extension(const std::string& source) {
   return extension == ".json";
 }
 
-std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
+bool is_csv_reference_formulation(const std::string& value) {
+  return value.empty() ||
+         value == "http://w3id.org/rml/CSV" ||
+         value == "http://semweb.mmlab.be/ns/ql#CSV";
+}
+
+RuntimeSourceMap preprocess_runtime_inputs(const RuntimePlan& plan,
+                                           const RuntimeSourceMap& provided_sources) {
   auto sources = get_ra_sources(plan.ra);
-  std::string in_memory_data;
+  RuntimeSourceMap in_memory_data;
   std::vector<std::string> loaded_sources;
 
   for (std::size_t i = 0; i < sources.size(); ++i) {
@@ -601,9 +652,15 @@ std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
       }
 
       const auto iterator = iterators.find(source);
+      const auto provided_source = provided_sources.find(source);
       if (iterator == iterators.end()) {
+        if (provided_source != provided_sources.end()) {
+          in_memory_data[source] = encode_csv_source_config(provided_source->second);
+          loaded_sources.push_back(source);
+          continue;
+        }
         if (has_json_extension(source)) {
-          in_memory_data += encode_in_memory_entry(source, encode_json_source_config("$[*]"));
+          in_memory_data[source] = encode_json_source_config("$[*]");
           loaded_sources.push_back(source);
         }
         continue;
@@ -611,12 +668,46 @@ std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
 
       const auto reference_formulation = iterator->second.find("reference_formulation");
       const auto iterator_value = iterator->second.find("iterator");
+      const std::string iterator_text = iterator_value == iterator->second.end() ? "" : iterator_value->second;
+      const std::string reference_text = reference_formulation == iterator->second.end()
+                                             ? ""
+                                             : reference_formulation->second;
+      if (provided_source != provided_sources.end()) {
+        if (reference_text == "http://w3id.org/rml/XPath") {
+          if (iterator_text.empty()) {
+            throw std::runtime_error("Missing iterator for in-memory XML source: " + source);
+          }
+          in_memory_data[source] = encode_xml_source_data(iterator_text, provided_source->second);
+        } else if (reference_text == "http://w3id.org/rml/JSONPath") {
+          if (iterator_text.empty()) {
+            throw std::runtime_error("Missing iterator for in-memory JSON source: " + source);
+          }
+          if (JsonSourceReader::supports_iterator(iterator_text)) {
+            in_memory_data[source] = encode_json_source_data(iterator_text, provided_source->second);
+          } else {
+            in_memory_data[source] = encode_csv_source_config(
+                preprocess_json_to_csv(source, iterator_text, provided_source->second));
+          }
+        } else if (is_csv_reference_formulation(reference_text)) {
+          in_memory_data[source] = encode_csv_source_config(provided_source->second);
+        } else {
+          throw std::runtime_error("Unsupported reference formulation for in-memory source '" + source +
+                                   "': " + reference_text);
+        }
+        loaded_sources.push_back(source);
+        continue;
+      }
+
       if (iterator_value == iterator->second.end()) {
         throw std::runtime_error("Missing iterator for source: " + source);
       }
+      if (is_csv_reference_formulation(reference_text)) {
+        loaded_sources.push_back(source);
+        continue;
+      }
       if (reference_formulation != iterator->second.end() &&
           reference_formulation->second == "http://w3id.org/rml/XPath") {
-        in_memory_data += encode_in_memory_entry(source, encode_xml_source_config(iterator_value->second));
+        in_memory_data[source] = encode_xml_source_config(iterator_value->second);
         loaded_sources.push_back(source);
         continue;
       }
@@ -627,9 +718,9 @@ std::string preprocess_runtime_inputs(const RuntimePlan& plan) {
       }
 
       if (JsonSourceReader::supports_iterator(iterator_value->second)) {
-        in_memory_data += encode_in_memory_entry(source, encode_json_source_config(iterator_value->second));
+        in_memory_data[source] = encode_json_source_config(iterator_value->second);
       } else {
-        in_memory_data += encode_in_memory_entry(source, preprocess_json_to_csv(source, iterator_value->second));
+        in_memory_data[source] = encode_csv_source_config(preprocess_json_to_csv(source, iterator_value->second));
       }
       loaded_sources.push_back(source);
     }
@@ -646,7 +737,7 @@ std::string generate_plan(const Options& options) {
 
 std::string execute_mapping(const Options& options) {
   auto plan = build_runtime_plan(options);
-  auto in_memory_data = preprocess_runtime_inputs(plan);
+  auto in_memory_data = preprocess_runtime_inputs(plan, options.in_memory_sources);
   const bool keep_in_memory = options.output_file_path.empty();
   const auto plan_partitions = create_plan_partitions(
       plan.ra,

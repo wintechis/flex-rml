@@ -10,6 +10,12 @@ XmlSourceReader::XmlSourceReader(const std::filesystem::path& source_path,
   data_ = load_data(source_path, iterator);
 }
 
+XmlSourceReader::XmlSourceReader(const std::string& source_name,
+                                 const std::string& iterator,
+                                 const std::string& in_memory_xml) {
+  data_ = load_data(source_name, iterator, in_memory_xml);
+}
+
 const std::vector<std::string>& XmlSourceReader::header() const {
   static const std::vector<std::string> empty_header;
   return data_ == nullptr ? empty_header : data_->header;
@@ -41,11 +47,13 @@ std::optional<std::size_t> XmlSourceReader::row_count_hint() const {
 
 std::shared_ptr<const XmlSourceReader::Data> XmlSourceReader::load_data(
     const std::filesystem::path& source_path,
-    const std::string& iterator) {
+    const std::string& iterator,
+    const std::optional<std::string>& in_memory_xml) {
   static std::mutex cache_mutex;
   static std::unordered_map<std::string, std::shared_ptr<const Data>> cache;
 
-  const std::string cache_key = source_path.string() + "\n" + iterator;
+  const std::string cache_key = source_path.string() + "\n" + iterator + "\n" +
+                                (in_memory_xml.has_value() ? *in_memory_xml : "");
   {
     std::lock_guard<std::mutex> lock(cache_mutex);
     if (auto found = cache.find(cache_key); found != cache.end()) {
@@ -54,7 +62,9 @@ std::shared_ptr<const XmlSourceReader::Data> XmlSourceReader::load_data(
   }
 
   pugi::xml_document document;
-  const pugi::xml_parse_result result = document.load_file(source_path.string().c_str());
+  const pugi::xml_parse_result result = in_memory_xml.has_value()
+                                            ? document.load_string(in_memory_xml->c_str())
+                                            : document.load_file(source_path.string().c_str());
   if (!result) {
     throw std::runtime_error("Could not parse XML source '" + source_path.string() +
                              "': " + result.description());

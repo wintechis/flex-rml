@@ -14,6 +14,12 @@ JsonSourceReader::JsonSourceReader(const std::filesystem::path& source_path,
   data_ = load_data(source_path, iterator);
 }
 
+JsonSourceReader::JsonSourceReader(const std::string& source_name,
+                                   const std::string& iterator,
+                                   const std::string& in_memory_json) {
+  data_ = load_data(source_name, iterator, in_memory_json);
+}
+
 const std::vector<std::string>& JsonSourceReader::header() const {
   static const std::vector<std::string> empty_header;
   return data_ == nullptr ? empty_header : data_->header;
@@ -58,11 +64,13 @@ std::string JsonSourceReader::read_text_file(const std::filesystem::path& path) 
 }
 
 std::shared_ptr<const JsonSourceReader::Data> JsonSourceReader::load_data(const std::filesystem::path& source_path,
-                                                                          const std::string& iterator) {
+                                                                          const std::string& iterator,
+                                                                          const std::optional<std::string>& in_memory_json) {
   static std::mutex cache_mutex;
   static std::unordered_map<std::string, std::shared_ptr<const Data>> cache;
 
-  const std::string cache_key = source_path.string() + "\n" + iterator;
+  const std::string cache_key = source_path.string() + "\n" + iterator + "\n" +
+                                (in_memory_json.has_value() ? *in_memory_json : "");
   {
     std::lock_guard<std::mutex> lock(cache_mutex);
     if (auto found = cache.find(cache_key); found != cache.end()) {
@@ -71,7 +79,7 @@ std::shared_ptr<const JsonSourceReader::Data> JsonSourceReader::load_data(const 
   }
 
   auto data = std::make_shared<Data>();
-  if (is_root_array_iterator(iterator)) {
+  if (!in_memory_json.has_value() && is_root_array_iterator(iterator)) {
     Data flat_data;
     if (try_load_flat_root_array(source_path, flat_data)) {
       build_row_views(flat_data);
@@ -84,7 +92,7 @@ std::shared_ptr<const JsonSourceReader::Data> JsonSourceReader::load_data(const 
     }
   }
 
-  const std::string json_text = read_text_file(source_path);
+  const std::string json_text = in_memory_json.has_value() ? *in_memory_json : read_text_file(source_path);
   Json document = Json::parse(json_text);
   const auto path = parse_simple_array_iterator(iterator);
   const Json* container = resolve_path(document, path);

@@ -145,6 +145,12 @@ To execute a mapping and print triples to stdout:
 ./flexrml -m mapping.rml.ttl
 ```
 
+To pass a mapping directly as a string:
+
+```bash
+./flexrml --mapping-string '@prefix rml: <http://w3id.org/rml/> . ...'
+```
+
 To write triples to a file:
 
 ```bash
@@ -160,6 +166,39 @@ Useful CLI options:
 ./flexrml --version
 ./flexrml --help
 ```
+
+### In-memory sources
+
+Mappings can bind logical sources to runtime strings instead of files. Use an
+SD dataset specification with `sd:name`; the name is matched against repeated
+`--source` options:
+
+```turtle
+@prefix rml: <http://w3id.org/rml/> .
+@prefix sd: <https://w3id.org/okn/o/sd#> .
+
+<#LogicalSource>
+    a rml:LogicalSource ;
+    rml:source <#RuntimeData> ;
+    rml:referenceFormulation rml:JSONPath ;
+    rml:iterator "$[*]" .
+
+<#RuntimeData>
+    a sd:DatasetSpecification ;
+    sd:name "data" .
+```
+
+Pass the payload as a literal string or read it from a file:
+
+```bash
+./flexrml -m mapping.rml.ttl --source 'data=[{"id":1}]'
+./flexrml -m mapping.rml.ttl --source data=@payload.json
+./flexrml --mapping-string '...' --source data=@payload.json
+```
+
+The mapping chooses the parser through `rml:referenceFormulation`. In-memory
+CSV uses `rml:CSV`, JSON uses `rml:JSONPath`, and XML uses `rml:XPath`.
+File-based sources continue to work when no matching `--source` is provided.
 
 ## Architecture
 
