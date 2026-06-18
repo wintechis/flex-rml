@@ -30,6 +30,18 @@
         "CMAKE_CXX_FLAGS_DEBUG": "-O0 -g0",
         "FLEXRML_OUTPUT_NAME": "flexrml_test"
       }
+    },
+    {
+      "name": "arm64",
+      "displayName": "ARM64 Linux",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/arm64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "arm64-linux",
+        "FLEXRML_OUTPUT_NAME": "flexrml_arm64"
+      }
     }
   ],
   "buildPresets": [
@@ -44,6 +56,10 @@
     {
       "name": "test",
       "configurePreset": "test"
+    },
+    {
+      "name": "arm64",
+      "configurePreset": "arm64"
     }
   ]
 }
