@@ -190,7 +190,11 @@ static bool is_supported_parameter(const std::string& internal_function_name,
                                    const std::string& parameter) {
   static const std::unordered_map<std::string, std::unordered_set<std::string>> supported_parameters = {
       {"==FUNC==TO_UPPER_CASE", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam"}},
-      {"==FUNC==TO_UPPER_CASE_URL", {"https://w3id.org/imec/idlab/function#str"}},
+      // idlab-fn:_str is the fno:Parameter, idlab-fn:str its fno:predicate: the test
+      // cases name the parameter since kg-construct/rml-fnml#85, earlier mappings the
+      // predicate (kg-construct/rml-fnml#83)
+      {"==FUNC==TO_UPPER_CASE_URL", {"https://w3id.org/imec/idlab/function#_str",
+                                     "https://w3id.org/imec/idlab/function#str"}},
       {"==FUNC==STRING_LENGTH", {"http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam"}},
       {"==FUNC==STRING_SUBSTRING", {
                                       "http://users.ugent.be/~bjdmeest/function/grel.ttl#valueParam",
