@@ -120,12 +120,18 @@ static CompiledTerm compile_term(const std::vector<std::string>& content,
   term.term_type = content[2];
   term.term_kind = compile_term_type(term.term_type);
   const bool is_literal = term.term_kind == CompiledTermType::Literal;
+  bool plain_literal = false;
   if (is_literal) {
     if (content.size() > 3) {
       term.lang_tag = content[3];
     }
     if (content.size() > 4) {
       term.data_type = content[4];
+    }
+    if (term.data_type == kPlainLiteral) {
+      // a simple literal, without a natural datatype
+      term.data_type = "None";
+      plain_literal = true;
     }
     if (is_dynamic_annotation(term.lang_tag, projected_header) ||
         is_dynamic_annotation(term.data_type, projected_header)) {
@@ -150,7 +156,7 @@ static CompiledTerm compile_term(const std::vector<std::string>& content,
     if (term.reference_index < 0) {
       return CompiledTerm{};
     }
-    term.infer_datatype = is_literal && term.lang_tag == "None" && term.data_type == "None";
+    term.infer_datatype = is_literal && !plain_literal && term.lang_tag == "None" && term.data_type == "None";
   } else if (content[1] == "template") {
     term.map_type = CompiledTermMapType::Template;
     if (!compile_template_parts(term.term_map, projected_header, term.parts)) {

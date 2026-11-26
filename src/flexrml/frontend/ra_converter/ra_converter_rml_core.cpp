@@ -1099,7 +1099,37 @@ static std::string join_strings(const std::vector<std::string>& values,
   return result;
 }
 
-std::string create_complex_tree(const std::vector<NTriple>& triples) {
+// RML-Core gives a natural datatype (xsd:integer, xsd:decimal, xsd:boolean) to the
+// values of a reference only when the source has typed values: a JSON source
+// (rml:JSONPath). A CSV cell or an XML text node is a string, and so is every
+// value in a mapping of the legacy vocabulary (RML 1.0, R2RML). Such a reference
+// is marked "Plain" (kPlainLiteral of the backend, executor/utils.h): the
+// backend writes it as a simple literal, without inferring a datatype from its
+// lexical form.
+static const std::string kPlainLiteral = "Plain";
+
+static bool has_natural_datatypes(const std::vector<NTriple>& triples,
+                                  const std::string& triples_map_node) {
+  for (const auto& logical_source :
+       find_matching_objects(triples, triples_map_node, "http://w3id.org/rml/logicalSource")) {
+    for (const auto& formulation :
+         find_matching_objects(triples, logical_source, "http://w3id.org/rml/referenceFormulation")) {
+      if (formulation == "http://w3id.org/rml/JSONPath") {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static void keep_reference_untyped(Object& obj) {
+  if (obj.term_type == "literal" && obj.term_map_type == "reference" &&
+      obj.lang_tag == "None" && obj.data_type == "None") {
+    obj.data_type = kPlainLiteral;
+  }
+}
+
+std::string create_complex_tree(const std::vector<NTriple>& triples, bool natural_datatypes) {
   // Get root tm
   std::string root_tm = get_root_tm(triples);
 
@@ -1145,6 +1175,10 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   Subject empty_subj;
   Predicate empty_pred;
   std::vector<std::string> proj_attributes2 = get_projected_attributes(empty_subj, empty_pred, obj);
+  // after the projection: the mark is no attribute of the source
+  if (!natural_datatypes) {
+    keep_reference_untyped(obj);
+  }
 
   // Generate Create
 
@@ -1290,7 +1324,7 @@ std::string create_complex_tree(const std::vector<NTriple>& triples) {
   return final_result;
 }
 
-std::string create_simple_tree(const std::vector<NTriple>& triples) {
+std::string create_simple_tree(const std::vector<NTriple>& triples, bool natural_datatypes) {
   /////////////////////
   std::vector<std::string> final_result;
   /////////////////////
@@ -1322,6 +1356,11 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
   std::set<std::string> proj_attributes_set(proj_attributes.begin(), proj_attributes.end());
   collect_graph_projected_attributes(proj_attributes_set, graphs);
   proj_attributes.assign(proj_attributes_set.begin(), proj_attributes_set.end());
+
+  // after the projection: the mark is no attribute of the source
+  if (!natural_datatypes || !has_natural_datatypes(triples, root_tm)) {
+    keep_reference_untyped(obj);
+  }
 
   // Generate Create //
 
@@ -1368,7 +1407,7 @@ std::string create_simple_tree(const std::vector<NTriple>& triples) {
   return res_str;
 }
 
-std::string converter(const std::vector<NTriple>& triples) {
+std::string converter(const std::vector<NTriple>& triples, bool natural_datatypes) {
   // Use the complex path for referencing object maps as well as normalized
   // two-subject join structures.
   std::vector<std::string> subject_nodes =
@@ -1378,12 +1417,12 @@ std::string converter(const std::vector<NTriple>& triples) {
 
   // Handle join
   if (subject_nodes.size() == 2 || !parent_tm_nodes.empty()) {
-    std::string result = create_complex_tree(triples);
+    std::string result = create_complex_tree(triples, natural_datatypes);
     return result;
   }
 
   // Handle without join
-  std::string results = create_simple_tree(triples);
+  std::string results = create_simple_tree(triples, natural_datatypes);
   return results;
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1425,7 +1464,7 @@ static std::vector<NTriple> rdf_string_to_vector(const std::string& rdf_string) 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::string create_relational_algebra_string(const std::string& rml) {
+std::string create_relational_algebra_string(const std::string& rml, bool natural_datatypes) {
   std::vector<NTriple> rdf_vector = rdf_string_to_vector(rml);
-  return converter(rdf_vector);
+  return converter(rdf_vector, natural_datatypes);
 }

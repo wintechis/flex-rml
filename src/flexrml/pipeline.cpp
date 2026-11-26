@@ -21,7 +21,7 @@
 std::string parse_rdf_string(const std::string& rdf_mapping);
 std::string normalize_rml_mapping_string(const std::string& input_rdf_mapping, int bn_number);
 std::string resolve_rml_functions_string(const std::string& input_rdf_mapping);
-std::string create_relational_algebra_string(const std::string& rml_input);
+std::string create_relational_algebra_string(const std::string& rml_input, bool natural_datatypes);
 std::string get_ra_sources_string(const std::string& ra_text);
 std::vector<PlanPartition> create_plan_partitions(const std::string& ra_text,
                                                   const std::string& base_uris_text,
@@ -219,6 +219,11 @@ std::string canonicalize_mapping_term(const std::string& value) {
     return std::string(new_rml) + value.substr(old_ql.size());
   }
   return value;
+}
+
+bool uses_legacy_vocabulary(const std::string& rml_string) {
+  return rml_string.find("http://semweb.mmlab.be/ns/rml#") != std::string::npos ||
+         rml_string.find("http://www.w3.org/ns/r2rml#") != std::string::npos;
 }
 
 bool is_source_path_predicate(const std::string& predicate) {
@@ -587,6 +592,9 @@ RuntimePlan build_runtime_plan(const Options& options) {
     throw std::runtime_error("RML parsing failed: " + parsed_mapping);
   }
 
+  // the natural datatypes of RML-Core are not those of a mapping in the legacy
+  // vocabulary (RML 1.0, R2RML), whose references give simple literals
+  const bool natural_datatypes = !uses_legacy_vocabulary(parsed_mapping);
   auto compatible_mapping = canonicalize_mapping_graph(parsed_mapping, base_dir);
   auto patched_mapping = patch_mapping_graph(compatible_mapping);
   auto normalized_graphs = normalize_mapping(patched_mapping);
@@ -598,7 +606,7 @@ RuntimePlan build_runtime_plan(const Options& options) {
   std::vector<IteratorMap> ra_iterators;
   std::vector<std::string> ra_base_uris;
   for (std::size_t i = 0; i < normalized_graphs.size(); ++i) {
-    const auto converted = create_relational_algebra_string(normalized_graphs[i]);
+    const auto converted = create_relational_algebra_string(normalized_graphs[i], natural_datatypes);
     for (const auto& line : non_empty_lines(converted)) {
       ra_expressions.push_back(line);
       ra_iterators.push_back(graph_iterators[i]);
