@@ -1095,8 +1095,12 @@ void create_operator_into(const std::string& term_map,
     if (is_literal) {
       resolved_lang_tag = resolve_annotation_value(lang_tag, map);
       resolved_data_type = resolve_annotation_value(data_type, map);
-      normalize_iri_annotation(resolved_data_type);
-      resolved_data_type = infer_literal_datatype(rdf_term, resolved_lang_tag, resolved_data_type);
+      if (resolved_data_type == kPlainLiteral) {
+        resolved_data_type = "None";
+      } else {
+        normalize_iri_annotation(resolved_data_type);
+        resolved_data_type = infer_literal_datatype(rdf_term, resolved_lang_tag, resolved_data_type);
+      }
       effective_lang_tag = &resolved_lang_tag;
       effective_data_type = &resolved_data_type;
     }

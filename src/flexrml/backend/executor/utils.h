@@ -31,6 +31,10 @@ void format_statement_into(const std::string& subject, const std::string& predic
 std::string make_safe_iri(std::string_view node, bool encode_non_ascii = true);
 void append_safe_iri(std::string_view node, bool encode_non_ascii, std::string& out);
 bool has_invalid_iri_char(std::string_view value);
+// The datatype annotation of a reference whose values have no natural datatype
+// (a CSV or XML source, a mapping in the legacy vocabulary): a simple literal,
+// never typed from its lexical form (set by the RML-Core frontend).
+inline constexpr std::string_view kPlainLiteral = "Plain";
 std::string_view infer_literal_datatype(std::string_view rdf_term,
                                         std::string_view lang_tag,
                                         std::string_view data_type);
